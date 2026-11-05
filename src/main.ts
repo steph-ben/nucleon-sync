@@ -144,6 +144,7 @@ async function buildEngine(cfg: Config, ctx: Ctx, log: Logger, touched?: (paths:
         log,
         touched,
         progress,
+        activity: (line, error) => store.addActivity(Date.now(), line, error),
     });
     return { engine, store };
 }
@@ -420,6 +421,13 @@ async function main() {
         case 'update':
             console.log(checkForUpdate(path.join(import.meta.dir, '..'), sendNote, () => signalDaemon('SIGTERM')));
             return;
+        case 'activity': {
+            const store = new SqliteStore(path.join(DATA, 'state.sqlite'));
+            for (const a of store.recentActivity(Number(args[0]) || 30).reverse()) {
+                console.log(`${new Date(a.at).toLocaleString()}  ${a.label}  ${a.path}${a.error ? `  (${a.error})` : ''}`);
+            }
+            return;
+        }
         case 'pause':
             mkdirSync(DATA, { recursive: true });
             writeFileSync(PAUSE_FILE, '');
@@ -457,7 +465,7 @@ async function main() {
             console.log(APP_VERSION);
             return;
         default:
-            console.log('usage: proton-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|exclude|setup|update|version');
+            console.log('usage: proton-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|version');
     }
 }
 

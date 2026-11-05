@@ -6,12 +6,15 @@ import path from 'node:path';
 import { type DesktopState, notificationsFor, render, writeState } from '../src/desktop/state';
 import { makeIgnore } from '../src/desktop/exclude';
 import { DesktopTracker } from '../src/desktop/tracker';
+import { SqliteStore } from '../src/adapters/sqlite-store';
+import { describeActivity } from '../src/desktop/activity';
 import { noteCommand } from '../src/desktop/notify';
 import { buildConfig } from '../src/desktop/setup';
 import { decideUpdate } from '../src/desktop/update';
 import { cleanWorlds, machine, settle, tree } from './lib/world';
 import { Hub } from './sim';
 
+const hasPython = Bun.which('python3') !== null;
 const idle: DesktopState = { pid: 1, heartbeatAt: 1000, paused: false, syncing: false, lastSyncAt: 900, problems: [], held: 0, unseenDeletes: [], conflicts: 0 };
 
 describe('render', () => {
@@ -255,7 +258,6 @@ describe('update decision', () => {
     });
 });
 
-const hasPython = Bun.which('python3') !== null;
 test.skipIf(!hasPython)('Linux icon: a stale, broken or missing state means stopped', async () => {
     const h = mkdtempSync(path.join(tmpdir(), 'proton-sync-py-'));
     const script = path.join(import.meta.dir, '../desktop/linux/proton-sync-tray.py');
@@ -266,4 +268,60 @@ print(m.read_state(sys.argv[2],1000)["level"]);print(m.read_state(sys.argv[2],99
     const p = Bun.spawn(['python3', '-I', '-c', code, script, h], { stdout: 'pipe', stderr: 'pipe' });
     const out = await new Response(p.stdout).text();
     expect(out.trim().split('\n')).toEqual(['ok', 'stopped', 'stopped']);
+});
+
+describe('activity', () => {
+    test('journal lines become plain words', () => {
+        expect(describeActivity('local→drive  upload  Notes/a.md')).toEqual({ label: 'Envoyé', path: 'Notes/a.md' });
+        expect(describeActivity('drive→local  download new version  z.txt')).toEqual({ label: 'Reçu (nouvelle version)', path: 'z.txt' });
+        expect(describeActivity('local→drive  move  A -> B').label).toBe('Déplacé sur le Drive');
+        expect(describeActivity('drive→local  move  A -> B').label).toBe('Déplacé ici');
+        expect(describeActivity('local→drive  trash  a.txt').label).toBe('Mis à la corbeille');
+        expect(describeActivity('drive→local  quarantine  a.txt').label).toBe('Mis en quarantaine');
+        expect(describeActivity('local  conflict copy  a -> b').label).toBe('Conflit : copie créée');
+        expect(describeActivity('local→drive  upload  a.txt', 'quota')).toEqual({ label: 'Erreur : Envoyé', path: 'a.txt', error: 'quota' });
+    });
+
+    test('the sync records what really happened, not bookkeeping', async () => {
+        const hub = new Hub();
+        const seen: string[] = [];
+        const a = machine('A', hub, { activity: (line) => seen.push(line) });
+        await Bun.write(a.abs('Notes/n.md'), 'note');
+        await settle(a);
+        expect(seen).toEqual(['local→drive  mkdir  Notes', 'local→drive  upload  Notes/n.md']);
+    });
+
+    test('a failed action is recorded with its cause', async () => {
+        const hub = new Hub();
+        const seen: [string, string | undefined][] = [];
+        const a = machine('A', hub, { activity: (line, error) => seen.push([line, error]) });
+        await Bun.write(a.abs('b.txt'), 'b');
+        a.drive.fail('upload', () => new Error('quota'));
+        await a.engine.cycle();
+        expect(seen).toEqual([['local→drive  upload  b.txt', 'quota']]);
+    });
+
+    test('stored newest first, in plain words, and bounded', () => {
+        const file = path.join(mkdtempSync(path.join(tmpdir(), 'proton-sync-act-')), 'state.sqlite');
+        const store = new SqliteStore(file);
+        for (let i = 0; i < 1010; i++) store.addActivity(i, `local→drive  upload  f${i}`);
+        const rows = store.recentActivity(3);
+        expect(rows.map((r) => r.path)).toEqual(['f1009', 'f1008', 'f1007']);
+        expect(rows[0]).toMatchObject({ at: 1009, label: 'Envoyé' });
+        expect(store.recentActivity(5000)).toHaveLength(1000);
+        store.close();
+    });
+
+    test.skipIf(!hasPython)('the Linux window reads it, and survives a base without the table', async () => {
+        const h = mkdtempSync(path.join(tmpdir(), 'proton-sync-pyact-'));
+        const store = new SqliteStore(path.join(h, 'state.sqlite'));
+        store.addActivity(1000, 'local→drive  upload  été.txt');
+        store.close();
+        const script = path.join(import.meta.dir, '../desktop/linux/proton-sync-tray.py');
+        const code = `import importlib.util,sys
+s=importlib.util.spec_from_file_location("t",sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+print(m.read_activity(sys.argv[2])[0][1:]);print(m.read_activity("/nonexistent"))`;
+        const p = Bun.spawn(['python3', '-I', '-c', code, script, h], { stdout: 'pipe', stderr: 'pipe' });
+        expect((await new Response(p.stdout).text()).trim().split('\n')).toEqual(["('Envoyé', 'été.txt', '')", '[]']);
+    });
 });

@@ -113,6 +113,7 @@ export interface MachineOptions {
     isFatal?: (e: unknown) => boolean;
     log?: (level: string, message: string) => void;
     home?: string;
+    activity?: (line: string, error?: string) => void;
     /** Replaces the exclusion rule. Called for each scanned name, so a test can act during a scan. */
     ignore?: (name: string, isDir: boolean) => boolean;
 }
@@ -131,7 +132,7 @@ export function machine(tag: string, hub: Hub, o: MachineOptions = {}) {
     const local = new RealLocalFs(root, quarantine, { ignore: o.ignore ?? defaultIgnore });
     const drive = new FakeDrive(hub, root, o.ignore);
     let k = 0;
-    const engineOptions = { deviceName: tag, caseInsensitive: o.caseInsensitive ?? false, maxDeletes: o.maxDeletes ?? 20, newKey: () => `${tag}${Date.now()}-${++k}`, today: () => '2026-11-05', isFatal: o.isFatal, log: o.log as never };
+    const engineOptions = { deviceName: tag, caseInsensitive: o.caseInsensitive ?? false, maxDeletes: o.maxDeletes ?? 20, newKey: () => `${tag}${Date.now()}-${++k}`, today: () => '2026-11-05', isFatal: o.isFatal, log: o.log as never, activity: o.activity };
     const engine = new Engine(local, drive, store, engineOptions);
     return { tag, home, root, quarantine, dbPath, engine, store, drive, local, abs: (p: string) => path.join(root, p) };
 }

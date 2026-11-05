@@ -1,6 +1,7 @@
 // Menu bar icon. Reads the daemon's desktop.json and runs proton-sync commands: all logic stays in the daemon.
 // Usage: proton-sync-tray <path to proton-sync> <data folder>
 import AppKit
+import SQLite3
 
 let daemonGoneSeconds = 180.0
 
@@ -13,12 +14,104 @@ struct State {
     var unseen = 0
 }
 
+struct Activity {
+    let when: String
+    let what: String
+    let file: String
+}
+
+/// Newest first. Read-only; a base without the table yet gives an empty list.
+func readActivity(home: String) -> [Activity] {
+    var db: OpaquePointer?
+    let path = URL(fileURLWithPath: home).appendingPathComponent("state.sqlite").path
+    defer { sqlite3_close(db) }
+    guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return [] }
+    var stmt: OpaquePointer?
+    defer { sqlite3_finalize(stmt) }
+    let sql = "SELECT at, label, path, COALESCE(error, '') FROM activity ORDER BY id DESC LIMIT 200"
+    guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+    let format = DateFormatter()
+    format.dateFormat = "dd/MM HH:mm:ss"
+    var rows: [Activity] = []
+    while sqlite3_step(stmt) == SQLITE_ROW {
+        let at = Date(timeIntervalSince1970: sqlite3_column_double(stmt, 0) / 1000)
+        let error = String(cString: sqlite3_column_text(stmt, 3))
+        let file = String(cString: sqlite3_column_text(stmt, 2))
+        rows.append(Activity(when: format.string(from: at), what: String(cString: sqlite3_column_text(stmt, 1)), file: error.isEmpty ? file : "\(file)  (\(error))"))
+    }
+    return rows
+}
+
+final class ActivityWindow: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
+    let home: String
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 460), styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+    let table = NSTableView()
+    var rows: [Activity] = []
+    var timer: Timer?
+
+    init(home: String) {
+        self.home = home
+        super.init()
+        window.title = "proton-sync : activité récente"
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        for (id, title, width) in [("when", "Quand", 120.0), ("what", "Action", 200.0), ("file", "Fichier", 420.0)] {
+            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
+            column.title = title
+            column.width = CGFloat(width)
+            table.addTableColumn(column)
+        }
+        table.dataSource = self
+        table.delegate = self
+        table.usesAlternatingRowBackgroundColors = true
+        let scroll = NSScrollView()
+        scroll.documentView = table
+        scroll.hasVerticalScroller = true
+        window.contentView = scroll
+        window.center()
+    }
+
+    func show() {
+        reload()
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.reload() }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    func reload() {
+        rows = readActivity(home: home)
+        table.reloadData()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        timer?.invalidate()
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+
+    func tableView(_ tableView: NSTableView, viewFor column: NSTableColumn?, row: Int) -> NSView? {
+        let a = rows[row]
+        let text: String
+        switch column?.identifier.rawValue {
+        case "when": text = a.when
+        case "what": text = a.what
+        default: text = a.file
+        }
+        let label = NSTextField(labelWithString: text)
+        label.lineBreakMode = .byTruncatingMiddle
+        label.toolTip = text
+        return label
+    }
+}
+
 final class Tray: NSObject, NSApplicationDelegate {
     let bin: String
     let home: String
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     var state = State()
     var lastLevel = ""
+    lazy var activity = ActivityWindow(home: home)
 
     init(bin: String, home: String) {
         self.bin = bin
@@ -68,6 +161,8 @@ final class Tray: NSObject, NSApplicationDelegate {
     func menu() -> NSMenu {
         let m = NSMenu()
         m.autoenablesItems = false
+        m.addItem(entry("proton-sync : synchro Proton Drive", nil))
+        m.addItem(.separator())
         m.addItem(entry(state.title, nil))
         for l in state.lines { m.addItem(entry(l, nil)) }
         m.addItem(.separator())
@@ -76,8 +171,9 @@ final class Tray: NSObject, NSApplicationDelegate {
         }
         if state.held > 0 { m.addItem(entry("Valider \(state.held) suppressions", #selector(approve))) }
         if state.unseen > 0 { m.addItem(entry("Marquer les suppressions comme vues", #selector(seen))) }
+        m.addItem(entry("Activité récente…", #selector(showActivity)))
         m.addItem(entry("Ouvrir le dossier", #selector(openFolder)))
-        m.addItem(entry("Ouvrir le journal", #selector(openLog)))
+        m.addItem(entry("Ouvrir le journal technique", #selector(openLog)))
         m.addItem(.separator())
         m.addItem(entry("Quitter l'icône", #selector(quit)))
         return m
@@ -95,6 +191,7 @@ final class Tray: NSObject, NSApplicationDelegate {
         run("/usr/bin/osascript", ["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", title, body])
     }
 
+    @objc func showActivity() { activity.show() }
     @objc func togglePause() { run(bin, [state.paused ? "resume" : "pause"]) }
     @objc func approve() { run(bin, ["approve"]) }
     @objc func seen() { run(bin, ["seen"]) }
