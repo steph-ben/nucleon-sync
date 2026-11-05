@@ -251,18 +251,14 @@ describe('setup assistant', () => {
 });
 
 describe('update decision', () => {
-    const base = { branch: 'main', behind: 2, clean: true, ci: 'success' as const };
-    test('installed only when CI is green on a clean main', () => {
-        expect(decideUpdate(base)).toBe('install');
+    test('installed only when latest is newer than the running version', () => {
+        expect(decideUpdate({ current: '0.2.0', latest: '0.3.0' })).toBe('install');
+        expect(decideUpdate({ current: '0.2.0-beta', latest: '0.2.0' })).toBe('install');
     });
-    test('otherwise only signalled', () => {
-        expect(decideUpdate({ ...base, ci: 'failure' })).toBe('signal');
-        expect(decideUpdate({ ...base, ci: 'unknown' })).toBe('signal');
-        expect(decideUpdate({ ...base, clean: false })).toBe('signal');
-    });
-    test('nothing to do when up to date or on another branch', () => {
-        expect(decideUpdate({ ...base, behind: 0 })).toBe('none');
-        expect(decideUpdate({ ...base, branch: 'reliability' })).toBe('none');
+    test('nothing to do when up to date, older, or unknown', () => {
+        expect(decideUpdate({ current: '0.2.0', latest: '0.2.0' })).toBe('none');
+        expect(decideUpdate({ current: '0.2.0', latest: '0.1.0' })).toBe('none');
+        expect(decideUpdate({ current: '0.2.0', latest: undefined })).toBe('none');
     });
 });
 

@@ -15,8 +15,9 @@ import { sendNote } from './desktop/notify';
 import { buildConfig } from './desktop/setup';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
-import { checkForUpdate } from './desktop/update';
-import { APP_VERSION, dataDir } from './names';
+import { checkForUpdate, runUpdate } from './desktop/update';
+import { APP_NAME, APP_VERSION, dataDir, VERSION } from './names';
+import { runUninstall } from './uninstall';
 import { ChangeTracker } from './watch';
 
 const DATA = dataDir(process.env, homedir());
@@ -198,10 +199,12 @@ async function daemon(cfg: Config) {
     const view = desktop;
     view.flush();
     setInterval(() => view.flush(), STATE_REFRESH_MS);
-    setInterval(() => {
-        // In its own process: installing restarts this daemon.
-        Bun.spawn([process.execPath, process.argv[1]!, 'update'], { stdout: 'ignore', stderr: 'ignore', stdin: 'ignore' }).unref();
-    }, UPDATE_EVERY_MS);
+    const tellAboutUpdate = () => {
+        // Only tells the user, once per new version. nucleon-sync update installs.
+        checkForUpdate({ current: VERSION, fetch, notify: sendNote, notifiedFile: path.join(DATA, 'update-notified') }).catch(() => {});
+    };
+    tellAboutUpdate();
+    setInterval(tellAboutUpdate, UPDATE_EVERY_MS);
 
     let wake: (() => void) | undefined;
     process.on('SIGUSR1', () => {
@@ -426,9 +429,34 @@ async function main() {
             await ctx.dispose();
             return;
         }
-        case 'update':
-            console.log(checkForUpdate(path.join(import.meta.dir, '..'), sendNote, () => signalDaemon('SIGTERM')));
+        case 'update': {
+            const home = homedir();
+            const appDir = path.join(home, '.local/share', APP_NAME, 'app');
+            const run = (cmd: string[], env?: Record<string, string>) => Bun.spawnSync(cmd, { env: { ...process.env, ...env }, stdout: 'inherit', stderr: 'inherit' }).exitCode;
+            const restart = () =>
+                platform() === 'darwin'
+                    ? run(['launchctl', 'kickstart', '-k', `gui/${process.getuid?.() ?? 0}/org.nucleonsync.daemon`])
+                    : run(['systemctl', '--user', 'restart', 'nucleon-sync.service']);
+            const output = (cmd: string[]) => {
+                const r = Bun.spawnSync(cmd, { stdout: 'pipe', stderr: 'ignore' });
+                return r.exitCode === 0 ? r.stdout.toString() : '';
+            };
+            console.log(await runUpdate({ appDir, codeDir: import.meta.dir, current: VERSION, fetch, run, output, restart: () => void restart() }));
             return;
+        }
+        case 'uninstall': {
+            const purgeData = args.includes('--purge-data');
+            const ask = async (question: string) => (prompt(`${question} Type yes to confirm`) ?? '') === 'yes';
+            const run = (cmd: string[]) => Bun.spawnSync(cmd, { stdout: 'ignore', stderr: 'ignore' }).exitCode;
+            let syncedFolder: string | undefined;
+            try {
+                syncedFolder = loadConfig().localRoot;
+            } catch {
+                /* no configuration: nothing to print */
+            }
+            await runUninstall({ home: homedir(), platform: platform() === 'darwin' ? 'darwin' : 'linux', purgeData, syncedFolder, ask, print: (line) => console.log(line), run });
+            return;
+        }
         case 'activity':
             for (const a of recentActivity(path.join(DATA, 'nucleon-sync.log'), Number(args[0]) || 30).reverse()) {
                 console.log(`${a.at}  ${a.label}  ${a.path}${a.error ? `  (${a.error})` : ''}`);
@@ -471,7 +499,7 @@ async function main() {
             console.log(APP_VERSION);
             return;
         default:
-            console.log('usage: nucleon-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|version');
+            console.log('usage: nucleon-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|uninstall|version');
     }
 }
 
