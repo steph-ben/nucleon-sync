@@ -27,7 +27,7 @@ Then:
     proton-sync init <folder> <device:name/folder|root>
     proton-sync plan
 
-To switch from rclone to proton-sync, follow `docs/migration.md`.
+To switch from rclone to proton-sync, follow `docs/migration.md`. On Linux, start with `docs/linux-install.md`.
 
 ## Continuous integration
 

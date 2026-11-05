@@ -7,7 +7,7 @@ Wants=network-online.target
 ExecStart=%h/dev/proton-sync/bin/proton-sync run
 Restart=always
 RestartSec=30
-Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=%h/.local/bin:%h/.bun/bin:/usr/local/bin:/usr/bin:/bin
 
 [Install]
 WantedBy=default.target

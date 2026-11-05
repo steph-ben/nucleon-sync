@@ -4,8 +4,8 @@ set -e
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-if ! command -v bun >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/bun" ]; then
-    echo "bun not found (PATH or ~/.local/bin/bun). Install bun first." >&2
+if ! command -v bun >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/bun" ] && [ ! -x "$HOME/.bun/bin/bun" ]; then
+    echo "bun not found (PATH, ~/.local/bin/bun or ~/.bun/bin/bun). Install bun first." >&2
     exit 1
 fi
 
@@ -27,7 +27,8 @@ case "$(uname -s)" in
     Linux)
         DEST="$HOME/.config/systemd/user/proton-sync.service"
         mkdir -p "$HOME/.config/systemd/user"
-        cp deploy/proton-sync.service "$DEST"
+        # The unit runs from ~/dev/proton-sync by default: point it at this checkout.
+        sed "s#%h/dev/proton-sync#$ROOT#g" deploy/proton-sync.service > "$DEST"
         echo "systemd unit copied: $DEST"
         echo "To start it: systemctl --user daemon-reload && systemctl --user enable --now proton-sync.service"
         ;;

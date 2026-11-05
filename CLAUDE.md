@@ -17,8 +17,9 @@ Conception : `docs/design.md`. Bascule : `docs/migration.md`.
 ## Commandes
 
     export PATH=$HOME/.local/bin:$PATH
-    bun test test/local.test.ts test/scenarios.test.ts test/integration.test.ts test/proton-adapter.test.ts
-    bun test test/fuzz.test.ts
+    scripts/test-all.sh                  # everything without a Proton account
+    bun scripts/mutants.ts               # safety mutants, long
+    scripts/real-check.sh                # real Drive, sandbox only, macOS
     npx tsc --noEmit 2>&1 | grep -E '^(src|test)/'    # les erreurs de node_modules/@protontech/crypto sont connues
     bin/proton-sync plan|once|run|approve|status
 

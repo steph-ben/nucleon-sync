@@ -38,7 +38,8 @@ async function run(seed: number, caseInsensitive: boolean, crashes: boolean) {
         return NAMES.map((n) => (dir ? `${dir}/${n}` : n)).filter((p) => !taken.has(fold(p)));
     };
     const local = (m: Machine) => {
-        const t = fullTree(m.root);
+        // Names as stored: Linux keeps NFD and NFC apart, so a normalized path may not exist.
+        const t = fullTree(m.root, '', true);
         const raw = (p: string) => p;
         const dir = rand() < 0.5 && dirsOf(t).length ? pick(dirsOf(t)) : '';
         const paths = Object.keys(t);
@@ -62,7 +63,7 @@ async function run(seed: number, caseInsensitive: boolean, crashes: boolean) {
         } else if (paths.length) {
             const victim = pick(paths);
             trace(`USER rm on ${m.tag}: ${victim}`, JSON.stringify(t));
-            for (const [p, c] of Object.entries(tree(m.root))) if (p.normalize('NFC') === victim || p.normalize('NFC').startsWith(`${victim}/`)) w.ledger.forgive(c);
+            for (const [p, c] of Object.entries(tree(m.root))) if (p === victim || p.startsWith(`${victim}/`)) w.ledger.forgive(c);
             w.rm(m, victim);
         }
     };

@@ -155,15 +155,16 @@ export function tree(root: string, rel = ''): Record<string, string> {
 }
 
 /** Same as `tree`, with folders shown as `<dir>`, to compare with `Hub.tree()`. NFC, as the Drive. */
-export function fullTree(root: string, rel = ''): Record<string, string> {
+export function fullTree(root: string, rel = '', raw = false): Record<string, string> {
+    const key = (p: string) => (raw ? p : p.normalize('NFC'));
     const out: Record<string, string> = {};
     for (const e of readdirSync(path.join(root, rel), { withFileTypes: true })) {
         if (e.name.startsWith('.proton-sync') || e.isSymbolicLink()) continue;
         const p = rel ? `${rel}/${e.name}` : e.name;
         if (e.isDirectory()) {
-            out[p.normalize('NFC')] = '<dir>';
-            Object.assign(out, fullTree(root, p));
-        } else out[p.normalize('NFC')] = readFileSync(path.join(root, p), 'utf8');
+            out[key(p)] = '<dir>';
+            Object.assign(out, fullTree(root, p, raw));
+        } else out[key(p)] = readFileSync(path.join(root, p), 'utf8');
     }
     return out;
 }
