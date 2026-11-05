@@ -93,12 +93,24 @@ def read_activity(home, limit=200):
     return rows
 
 
+def load_indicator():
+    """The AppIndicator module: Ayatana if installed, else the old AppIndicator3 (Fedora ships only that one)."""
+    import gi
+
+    for name in ("AyatanaAppIndicator3", "AppIndicator3"):
+        try:
+            gi.require_version(name, "0.1")
+        except ValueError:
+            continue
+        return getattr(__import__("gi.repository", fromlist=[name]), name)
+    sys.exit("No AppIndicator library found. Install libayatana-appindicator-gtk3 (or libappindicator-gtk3 on Fedora).")
+
+
 def main(binary, home):
     import gi
 
     gi.require_version("Gtk", "3.0")
-    gi.require_version("AyatanaAppIndicator3", "0.1")
-    from gi.repository import AyatanaAppIndicator3 as Indicator
+    Indicator = load_indicator()
     from gi.repository import GLib, Gtk
 
     env = dict(os.environ, NUCLEON_SYNC_HOME=home)
