@@ -17,7 +17,7 @@ async function check(seed: number, crashRate: number, midOps: boolean) {
     expect(hub.alive(doc)).toBe(true);
     expect(hub.alive(doc2)).toBe(true);
 
-    // Rien ne se perd : seul l'utilisateur peut détruire un contenu.
+    // Nothing is lost: only the user can destroy content.
     const everywhere = new Set<string>();
     for (const n of hub.nodes.values()) for (const c of n.revisions) everywhere.add(c);
     for (const d of devs) {
@@ -29,13 +29,13 @@ async function check(seed: number, crashRate: number, midOps: boolean) {
 }
 
 const N = Number(process.env.FUZZ_N ?? 1500);
-for (const [label, crash, mid] of [['sans coupure', 0, false], ['avec coupures', 0.04, false], ['coupures et utilisateur actif', 0.04, true]] as const) {
-    test(`${label}, ${N} graines`, async () => {
+for (const [label, crash, mid] of [['no crashes', 0, false], ['with crashes', 0.04, false], ['crashes and active user', 0.04, true]] as const) {
+    test(`${label}, ${N} seeds`, async () => {
         for (let seed = 1; seed <= N; seed++) {
             try {
                 await check(seed, crash, mid);
             } catch (e) {
-                console.error(`graine ${seed} (${label})`);
+                console.error(`seed ${seed} (${label})`);
                 throw e;
             }
         }

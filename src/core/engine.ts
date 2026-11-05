@@ -32,12 +32,12 @@ export class Engine {
         return reconcile([...this.recs.values()], this.L, this.R, { ...this.options, today: this.options.today(), approveDeletes });
     }
 
-    /** Une passe : recharge l'état réel, planifie, exécute. Reprendre après coupure = relancer. */
+    /** One pass: reloads the real state, plans, executes. Resuming after an interruption = running again. */
     async cycle(approveDeletes = false): Promise<CycleResult> {
         const plan = await this.planOnly(approveDeletes);
         for (const b of plan.rebinds) {
             const rec = this.recs.get(b.key)!;
-            // Nouveau nœud distant : sa révision reste à comparer, même après une coupure.
+            // New remote node: its revision still has to be compared, even after an interruption.
             this.save({ ...rec, localId: b.localId, remoteId: b.remoteId, rev: b.remoteId === rec.remoteId ? rec.rev : undefined });
         }
         this.pendingMoves = new Set(plan.actions.flatMap((a) => (a.t === 'remoteMove' || a.t === 'localMove' ? [a.key] : [])));
@@ -72,7 +72,7 @@ export class Engine {
                 continue;
             }
             await flushMoves();
-            // Après une vraie erreur, on ne supprime rien : un élément à sauver a pu rester dedans.
+            // After a real error, nothing is deleted: an item to save may have been left inside.
             if (hardFailure && (a.t === 'remoteTrash' || a.t === 'localQuarantine')) {
                 skipped++;
                 continue;
@@ -88,12 +88,12 @@ export class Engine {
         const base = this.store.all();
         this.recs = new Map(base.map((r) => [r.key, { ...r }]));
         const byLocal = new Map(base.map((r) => [r.localId, r]));
-        // En dessous, vider un tout petit dossier est un geste normal, pas une panne.
+        // Below this, emptying a tiny folder is a normal gesture, not a failure.
         const EMPTY_GUARD_MIN = this.options.emptyGuardMin ?? 5;
         this.L = await this.local.scan(byLocal);
         this.R = await this.remote.snapshot();
-        if (base.length >= EMPTY_GUARD_MIN && this.L.size === 0) throw new SafetyStop('dossier local vide alors que la base ne l’est pas');
-        if (base.length >= EMPTY_GUARD_MIN && this.R.size === 0) throw new SafetyStop('Drive vide alors que la base ne l’est pas');
+        if (base.length >= EMPTY_GUARD_MIN && this.L.size === 0) throw new SafetyStop('local folder is empty but the base is not');
+        if (base.length >= EMPTY_GUARD_MIN && this.R.size === 0) throw new SafetyStop('Drive is empty but the base is not');
     }
 
     private path(id: string): string {
@@ -101,7 +101,7 @@ export class Engine {
         let guard = 0;
         for (let c = id; c !== ROOT; ) {
             const e = this.L.get(c);
-            if (!e || guard++ > 10000) throw new Error(`chemin local introuvable pour ${id}`);
+            if (!e || guard++ > 10000) throw new Error(`local path not found for ${id}`);
             parts.unshift(e.name);
             c = e.parent;
         }
@@ -114,8 +114,8 @@ export class Engine {
             const hit = ref.t === 'rec' ? r.key === ref.key : ref.t === 'newLocal' ? r.localId === ref.id : r.remoteId === ref.id;
             if (hit) return { key: r.key, localId: r.localId, remoteId: r.remoteId };
         }
-        // Le parent dépend d'une action bloquée plus haut : à reprendre à la passe suivante.
-        throw new PathBusy(`parent non résolu : ${JSON.stringify(ref)}`);
+        // The parent depends on an action blocked earlier: to be retried on the next pass.
+        throw new PathBusy(`unresolved parent: ${JSON.stringify(ref)}`);
     }
 
     private save(rec: BaseRec) {
@@ -208,14 +208,14 @@ export class Engine {
                 const r = this.currentRemote(rec);
                 const path = this.path(old.id);
                 if (!(await this.local.isUnchanged(path, old))) return false;
-                // L'ancienne version ne bouge qu'une fois la nouvelle complète : une coupure ne coûte rien.
+                // The old version only moves once the new one is complete: an interruption costs nothing.
                 const l = await this.local.writeFile(
                     path,
                     r.hash,
                     r.mtime,
                     (tmp) => this.remote.download(r.id, tmp),
                     async () => {
-                        if (!(await this.local.isUnchanged(path, old))) throw new PathBusy(`modifié pendant le téléchargement : ${path}`);
+                        if (!(await this.local.isUnchanged(path, old))) throw new PathBusy(`modified during download: ${path}`);
                         await this.local.quarantine(path);
                     },
                 );
@@ -229,7 +229,7 @@ export class Engine {
                 const rec = this.recs.get(a.key)!;
                 const l = this.currentLocal(rec);
                 const r = this.currentRemote(rec);
-                // Un nom temporaire ne doit jamais entrer dans la base.
+                // A temporary name must never enter the base.
                 const name = r.name.startsWith(SWAP_PREFIX) || l.name.startsWith(SWAP_PREFIX) ? rec.name : r.name;
                 const position = { ...rec, parent: this.parentKey(l.parent), name, localId: l.id, remoteId: r.id };
                 this.save(a.content ? { ...position, hash: l.hash, size: l.size, localMtime: l.mtime, rev: r.rev } : position);
@@ -253,11 +253,11 @@ export class Engine {
                 return true;
             }
             default:
-                throw new Error(`action inconnue ${(a as Action).t}`);
+                throw new Error(`unknown action ${(a as Action).t}`);
         }
     }
 
-    /** Dernier filet : un dossier ne part que si tout son contenu actuel est promis à la suppression. */
+    /** Last safety net: a folder only goes if all its current content is slated for deletion. */
     private holdsSomethingAlive(snap: Snapshot, id: string, recOf: (e: Entry) => BaseRec | undefined): boolean {
         for (const e of snap.values()) {
             if (e.parent !== id) continue;
@@ -283,7 +283,7 @@ export class Engine {
         return this.pendingMoves.has(key) || this.doomed.has(key);
     }
 
-    /** Le nom est tenu par un élément sur le point d'aller ailleurs : il cède la place. */
+    /** The name is held by an item about to go elsewhere: it makes room. */
     private async vacateRemote(parentId: string, name: string) {
         for (const e of this.R.values()) {
             const rec = e.parent === parentId && e.name.normalize('NFC') === name.normalize('NFC') ? this.recByRemote(e.id) : undefined;
@@ -307,22 +307,22 @@ export class Engine {
     private parentKey(localParent: string): string {
         if (localParent === ROOT) return ROOT;
         for (const r of this.recs.values()) if (r.localId === localParent) return r.key;
-        throw new Error(`parent sans enregistrement : ${localParent}`);
+        throw new Error(`parent without a record: ${localParent}`);
     }
 
     private currentLocal(rec: BaseRec): Entry {
         const e = this.L.get(rec.localId);
-        if (!e) throw new Error(`élément local absent : ${rec.name}`);
+        if (!e) throw new Error(`local item missing: ${rec.name}`);
         return e;
     }
 
     private currentRemote(rec: BaseRec): Entry {
         const e = this.R.get(rec.remoteId);
-        if (!e) throw new Error(`élément distant absent : ${rec.name}`);
+        if (!e) throw new Error(`remote item missing: ${rec.name}`);
         return e;
     }
 
-    /** Exécute les déplacements dans un ordre sûr. Un échange a <-> b passe par un nom temporaire. */
+    /** Runs the moves in a safe order. A swap a <-> b goes through a temporary name. */
     private async runMoves(moves: Action[]) {
         const pending = [...moves] as Extract<Action, { t: 'remoteMove' | 'localMove' }>[];
         const occupied = (a: (typeof pending)[number], parent: { localId: string; remoteId: string }) => {
@@ -332,7 +332,7 @@ export class Engine {
             for (const e of snap.values()) if (e.id !== self && e.parent === pid && e.name.normalize('NFC') === a.name.normalize('NFC')) return e;
             return undefined;
         };
-        // Inversion parent/enfant : l'enfant doit sortir avant que le parent entre dedans.
+        // Parent/child inversion: the child must come out before the parent goes in.
         const inOwnSubtree = (a: (typeof pending)[number], parent: { localId: string; remoteId: string }) => {
             const snap = a.t === 'remoteMove' ? this.R : this.L;
             const self = a.t === 'remoteMove' ? this.recs.get(a.key)!.remoteId : this.recs.get(a.key)!.localId;
@@ -350,7 +350,7 @@ export class Engine {
                 progressed = true;
             }
             if (progressed) continue;
-            // Rien ne passe : libérer le premier nom tenu par un élément qui doit partir.
+            // Nothing goes through: free the first name held by an item that has to leave.
             let freed = false;
             for (const a of pending) {
                 const p = this.resolve(a.parent);
@@ -358,14 +358,14 @@ export class Engine {
                 if (!blocker) continue;
                 const blockerRec = a.t === 'remoteMove' ? this.recByRemote(blocker.id) : this.recByLocal(blocker.id);
                 if (!blockerRec || !this.canVacate(blockerRec.key)) continue;
-                // Le temporaire reste dans le dossier actuel : la cible peut être sous l'élément lui-même.
+                // The temporary stays in the current folder: the target may be under the item itself.
                 if (a.t === 'remoteMove') await this.vacateRemote(p.remoteId, a.name);
                 else await this.vacateLocal(p.localId, a.name);
                 freed = true;
                 break;
             }
-            // Occupée par un élément qui ne bouge pas : souvent une suppression, à reprendre ensuite.
-            if (!freed) throw new PathBusy(`déplacement impossible pour l'instant : ${pending[0]!.name}`);
+            // Occupied by an item that does not move: often a deletion, to be retried afterwards.
+            if (!freed) throw new PathBusy(`move not possible for now: ${pending[0]!.name}`);
         }
     }
 

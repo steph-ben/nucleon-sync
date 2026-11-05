@@ -1,5 +1,5 @@
 #!/bin/bash
-# Applique le patch de Proton (config/js/patches) à @protontech/crypto après npm install.
+# Applies Proton's patch (config/js/patches) to @protontech/crypto after npm install.
 set -e
 cd "$(dirname "$0")/.."
 D=node_modules/@protontech/crypto/src/pmcrypto

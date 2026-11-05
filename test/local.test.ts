@@ -29,14 +29,14 @@ beforeEach(async () => {
 afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 describe('RealLocalFs', () => {
-    test('assertRootSafe : marqueur absent, racine absente', async () => {
+    test('assertRootSafe: marker missing, root missing', async () => {
         await L.assertRootSafe();
         fs.rmSync(path.join(root, '.proton-sync-root'));
         await expect(L.assertRootSafe()).rejects.toThrow();
         await expect(new RealLocalFs(path.join(tmp, 'nope'), quar).assertRootSafe()).rejects.toThrow();
     });
 
-    test('identifiant stable après renommage, parents corrects', async () => {
+    test('stable id after rename, correct parents', async () => {
         w('d/a.txt', 'hello');
         const s1 = await L.scan(new Map());
         const a1 = [...s1.values()].find((e) => e.name === 'a.txt')!;
@@ -50,7 +50,7 @@ describe('RealLocalFs', () => {
         expect(s2.get(a1.id)!.parent).toBe(d1.id);
     });
 
-    test('règles d ignorance, marqueur et tmp invisibles, swap visible', async () => {
+    test('ignore rules, marker and tmp invisible, swap visible', async () => {
         for (const f of ['.DS_Store', '._x', '.nfs1', '.rclone-a', '~$doc', '.~lock.f#', 'a.swp', '.Trash-1000', '.proton-sync-swap-1', 'ok']) w(f);
         w('.venv/x');
         w('sub/__pycache__/y');
@@ -60,14 +60,14 @@ describe('RealLocalFs', () => {
         expect(defaultIgnore('.venv', false)).toBe(false);
     });
 
-    test('lien symbolique non suivi', async () => {
+    test('symlink not followed', async () => {
         w('real/f.txt');
         fs.symlinkSync(path.join(root, 'real'), path.join(root, 'link'));
         fs.symlinkSync(path.join(root, 'real/f.txt'), path.join(root, 'flink'));
         expect(await names()).toEqual(['f.txt', 'real']);
     });
 
-    test('liens physiques : second identifiant suffixé', async () => {
+    test('hard links: second id gets a suffix', async () => {
         w('a', 'same');
         fs.linkSync(path.join(root, 'a'), path.join(root, 'b'));
         const s = await L.scan(new Map());
@@ -75,21 +75,21 @@ describe('RealLocalFs', () => {
         expect([...s.keys()].filter((k) => k.includes('#')).length).toBe(1);
     });
 
-    test('empreinte réutilisée si taille et mtime identiques', async () => {
+    test('hash reused if size and mtime are identical', async () => {
         w('f', 'aaaa');
         const s1 = await L.scan(new Map());
         const e = [...s1.values()][0]!;
         const st = fs.statSync(path.join(root, 'f'));
         fs.writeFileSync(path.join(root, 'f'), 'bbbb');
         fs.utimesSync(path.join(root, 'f'), st.atime, st.mtime);
-        const rec = { key: 'k', localId: e.id, size: e.size, localMtime: e.mtime, hash: 'FAUX-REUTILISE' } as BaseRec;
+        const rec = { key: 'k', localId: e.id, size: e.size, localMtime: e.mtime, hash: 'FAKE-REUSED' } as BaseRec;
         const s2 = await L.scan(new Map([[e.id, rec]]));
-        expect(s2.get(e.id)!.hash).toBe('FAUX-REUTILISE');
+        expect(s2.get(e.id)!.hash).toBe('FAKE-REUSED');
         const s3 = await L.scan(new Map([[e.id, { ...rec, size: 99 }]]));
         expect(s3.get(e.id)!.hash).toBe(await sha1File(path.join(root, 'f')));
     });
 
-    test('move ne remplace jamais', async () => {
+    test('move never replaces', async () => {
         w('a', 'A');
         w('b', 'B');
         await expect(L.move('a', 'b')).rejects.toBeInstanceOf(PathBusy);
@@ -97,15 +97,15 @@ describe('RealLocalFs', () => {
         expect(fs.existsSync(path.join(root, 'a'))).toBe(true);
     });
 
-    test('renommage de casse seule', async () => {
+    test('case-only rename', async () => {
         w('abc', 'A');
-        if (!(await detectCaseInsensitive(root))) return; // sans objet sur FS sensible à la casse
+        if (!(await detectCaseInsensitive(root))) return; // not applicable on a case-sensitive FS
         await L.move('abc', 'ABC');
         expect(fs.readdirSync(root)).toContain('ABC');
         expect(fs.readdirSync(root)).not.toContain('abc');
     });
 
-    test('quarantaine conserve le contenu, sans collision', async () => {
+    test('quarantine keeps the content, without collisions', async () => {
         w('d/f.txt', 'precious');
         await L.quarantine('d/f.txt');
         expect(fs.existsSync(path.join(root, 'd/f.txt'))).toBe(false);
@@ -118,7 +118,7 @@ describe('RealLocalFs', () => {
         expect(contents).toEqual(['precious', 'second']);
     });
 
-    test('quarantaine EXDEV : copie, vérification, puis suppression', async () => {
+    test('quarantine EXDEV: copy, verify, then removal', async () => {
         const l = new RealLocalFs(root, quar, {
             clock: () => '2026-11-05T10:00:00Z',
             rename: async (a, b) => {
@@ -134,33 +134,33 @@ describe('RealLocalFs', () => {
         expect(fs.readFileSync(path.join(day, slot, 'd/f.txt'), 'utf8')).toBe('precious');
     });
 
-    test('writeFile : succès, mtime et hash', async () => {
+    test('writeFile: success, mtime and hash', async () => {
         const e = await L.writeFile('n.txt', 'aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d', 1_700_000_000_000, async (t) => void fs.writeFileSync(t, 'hello'));
         expect(e.hash).toBe('aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d');
         expect(e.mtime).toBe(1_700_000_000_000);
         expect(fs.readdirSync(path.join(root, '.proton-sync-tmp'))).toEqual([]);
     });
 
-    test('writeFile : empreinte fausse, rien ne reste', async () => {
+    test('writeFile: wrong hash, nothing left behind', async () => {
         await expect(L.writeFile('n.txt', 'deadbeef', 1000, async (t) => void fs.writeFileSync(t, 'hello'))).rejects.toThrow();
         expect(fs.existsSync(path.join(root, 'n.txt'))).toBe(false);
         expect(fs.readdirSync(path.join(root, '.proton-sync-tmp'))).toEqual([]);
     });
 
-    test('writeFile refuse une destination existante', async () => {
+    test('writeFile refuses an existing destination', async () => {
         w('n.txt', 'old');
         await expect(L.writeFile('n.txt', undefined, 1000, async (t) => void fs.writeFileSync(t, 'new'))).rejects.toBeInstanceOf(PathBusy);
         expect(fs.readFileSync(path.join(root, 'n.txt'), 'utf8')).toBe('old');
         expect(fs.readdirSync(path.join(root, '.proton-sync-tmp'))).toEqual([]);
     });
 
-    test('mkdir : EEXIST donne PathBusy', async () => {
+    test('mkdir: EEXIST gives PathBusy', async () => {
         const e = await L.mkdir('x');
         expect(e.kind).toBe('dir');
         await expect(L.mkdir('x')).rejects.toBeInstanceOf(PathBusy);
     });
 
-    test('traversée de chemin refusée', async () => {
+    test('path traversal refused', async () => {
         expect(() => L.absolutePath('../x')).toThrow();
         expect(() => L.absolutePath('a/../../x')).toThrow();
         expect(() => L.absolutePath('/etc/passwd')).toThrow();
@@ -182,7 +182,7 @@ describe('RealLocalFs', () => {
         expect(await L.isUnchanged('absent', f)).toBe(false);
     });
 
-    test('fichier disparu ou illisible : ignoré avec avertissement', async () => {
+    test('vanished or unreadable file: ignored with a warning', async () => {
         w('ok', 'x');
         w('bad', 'x');
         fs.chmodSync(path.join(root, 'bad'), 0o000);
@@ -198,7 +198,7 @@ describe('RealLocalFs', () => {
 describe('SqliteStore', () => {
     const rec = (key: string, extra: Partial<BaseRec> = {}): BaseRec => ({ key, parent: ROOT, name: 'n', kind: 'file', localId: 'l', remoteId: 'r', size: 3, localMtime: 5, ...extra });
 
-    test('aller-retour et persistance après réouverture', () => {
+    test('round trip and persistence after reopening', () => {
         const file = path.join(tmp, 's.db');
         const s = new SqliteStore(file);
         s.put(rec('a', { hash: 'h', rev: 'v1' }));

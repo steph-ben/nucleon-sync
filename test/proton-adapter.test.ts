@@ -80,23 +80,23 @@ function setup() {
 }
 
 describe('toEntry', () => {
-    test('doc et tableur Proton sont protégés', () => {
+    test('Proton doc and sheet are protected', () => {
         expect(toEntry(node('d', ROOT_UID, 'Plop', { mediaType: 'application/vnd.proton.doc' }) as any, ROOT_UID).protected).toBe(true);
         expect(toEntry(node('s', ROOT_UID, 'Thuna', { mediaType: 'application/vnd.proton.sheet' }) as any, ROOT_UID).protected).toBe(true);
     });
-    test('nom indéchiffrable et nœud dégradé sont protégés', () => {
+    test('undecryptable name and degraded node are protected', () => {
         expect(toEntry(node('x', ROOT_UID, 'x', { name: { ok: false, error: new Error('e') } }) as any, ROOT_UID).protected).toBe(true);
         expect(toEntry(node('y', ROOT_UID, 'y', { errors: [new Error('e')] }) as any, ROOT_UID).protected).toBe(true);
     });
-    test('fichier normal : empreinte en minuscules, parent racine', () => {
+    test('regular file: lowercase hash, root parent', () => {
         const e = toEntry(node('f', ROOT_UID, 'f') as any, ROOT_UID);
         expect(e).toMatchObject({ parent: ROOT, hash: 'abc', rev: 'f-r1', size: 3 });
         expect(e.protected).toBe(false);
     });
 });
 
-describe('miroir', () => {
-    test('un fichier envoyé est dans le miroir sans attendre son événement', async () => {
+describe('mirror', () => {
+    test('an uploaded file is in the mirror without waiting for its event', async () => {
         const { remote } = setup();
         await remote.snapshot();
         const dir = mkdtempSync(path.join(tmpdir(), 'ps-'));
@@ -107,19 +107,19 @@ describe('miroir', () => {
         expect(readFileSync(file, 'utf8')).toBe('abc');
     });
 
-    test('un seul parcours complet : ensuite, uniquement les événements', async () => {
+    test('a single full walk: afterwards, events only', async () => {
         const { drive, remote } = setup();
         drive.add(folder('d', ROOT_UID, 'D'));
         await remote.snapshot();
         const walks = drive.calls.length;
-        drive.add(node('n', 'd', 'neuf'));
+        drive.add(node('n', 'd', 'new'));
         drive.events.push({ type: DriveEventType.NodeCreated, nodeUid: 'n', parentNodeUid: 'd', isTrashed: false, isShared: false, treeEventScopeId: 's', eventId: 'e1' });
         const snap = await remote.snapshot();
         expect(snap.get('n')?.parent).toBe('d');
         expect(drive.calls.length).toBe(walks);
     });
 
-    test('dossier mis à la corbeille : descendants retirés', async () => {
+    test('folder moved to trash: descendants removed', async () => {
         const { drive, remote } = setup();
         drive.add(folder('d', ROOT_UID, 'D'));
         drive.add(node('f', 'd', 'f'));
@@ -128,25 +128,25 @@ describe('miroir', () => {
         expect((await remote.snapshot()).size).toBe(0);
     });
 
-    test('hors du sous-arbre : ignoré', async () => {
+    test('outside the subtree: ignored', async () => {
         const { drive, remote } = setup();
-        drive.add(node('ailleurs', 'autre-dossier', 'x'));
-        drive.events.push({ type: DriveEventType.NodeCreated, nodeUid: 'ailleurs', isTrashed: false, isShared: false, treeEventScopeId: 's', eventId: 'e1' });
+        drive.add(node('elsewhere', 'other-folder', 'x'));
+        drive.events.push({ type: DriveEventType.NodeCreated, nodeUid: 'elsewhere', isTrashed: false, isShared: false, treeEventScopeId: 's', eventId: 'e1' });
         await remote.snapshot();
-        expect((await remote.snapshot()).has('ailleurs')).toBe(false);
+        expect((await remote.snapshot()).has('elsewhere')).toBe(false);
     });
 
-    test('parcours initial en échec : aucun miroir partiel enregistré', async () => {
+    test('failed initial walk: no partial mirror saved', async () => {
         const { drive, kv, remote } = setup();
         drive.iterateFolderChildren = async function* () {
-            throw new Error('réseau');
+            throw new Error('network');
         } as any;
-        await expect(remote.snapshot()).rejects.toThrow('réseau');
+        await expect(remote.snapshot()).rejects.toThrow('network');
         expect(kv.size).toBe(0);
     });
 });
 
-test('les exclusions s’appliquent aussi au Drive, descendants compris', async () => {
+test('exclusions also apply to the Drive, descendants included', async () => {
     const drive = new FakeDrive();
     const kv = new Map<string, string>();
     const ignore = (name: string) => name === '.DS_Store' || name === '.venv';
@@ -154,11 +154,11 @@ test('les exclusions s’appliquent aussi au Drive, descendants compris', async 
     drive.add(node('ds', ROOT_UID, '.DS_Store'));
     drive.add(folder('v', ROOT_UID, '.venv'));
     drive.add(node('lib', 'v', 'lib'));
-    drive.add(node('ok', ROOT_UID, 'garde'));
+    drive.add(node('ok', ROOT_UID, 'keep'));
     expect([...(await remote.snapshot()).keys()]).toEqual(['ok']);
 });
 
-test('le code du démon ne contient aucune suppression définitive', async () => {
+test('the daemon code contains no permanent deletion', async () => {
     const src = ['src/adapters/proton.ts', 'src/main.ts', 'src/core/engine.ts'].map((f) => readFileSync(f, 'utf8')).join('\n');
     for (const forbidden of ['deleteNodes', 'emptyTrash', 'deleteRevision', 'deleteDevice']) expect(src.includes(`.${forbidden}(`)).toBe(false);
 });

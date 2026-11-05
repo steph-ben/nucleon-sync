@@ -30,11 +30,11 @@ async function settle(...devs: ReturnType<typeof device>[]) {
         }
         if (work === 0) return;
     }
-    throw new Error('ne converge pas');
+    throw new Error('does not converge');
 }
 
-describe('synchro de base', () => {
-    test('premier lancement : aucune suppression, appariement par contenu', async () => {
+describe('basic sync', () => {
+    test('first run: no deletion, pairing by content', async () => {
         const hub = new Hub();
         hub.add(ROOT, 'a.txt', 'file', 'A');
         const m = device('M', hub);
@@ -45,7 +45,7 @@ describe('synchro de base', () => {
         expect(m.local.tree()).toEqual({ 'a.txt': 'A', 'b.txt': 'B' });
     });
 
-    test('renommer un gros dossier = une seule opération, zéro transfert', async () => {
+    test('renaming a big folder = a single operation, zero transfer', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         const l = device('L', hub);
@@ -64,14 +64,14 @@ describe('synchro de base', () => {
         }
         d.name = 'Musique';
         await settle(m, l);
-        expect(moves).toBe(2); // Drive + autre machine
+        expect(moves).toBe(2); // Drive + other machine
         expect(transfers).toBe(0);
         expect(Object.keys(l.local.tree())).toContain('Musique/f299');
         expect(Object.keys(l.local.tree())).not.toContain('Music/f0');
     });
 });
 
-describe('conflits : rien ne se perd', () => {
+describe('conflicts: nothing is lost', () => {
     async function pair() {
         const hub = new Hub();
         const m = device('M', hub);
@@ -80,18 +80,18 @@ describe('conflits : rien ne se perd', () => {
         return { hub, m, f: m.local.find('doc.txt')! };
     }
 
-    test('modifié des deux côtés : deux versions gardées', async () => {
+    test('modified on both sides: both versions kept', async () => {
         const { hub, m, f } = await pair();
         f.content = 'local';
-        hub.edit([...hub.nodes.values()][0]!.id, 'distant');
+        hub.edit([...hub.nodes.values()][0]!.id, 'remote');
         await settle(m);
         const t = hub.tree();
-        expect(t['doc.txt']).toBe('distant');
-        expect(t['doc (conflit M 2026-11-05).txt']).toBe('local');
+        expect(t['doc.txt']).toBe('remote');
+        expect(t['doc (conflict M 2026-11-05).txt']).toBe('local');
         expect(m.local.tree()).toEqual(t);
     });
 
-    test('supprimé en local, modifié sur le Drive : le fichier revient', async () => {
+    test('deleted locally, modified on the Drive: the file comes back', async () => {
         const { hub, m, f } = await pair();
         m.local.nodes.delete(f.id);
         hub.edit([...hub.nodes.values()][0]!.id, 'v2');
@@ -99,7 +99,7 @@ describe('conflits : rien ne se perd', () => {
         expect(m.local.tree()).toEqual({ 'doc.txt': 'v2' });
     });
 
-    test('supprimé sur le Drive, modifié en local : renvoyé', async () => {
+    test('deleted on the Drive, modified locally: re-uploaded', async () => {
         const { hub, m, f } = await pair();
         f.content = 'v2';
         hub.trash([...hub.nodes.values()][0]!.id);
@@ -107,7 +107,7 @@ describe('conflits : rien ne se perd', () => {
         expect(hub.tree()).toEqual({ 'doc.txt': 'v2' });
     });
 
-    test('suppression distante : le local passe en quarantaine', async () => {
+    test('remote deletion: the local copy goes to quarantine', async () => {
         const { hub, m } = await pair();
         hub.trash([...hub.nodes.values()][0]!.id);
         await settle(m);
@@ -115,7 +115,7 @@ describe('conflits : rien ne se perd', () => {
         expect(m.local.quarantined).toEqual(['v1']);
     });
 
-    test('dossier supprimé mais contenu ajouté de l’autre côté : conservé', async () => {
+    test('folder deleted but content added on the other side: kept', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         const d = m.local.add(ROOT, 'D', 'dir', '');
@@ -123,15 +123,15 @@ describe('conflits : rien ne se perd', () => {
         await settle(m);
         const rd = [...hub.nodes.values()].find((n) => n.name === 'D')!;
         hub.trash(rd.id);
-        m.local.add(d.id, 'neuf', 'file', 'N');
+        m.local.add(d.id, 'new', 'file', 'N');
         await settle(m);
-        expect(hub.tree()['D/neuf']).toBe('N');
-        expect(m.local.tree()['D/neuf']).toBe('N');
+        expect(hub.tree()['D/new']).toBe('N');
+        expect(m.local.tree()['D/new']).toBe('N');
     });
 });
 
-describe('garde-fous', () => {
-    test('doc Proton jamais touché : son dossier n’est pas mis à la corbeille', async () => {
+describe('safeguards', () => {
+    test('Proton doc never touched: its folder is not moved to trash', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         const rd = hub.add(ROOT, 'Reloger', 'dir', '');
@@ -149,40 +149,40 @@ describe('garde-fous', () => {
         expect(hub.alive(doc)).toBe(true);
     });
 
-    test('grosse suppression : retenue jusqu’à approbation', async () => {
+    test('large deletion: held until approval', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         for (let i = 0; i < 30; i++) m.local.add(ROOT, `f${i}`, 'file', `c${i}`);
         await settle(m);
         for (const n of [...m.local.nodes.values()]) m.local.nodes.delete(n.id);
-        m.local.add(ROOT, 'reste', 'file', 'r');
+        m.local.add(ROOT, 'remaining', 'file', 'r');
         const r = await m.engine.cycle();
         expect(r.plan.held.length).toBeGreaterThan(0);
         expect(Object.keys(hub.tree()).length).toBe(31);
         await m.engine.cycle(true);
-        expect(Object.keys(hub.tree())).toEqual(['reste']);
+        expect(Object.keys(hub.tree())).toEqual(['remaining']);
     });
 
-    test('dossier local vidé d’un coup : arrêt', async () => {
+    test('local folder emptied at once: stop', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         for (const n of ['a', 'b', 'c', 'd', 'e']) m.local.add(ROOT, n, 'file', n);
         await settle(m);
         m.local.nodes.clear();
-        await expect(m.engine.cycle()).rejects.toThrow('vide');
+        await expect(m.engine.cycle()).rejects.toThrow('empty');
         expect(Object.keys(hub.tree()).length).toBe(5);
     });
 
-    test('racine absente : arrêt', async () => {
+    test('missing root: stop', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         m.local.rootOk = false;
-        await expect(m.engine.cycle()).rejects.toThrow('racine');
+        await expect(m.engine.cycle()).rejects.toThrow('root');
     });
 });
 
-describe('déplacements croisés', () => {
-    test('A dans un dossier neuf sous B, et B dans A : aucun cycle, rien de perdu', async () => {
+describe('crossed moves', () => {
+    test('A into a new folder under B, and B into A: no cycle, nothing lost', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         const a = m.local.add(ROOT, 'A', 'dir', '');
@@ -203,8 +203,8 @@ describe('déplacements croisés', () => {
     }, 5000);
 });
 
-describe('corbeille', () => {
-    test('déplacement bloqué : le dossier source ne part pas à la corbeille avec un doc Proton', async () => {
+describe('trash', () => {
+    test('blocked move: the source folder does not go to trash with a Proton doc', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         const rx = hub.add(ROOT, 'X', 'dir', '');
@@ -218,7 +218,7 @@ describe('corbeille', () => {
         let blocked = true;
         m.remote.chaos = {
             before(op) {
-                if (op === 'remote.move' && blocked) throw new PathBusy('occupé');
+                if (op === 'remote.move' && blocked) throw new PathBusy('busy');
             },
         };
         await m.engine.cycle();
@@ -231,7 +231,7 @@ describe('corbeille', () => {
 });
 
 describe('inversion', () => {
-    test('un dossier enfant devient le parent de son ancien parent', async () => {
+    test('a child folder becomes the parent of its former parent', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         const rb = hub.add(ROOT, 'b', 'dir', '');
@@ -246,8 +246,8 @@ describe('inversion', () => {
     });
 });
 
-describe('double déplacement', () => {
-    test('supprimé en local, mais un élément déplacé des deux côtés y reste : le dossier est gardé', async () => {
+describe('double move', () => {
+    test('deleted locally, but an item moved on both sides stays in it: the folder is kept', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         const rd = hub.add(ROOT, 'd', 'dir', '');
@@ -264,8 +264,8 @@ describe('double déplacement', () => {
     });
 });
 
-describe('reprise et noms', () => {
-    test('fichier d rangé dans un nouveau dossier d', async () => {
+describe('resume and names', () => {
+    test('file d filed into a new folder d', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         const f = m.local.add(ROOT, 'd', 'file', 'F');
@@ -279,7 +279,7 @@ describe('reprise et noms', () => {
         expect(m.local.tree()).toEqual(hub.tree());
     });
 
-    test('coupure juste après une reliaison : la version distante est quand même reçue', async () => {
+    test('crash right after a rebind: the remote version is still received', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         m.local.add(ROOT, 'd', 'file', 'v1');
@@ -289,7 +289,7 @@ describe('reprise et noms', () => {
         hub.add(ROOT, 'd', 'file', 'v2');
         m.local.chaos = {
             before() {
-                throw new Crash('coupure');
+                throw new Crash('crash');
             },
         };
         await m.engine.cycle().catch(() => {});
@@ -299,8 +299,8 @@ describe('reprise et noms', () => {
     });
 });
 
-describe('échange de noms', () => {
-    test('deux éléments échangent leur nom d’un côté et pas de l’autre : pas de boucle', async () => {
+describe('name swap', () => {
+    test('two items swap names on one side and not the other: no loop', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         const ra = hub.add(ROOT, 'x', 'file', 'A');
@@ -316,8 +316,8 @@ describe('échange de noms', () => {
     });
 });
 
-describe('connexion instable', () => {
-    test('téléchargement coupé : l’ancienne version reste en place', async () => {
+describe('unstable connection', () => {
+    test('interrupted download: the old version stays in place', async () => {
         const hub = new Hub();
         const m = device('M', hub);
         m.local.add(ROOT, 'doc', 'file', 'v1');
@@ -325,7 +325,7 @@ describe('connexion instable', () => {
         hub.edit([...hub.nodes.values()][0]!.id, 'v2');
         m.remote.chaos = {
             before(op) {
-                if (op === 'remote.download') throw new Crash('réseau coupé');
+                if (op === 'remote.download') throw new Crash('network down');
             },
         };
         await m.engine.cycle().catch(() => {});
@@ -338,8 +338,8 @@ describe('connexion instable', () => {
     });
 });
 
-describe('inversion avec échange de noms', () => {
-    test('l’enfant prend le nom du parent, et le parent passe dedans sous le nom de l’enfant', async () => {
+describe('inversion with name swap', () => {
+    test("the child takes the parent's name, and the parent goes inside it under the child's name", async () => {
         const hub = new Hub();
         const m = device('M', hub);
         const ra = hub.add(ROOT, 'a', 'dir', '');

@@ -8,12 +8,12 @@ import { type BaseRec, type Entry, ROOT, type Snapshot } from '../core/types';
 export const ROOT_MARKER = '.proton-sync-root';
 export const TMP_DIR = '.proton-sync-tmp';
 
-/** Crée le marqueur qui prouve que ce dossier est bien la racine synchronisée. */
+/** Creates the marker proving this folder really is the synced root. */
 export async function createRootMarker(root: string): Promise<void> {
     await fsp.writeFile(path.join(root, ROOT_MARKER), 'proton-sync\n', { flag: 'a' });
 }
 
-/** Fichiers et dossiers jamais synchronisés (caches, verrous, fichiers système). */
+/** Files and folders that are never synced (caches, locks, system files). */
 export function defaultIgnore(name: string, isDir: boolean): boolean {
     if (isDir && (name === '.venv' || name === '__pycache__')) return true;
     return (
@@ -28,7 +28,7 @@ export function defaultIgnore(name: string, isDir: boolean): boolean {
     );
 }
 
-/** SHA-1 hexadécimal du contenu, lu en flux. */
+/** Hex SHA-1 of the content, read as a stream. */
 export function sha1File(file: string): Promise<string> {
     return new Promise((resolve, reject) => {
         const h = createHash('sha1');
@@ -39,7 +39,7 @@ export function sha1File(file: string): Promise<string> {
     });
 }
 
-/** Teste si le système de fichiers sous `root` ignore la casse. */
+/** Tests whether the file system under `root` is case-insensitive. */
 export async function detectCaseInsensitive(root: string): Promise<boolean> {
     const dir = path.join(root, TMP_DIR);
     await fsp.mkdir(dir, { recursive: true });
@@ -58,9 +58,9 @@ export async function detectCaseInsensitive(root: string): Promise<boolean> {
 
 export interface LocalFsOptions {
     ignore?: (name: string, isDir: boolean) => boolean;
-    /** Date/heure ISO ; sert à nommer le dossier du jour en quarantaine. */
+    /** ISO date/time; used to name the day's quarantine folder. */
     clock?: () => string;
-    /** Injectable pour tester le cas EXDEV. */
+    /** Injectable to test the EXDEV case. */
     rename?: (from: string, to: string) => Promise<void>;
 }
 
@@ -80,10 +80,10 @@ export class RealLocalFs implements LocalFs {
         this.rename = opts.rename ?? fsp.rename;
     }
 
-    /** Chemin absolu sûr : refuse `..` et les chemins absolus. */
+    /** Safe absolute path: rejects `..` and absolute paths. */
     absolutePath(rel: string): string {
-        if (rel === '' || path.isAbsolute(rel) || rel.includes('\0')) throw new Error(`chemin relatif invalide : "${rel}"`);
-        if (rel.split(/[\\/]/).some((p) => p === '..' || p === '')) throw new Error(`chemin interdit (composant vide ou ..) : "${rel}"`);
+        if (rel === '' || path.isAbsolute(rel) || rel.includes('\0')) throw new Error(`invalid relative path: "${rel}"`);
+        if (rel.split(/[\\/]/).some((p) => p === '..' || p === '')) throw new Error(`forbidden path (empty component or ..): "${rel}"`);
         return path.join(this.root, rel);
     }
 
@@ -92,13 +92,13 @@ export class RealLocalFs implements LocalFs {
         try {
             st = await fsp.stat(this.root);
         } catch {
-            throw new Error(`racine locale absente : ${this.root}`);
+            throw new Error(`local root missing: ${this.root}`);
         }
-        if (!st.isDirectory()) throw new Error(`la racine locale n'est pas un dossier : ${this.root}`);
+        if (!st.isDirectory()) throw new Error(`local root is not a folder: ${this.root}`);
         try {
             await fsp.lstat(path.join(this.root, ROOT_MARKER));
         } catch {
-            throw new Error(`marqueur ${ROOT_MARKER} absent de ${this.root} : racine non fiable`);
+            throw new Error(`marker ${ROOT_MARKER} missing from ${this.root}: root not trusted`);
         }
     }
 
@@ -115,7 +115,7 @@ export class RealLocalFs implements LocalFs {
         try {
             names = (await fsp.readdir(abs)).sort();
         } catch (e) {
-            this.scanWarnings.push(`lecture du dossier impossible : ${rel || '.'} (${(e as Error).message})`);
+            this.scanWarnings.push(`cannot read folder: ${rel || '.'} (${(e as Error).message})`);
             return;
         }
         for (const name of names) {
@@ -125,11 +125,11 @@ export class RealLocalFs implements LocalFs {
             try {
                 st = await fsp.lstat(path.join(abs, name));
             } catch (e) {
-                this.scanWarnings.push(`disparu pendant le scan : ${childRel} (${(e as Error).message})`);
+                this.scanWarnings.push(`vanished during scan: ${childRel} (${(e as Error).message})`);
                 continue;
             }
             const isDir = st.isDirectory();
-            if (!isDir && !st.isFile()) continue; // lien symbolique ou fichier spécial : jamais suivi
+            if (!isDir && !st.isFile()) continue; // symlink or special file: never followed
             if (this.ignore(name, isDir)) continue;
             let id = `${st.dev}:${st.ino}`;
             if (snap.has(id)) id = `${id}#${childRel}`;
@@ -146,7 +146,7 @@ export class RealLocalFs implements LocalFs {
                 try {
                     hash = await sha1File(path.join(abs, name));
                 } catch (e) {
-                    this.scanWarnings.push(`lecture impossible : ${childRel} (${(e as Error).message})`);
+                    this.scanWarnings.push(`cannot read: ${childRel} (${(e as Error).message})`);
                     continue;
                 }
             }
@@ -159,7 +159,7 @@ export class RealLocalFs implements LocalFs {
         try {
             await fsp.mkdir(abs);
         } catch (e) {
-            if ((e as NodeJS.ErrnoException).code === 'EEXIST') throw new PathBusy(`nom déjà occupé : ${rel}`);
+            if ((e as NodeJS.ErrnoException).code === 'EEXIST') throw new PathBusy(`name already taken: ${rel}`);
             throw e;
         }
         const st = await fsp.lstat(abs);
@@ -176,10 +176,10 @@ export class RealLocalFs implements LocalFs {
         } catch (e) {
             if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
         }
-        if (dst && !(dst.dev === src.dev && dst.ino === src.ino && a !== b)) throw new PathBusy(`destination occupée : ${to}`);
-        // Course résiduelle : Node n'offre pas de renommage atomique sans remplacement sur macOS.
-        // Un fichier créé entre le lstat ci-dessus et le rename serait écrasé ; la fenêtre est de
-        // quelques microsecondes et l'engine revérifie l'état à chaque passe.
+        if (dst && !(dst.dev === src.dev && dst.ino === src.ino && a !== b)) throw new PathBusy(`destination busy: ${to}`);
+        // Residual race: Node has no atomic rename-without-replace on macOS.
+        // A file created between the lstat above and the rename would be overwritten; the window
+        // is a few microseconds and the engine rechecks the state on every pass.
         await this.rename(a, b);
     }
 
@@ -207,17 +207,17 @@ export class RealLocalFs implements LocalFs {
             await this.rename(src, dest);
         } catch (e) {
             if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw e;
-            // Autre volume : copie, vérification, puis seulement suppression de l'original.
+            // Other volume: copy, verify, and only then remove the original.
             await fsp.cp(src, dest, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true });
             const [a, b] = await Promise.all([treeSize(src), treeSize(dest)]);
-            if (a.size !== b.size || a.count !== b.count) throw new Error(`copie en quarantaine incomplète pour ${rel} : original conservé`);
+            if (a.size !== b.size || a.count !== b.count) throw new Error(`incomplete quarantine copy for ${rel}: original kept`);
             await fsp.rm(src, { recursive: true });
         }
     }
 
     async openSource(rel: string): Promise<Source> {
         const st = await fsp.lstat(this.absolutePath(rel));
-        if (!st.isFile()) throw new Error(`pas un fichier régulier : ${rel}`);
+        if (!st.isFile()) throw new Error(`not a regular file: ${rel}`);
         return { size: st.size, mtime: Math.floor(st.mtimeMs) };
     }
 
@@ -230,7 +230,7 @@ export class RealLocalFs implements LocalFs {
             await fill(tmp);
             const hash = await sha1File(tmp);
             if (expectedHash !== undefined && hash !== expectedHash) {
-                throw new Error(`empreinte SHA-1 différente pour ${rel} : attendu ${expectedHash}, reçu ${hash}`);
+                throw new Error(`SHA-1 mismatch for ${rel}: expected ${expectedHash}, got ${hash}`);
             }
             const fd = await fsp.open(tmp, 'r+');
             try {
@@ -241,16 +241,16 @@ export class RealLocalFs implements LocalFs {
             await fsp.utimes(tmp, mtime / 1000, mtime / 1000);
             await beforeInstall?.();
             try {
-                // link() échoue avec EEXIST si la destination existe : aucun écrasement possible.
+                // link() fails with EEXIST if the destination exists: no overwrite possible.
                 await fsp.link(tmp, dest);
             } catch (e) {
                 const code = (e as NodeJS.ErrnoException).code;
-                if (code === 'EEXIST') throw new PathBusy(`destination déjà occupée : ${rel}`);
+                if (code === 'EEXIST') throw new PathBusy(`destination already taken: ${rel}`);
                 if (code !== 'EPERM' && code !== 'ENOTSUP' && code !== 'EOPNOTSUPP') throw e;
-                // Pas de lien physique : repli sur lstat puis rename (petite fenêtre de course).
+                // No hard links: fall back to lstat then rename (small race window).
                 try {
                     await fsp.lstat(dest);
-                    throw new PathBusy(`destination déjà occupée : ${rel}`);
+                    throw new PathBusy(`destination already taken: ${rel}`);
                 } catch (e2) {
                     if (e2 instanceof PathBusy) throw e2;
                 }

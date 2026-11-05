@@ -20,7 +20,7 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
     const hub = new Hub();
     let uniq = 0;
     const created = new Set<string>();
-    /** Contenus détruits par l'utilisateur lui-même : seule perte autorisée. */
+    /** Contents destroyed by the user himself: the only allowed loss. */
     const userGone = new Set<string>();
     const fresh = () => {
         const c = `#${seed}.${++uniq}`;
@@ -60,7 +60,7 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
                 userGone.add(n.content);
                 n.content = fresh();
                 n.mtime = ++l.clock;
-                // Sauvegarde atomique d'éditeur : parfois un nouvel inode au même endroit.
+                // Atomic editor save: sometimes a new inode at the same place.
                 if (rand() < 0.3) {
                     l.nodes.delete(n.id);
                     l.add(n.parent, n.name, 'file', n.content);
@@ -111,7 +111,7 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
             const p = pick(targets);
             if (!hub.taken(p, name, n.id)) hub.rename(n.id, p, name);
         } else {
-            // L'utilisateur web peut tout supprimer sauf ce qui contient les docs témoins du test.
+            // The web user can delete anything except what contains the test's witness docs.
             const n = pick(nodes);
             const hasDoc = (id: string): boolean => id === doc.id || id === doc2.id || id === protectedDir.id || [...hub.nodes.values()].some((c) => c.parent === id && hasDoc(c.id));
             if (!hasDoc(n.id)) hub.trash(n.id);
@@ -120,8 +120,8 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
 
     const chaos = (l: SimLocal) => ({
         before() {
-            if (rand() < crashRate) throw new Crash('coupure');
-            if (midOps && rand() < 0.03) userOnLocal(l); // l'utilisateur agit pendant la synchro
+            if (rand() < crashRate) throw new Crash('crash');
+            if (midOps && rand() < 0.03) userOnLocal(l); // the user acts during sync
         },
     });
     for (const d of devs) d.local.chaos = d.remote.chaos = chaos(d.local);
@@ -147,14 +147,14 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
     return { hub, devs, doc, doc2, created, userGone };
 }
 
-/** Pour test/debug-seed.ts : montre la passe qui lève une erreur. */
+/** For test/debug-seed.ts: shows the pass that raises an error. */
 export async function replay(seed: number, crash: number, mid: boolean) {
     const { hub, devs } = await run(seed, crash, mid);
     for (const d of devs) d.local.chaos = d.remote.chaos = { before() {} };
     for (let i = 0; i < 40; i++) {
         for (const d of devs) {
             const plan = await d.engine.planOnly();
-            console.log('---', d.tag, 'passe', i, JSON.stringify(plan.actions), plan.warnings);
+            console.log('---', d.tag, 'pass', i, JSON.stringify(plan.actions), plan.warnings);
             console.log('LOCAL', JSON.stringify(d.local.tree()));
             console.log('HUB  ', JSON.stringify(hub.tree()));
             console.log('BASE ', JSON.stringify(d.store.all().map((r) => [r.key, r.parent, r.name, r.localId, r.remoteId])));

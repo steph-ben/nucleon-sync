@@ -7,7 +7,7 @@ export function conflictName(name: string, device: string, today: string, n = 0)
     const hasExt = dot > 0 && dot < name.length - 1;
     const stem = hasExt ? name.slice(0, dot) : name;
     const ext = hasExt ? name.slice(dot) : '';
-    return `${stem} (conflit ${device} ${today}${n ? ` ${n}` : ''})${ext}`;
+    return `${stem} (conflict ${device} ${today}${n ? ` ${n}` : ''})${ext}`;
 }
 
 interface State {
@@ -18,13 +18,13 @@ interface State {
     rMoved: boolean;
     lMod: boolean;
     rMod: boolean;
-    /** Nom temporaire laissé sur le Drive par cet appareil lors d'une coupure : à réparer. */
+    /** Temporary name left on the Drive by this device during an interruption: to be repaired. */
     ownSwap: boolean;
-    /** Même chose côté local : l'élément reprend sa place. */
+    /** Same thing on the local side: the item goes back to its place. */
     lSwap: boolean;
 }
 
-/** Fonction pure : aucune entrée/sortie. La seule décision sur le contenu vient de hash et rev. */
+/** Pure function: no I/O. The only content decision comes from hash and rev. */
 export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: ReconcileOptions): Plan {
     const warnings: string[] = [];
     const nameKey = (n: string) => (o.caseInsensitive ? nfc(n).toLowerCase() : nfc(n));
@@ -37,7 +37,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
     };
     const sorted = [...base].sort((a, b) => depth(a) - depth(b));
 
-    // 1. Lier chaque enregistrement à son élément de chaque côté.
+    // 1. Bind each record to its item on each side.
     const bindSide = (snap: Snapshot, idOf: (r: BaseRec) => string) => {
         const bound = new Map<string, Entry>();
         const claimed = new Set<string>();
@@ -48,7 +48,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
                 claimed.add(e.id);
             }
         }
-        // Sauvegarde atomique d'éditeur : nouvel identifiant au même endroit = même élément.
+        // Atomic editor save: new id at the same place = same item.
         const index = new Map<string, Entry>();
         for (const e of snap.values()) if (!claimed.has(e.id) && !e.protected) index.set(`${e.parent}|${nameKey(e.name)}`, e);
         for (const r of sorted) {
@@ -86,7 +86,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
             r,
             lMoved: !!l && movedFrom(l, rec, recOfL) && !l.name.startsWith(SWAP_PREFIX),
             lSwap: !!l && l.name.startsWith(SWAP_PREFIX),
-            // Un nom transitoire laissé par une coupure n'est pas un choix de l'utilisateur.
+            // A transient name left by an interruption is not a user choice.
             rMoved: !!r && movedFrom(r, rec, recOfR) && !r.name.startsWith(SWAP_PREFIX),
             ownSwap: !!r && r.name.startsWith(`${SWAP_PREFIX}${o.deviceName}-`),
             lMod: !!l && rec.kind === 'file' && l.hash !== rec.hash,
@@ -106,7 +106,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
     const kidsL = childrenOf(L);
     const kidsR = childrenOf(R);
 
-    // 2. Supprimé d'un côté : le garder dès qu'il porte quelque chose de vivant.
+    // 2. Deleted on one side: keep it as soon as it carries something alive.
     const buildKeep = (kids: Map<string, Entry[]>, recOf: Map<string, string>, side: 'l' | 'r') => {
         const other = side === 'l' ? 'r' : 'l';
         const memo = new Map<string, boolean>();
@@ -137,7 +137,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
                         result = true;
                         break;
                     }
-                    // En double déplacement, le distant gagne : le côté distant garde toujours son enfant.
+                    // On a double move, the remote wins: the remote side always keeps its child.
                     const stays = cs[other] ? (side === 'l' ? !cs.rMoved : !(cs.lMoved && !cs.rMoved)) : keep(cs);
                     if (stays) {
                         result = true;
@@ -158,12 +158,12 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
     const remoteTrash: BaseRec[] = [];
     const quarantine: BaseRec[] = [];
     const gone: Action[] = [];
-    /** Éléments promis à la suppression : ni neufs, ni à réapparier. */
+    /** Items slated for deletion: neither new nor to be re-paired. */
     const doomedL = new Set<string>();
     const doomedR = new Set<string>();
     const swapRepairs: State[] = [];
 
-    /** L'enregistrement est oublié : ce qui reste de chaque côté redevient un élément neuf. */
+    /** The record is forgotten: whatever remains on each side becomes a new item again. */
     const release = (s: State) => {
         earlyForget.push({ t: 'forget', key: s.rec.key });
         if (s.l) recOfL.delete(s.l.id);
@@ -184,7 +184,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
                 doomedL.add(s.l.id);
             }
         } else if (s.r && !s.l && s.ownSwap) {
-            // D'abord rendre son vrai nom à l'élément ; les règles normales jouent à la passe suivante.
+            // First give the item its real name back; the normal rules apply on the next pass.
             swapRepairs.push(s);
             states.delete(s.rec.key);
             doomedR.add(s.r.id);
@@ -199,7 +199,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         }
     }
 
-    // 3. Contenu modifié des deux côtés avec un contenu différent : les deux versions survivent.
+    // 3. Content modified on both sides with different content: both versions survive.
     const refreshes: Action[] = [];
     const contentOps: Action[] = [];
     const renamed = new Map<string, string>();
@@ -212,10 +212,10 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         }
     }
 
-    // 4. Appariement des éléments neufs créés au même endroit des deux côtés.
+    // 4. Pair new items created at the same place on both sides.
     const newL = () => [...L.values()].filter((e) => !recOfL.has(e.id) && !doomedL.has(e.id) && !e.protected && !linked.has(e.id));
-    const linked = new Map<string, string>(); // local -> distant
-    const linkedRev = new Map<string, string>(); // distant -> local
+    const linked = new Map<string, string>(); // local -> remote
+    const linkedRev = new Map<string, string>(); // remote -> local
     const canonL = (id: string) =>
         id === ROOT ? ROOT : recOfL.has(id) ? `rec:${recOfL.get(id)}` : linked.has(id) ? `link:${id}` : `newL:${id}`;
     const canonR = (id: string) =>
@@ -259,11 +259,11 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
                 ? { t: 'newLocal', id: linkedRev.get(id)! }
                 : { t: 'newRemote', id };
 
-    // 5. Position cible de chaque élément survivant.
+    // 5. Target position of each surviving item.
     interface Target {
         s: State;
-        lWins: boolean; // le déplacement local gagne
-        parent: string; // forme canonique
+        lWins: boolean; // the local move wins
+        parent: string; // canonical form
         name: string;
     }
     const targets = new Map<string, Target>();
@@ -277,7 +277,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
             name: e ? e.name : s.rec.name,
         });
     }
-    // Déplacements croisés qui formeraient un cycle : le distant gagne.
+    // Crossed moves that would form a cycle: the remote wins.
     for (const t of targets.values()) {
         if (!t.lWins || t.s.rec.kind !== 'dir') continue;
         const seen = new Set<string>([t.s.rec.key]);
@@ -287,7 +287,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
                 t.lWins = false;
                 t.parent = t.s.rec.parent === ROOT ? ROOT : `rec:${t.s.rec.parent}`;
                 t.name = t.s.rec.name;
-                warnings.push(`déplacement annulé (cycle) : ${t.s.rec.name}`);
+                warnings.push(`move cancelled (cycle): ${t.s.rec.name}`);
                 break;
             }
             seen.add(k);
@@ -295,7 +295,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         }
     }
 
-    // 6. Occupation de la cible et collisions de noms.
+    // 6. Target occupancy and name collisions.
     const occ = new Set<string>();
     const slot = (parent: string, name: string) => `${parent}|${nameKey(name)}`;
     for (const t of targets.values()) if (!t.lWins) occ.add(slot(t.parent, t.name));
@@ -309,14 +309,14 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
     const newRemoteDirs: { d: number; a: Action }[] = [];
     for (const e of R.values()) {
         if (recOfR.has(e.id) || doomedR.has(e.id) || e.protected || linkedRev.has(e.id)) continue;
-        // Nom temporaire d'un autre appareil en plein travail : on attend qu'il ait fini.
+        // Temporary name from another device mid-operation: wait until it is done.
         if (e.name.startsWith(SWAP_PREFIX)) continue;
-        // Un enfant de dossier ignoré ou d'un dossier indéchiffrable reste côté distant.
+        // A child of an ignored or undecryptable folder stays on the remote side.
         const parent = e.parent === ROOT ? undefined : R.get(e.parent);
         if (parent?.protected) continue;
         const sl = slot(canonR(e.parent), e.name);
         if (occ.has(sl)) {
-            warnings.push(`nom en collision, non téléchargé : ${e.name}`);
+            warnings.push(`name collision, not downloaded: ${e.name}`);
             continue;
         }
         occ.add(sl);
@@ -354,7 +354,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         if (t.lWins) {
             let name = t.name;
             if (occ.has(slot(t.parent, name))) {
-                // Nom déjà pris : ce n'est qu'un nom, l'élément reprend sa place sur le Drive.
+                // Name already taken: it is only a name, the item goes back to its place on the Drive.
                 const home = canonR(s.r!.parent);
                 if (!s.ownSwap && !occ.has(slot(home, s.r!.name)) && !wouldCycle(s.rec.key, home)) {
                     occ.add(slot(home, s.r!.name));
@@ -369,7 +369,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
             occ.add(slot(t.parent, name));
             moves.push({ t: 'remoteMove', key: s.rec.key, parent: refOfCanon(t.parent, s.l, true), name });
         } else if (s.rMoved || s.lMoved || s.lSwap) {
-            // Le distant gagne, ou la position distante a été conservée après un conflit.
+            // The remote wins, or the remote position was kept after a conflict.
             const here = s.l!;
             const samePlace = canonL(here.parent) === t.parent && nfc(here.name) === nfc(t.name);
             if (!samePlace) {
@@ -387,7 +387,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         moves.push({ t: 'remoteMove', key: s.rec.key, parent: parent === ROOT ? { t: 'root' } : { t: 'rec', key: s.rec.parent }, name });
     }
 
-    // 7. Contenu des éléments survivants.
+    // 7. Content of surviving items.
     for (const s of states.values()) {
         if (s.rec.kind !== 'file') continue;
         if (s.lMod && s.rMod) refreshes.push({ t: 'refresh', key: s.rec.key, content: true });
@@ -397,15 +397,15 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         else if (s.l!.mtime !== s.rec.localMtime) refreshes.push({ t: 'refresh', key: s.rec.key, content: true });
     }
 
-    // 8. Éléments neufs locaux.
+    // 8. New local items.
     const uploads: Action[] = [];
     const newLocalDirs: { d: number; a: Action }[] = [];
     for (const e of [...newL()].sort((a, b) => entryDepth(a, L) - entryDepth(b, L))) {
         let name = nameOfL(e);
         const parent = canonL(e.parent);
         if (name.startsWith(SWAP_PREFIX)) {
-            // Élément orphelin d'une coupure : il garde son contenu sous un nom lisible.
-            name = freeName(parent, 'recupere');
+            // Orphan item from an interruption: it keeps its content under a readable name.
+            name = freeName(parent, 'recovered');
             conflicts.push({ t: 'conflictRename', localId: e.id, newName: name });
         } else if (occ.has(slot(parent, name))) {
             name = freeName(parent, name);
@@ -416,11 +416,11 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         else uploads.push({ t: 'upload', localId: e.id, parent: refL(e.parent), name });
     }
 
-    // 9. Suppressions : uniquement l'élément le plus haut, ses descendants sont oubliés.
+    // 9. Deletions: only the topmost item; its descendants are forgotten.
     const compress = (recs: BaseRec[], make: (key: string) => Action) => {
         const keys = new Set(recs.map((r) => r.key));
         const out: Action[] = [];
-        // Le parent d'abord : après une coupure, les descendants orphelins sont simplement oubliés.
+        // Parent first: after an interruption, orphaned descendants are simply forgotten.
         for (const r of [...recs].sort((a, b) => depth(a) - depth(b))) {
             let top: string | undefined;
             for (let p = byKey.get(r.parent); p; p = byKey.get(p.parent)) if (keys.has(p.key)) top = p.key;
@@ -434,7 +434,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
     ];
     const deletedFiles = [...remoteTrash, ...quarantine].filter((r) => r.kind === 'file').length;
     const hold = deletedFiles > o.maxDeletes && !o.approveDeletes;
-    if (hold) warnings.push(`${deletedFiles} suppressions en attente d'approbation`);
+    if (hold) warnings.push(`${deletedFiles} deletions awaiting approval`);
 
     const sortByDepth = (l: { d: number; a: Action }[]) => l.sort((a, b) => a.d - b.d).map((x) => x.a);
     const rebinds = sorted
@@ -447,7 +447,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
             ...conflicts,
             ...earlyForget,
             ...gone,
-            // D'abord les déplacements qui libèrent des noms, puis ceux qui visent un dossier neuf.
+            // First the moves that free up names, then those targeting a new folder.
             ...moves.filter((a) => !isNewParent(a)),
             ...sortByDepth([...mkdirsAndLinks, ...newLocalDirs, ...newRemoteDirs]),
             ...moves.filter(isNewParent),

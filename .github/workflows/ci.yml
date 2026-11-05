@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   test:
-    name: Tests et typage (ubuntu)
+    name: Tests and type checking (ubuntu)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -29,25 +29,25 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Comme scripts/install.sh pour les dépendances, sans liens ni services.
-      - name: Dépendances
+      # Same as scripts/install.sh for dependencies, without links or services.
+      - name: Dependencies
         run: |
           npm install --ignore-scripts --no-audit --no-fund
           bash scripts/patch-crypto.sh
 
-      - name: Tests principaux
+      - name: Main tests
         run: bun test test/local.test.ts test/scenarios.test.ts test/integration.test.ts test/proton-adapter.test.ts
 
-      - name: Tests fuzz
+      - name: Fuzz tests
         run: bun test test/fuzz.test.ts
 
-      # Les erreurs de node_modules/@protontech/crypto sont connues : seules
-      # celles de src/ et test/ font échouer le job.
-      - name: Typage
+      # Errors from node_modules/@protontech/crypto are known: only those
+      # from src/ and test/ fail the job.
+      - name: Type checking
         run: |
           npx tsc --noEmit > "$RUNNER_TEMP/tsc.log" 2>&1 || true
           if grep -E "^(src|test)/" "$RUNNER_TEMP/tsc.log"; then
-            echo "Erreurs de typage dans src/ ou test/" >&2
+            echo "Type errors in src/ or test/" >&2
             exit 1
           fi
-          echo "Aucune erreur de typage dans src/ ou test/."
+          echo "No type errors in src/ or test/."

@@ -18,7 +18,7 @@ interface Mirror {
     entries: Entry[];
 }
 
-/** Sous-ensemble du SDK utilisé ici : ni `deleteNodes`, ni `emptyTrash`, ni révisions supprimables. */
+/** Subset of the SDK used here: no `deleteNodes`, no `emptyTrash`, no deletable revisions. */
 export type DriveApi = Pick<
     ProtonDriveClient,
     | 'iterateEvents'
@@ -34,19 +34,19 @@ export type DriveApi = Pick<
     | 'getNode'
 >;
 
-/** Convertit un nœud du SDK. Tout ce qui n'est pas sûr à synchroniser devient protégé. */
+/** Converts an SDK node. Anything not safe to sync becomes protected. */
 export function toEntry(node: NodeEntity, rootUid: string): Entry {
     const parent = !node.parentUid || node.parentUid === rootUid ? ROOT : node.parentUid;
     const isFile = node.type === NodeType.File;
     const isFolder = node.type === NodeType.Folder;
     const native = !!node.mediaType && PROTON_NATIVE.test(node.mediaType);
-    // `errors` : nœud partiellement déchiffré, ses champs ne sont pas fiables.
+    // `errors`: partially decrypted node, its fields are not reliable.
     const nameOk = node.name.ok && !node.errors?.length;
     const revision = node.activeRevision;
     return {
         id: node.uid,
         parent,
-        name: nameOk ? (node.name as { ok: true; value: string }).value : `__illisible__${node.uid}`,
+        name: nameOk ? (node.name as { ok: true; value: string }).value : `__unreadable__${node.uid}`,
         kind: isFolder ? 'dir' : 'file',
         size: revision?.claimedSize ?? revision?.storageSize ?? 0,
         mtime: (revision?.claimedModificationTime ?? node.modificationTime).getTime(),
@@ -61,11 +61,11 @@ function mapBusy(e: unknown): unknown {
 }
 
 /**
- * Le Drive vu par le moteur, limité au sous-arbre de `rootUid`.
+ * The Drive as seen by the engine, limited to the subtree of `rootUid`.
  *
- * Le miroir local évite de reparcourir l'arbre : il se tient à jour par événements. Il est
- * enregistré après chaque action du démon, avant que le moteur n'avance sa base : sans cela, un
- * fichier tout juste envoyé paraîtrait supprimé à distance tant que l'événement n'est pas arrivé.
+ * The local mirror avoids re-walking the tree: it is kept up to date through events. It is
+ * saved after each daemon action, before the engine advances its base: otherwise a file that
+ * was just uploaded would look deleted remotely until the event arrives.
  */
 export class ProtonRemote implements RemoteFs {
     private entries = new Map<string, Entry>();
@@ -78,9 +78,9 @@ export class ProtonRemote implements RemoteFs {
         private scopeId: string,
         private kv: KvStore,
         private log: (s: string) => void = () => {},
-        /** Le moteur parle en chemins relatifs à la racine locale. */
+        /** The engine uses paths relative to the local root. */
         private absolute: (rel: string) => string = (p) => p,
-        /** Mêmes exclusions qu'en local : sans cela, un .DS_Store du Drive serait retéléchargé sans fin. */
+        /** Same exclusions as locally: otherwise a .DS_Store on the Drive would be downloaded again endlessly. */
         private ignore: (name: string, isDir: boolean) => boolean = () => false,
     ) {}
 
@@ -116,13 +116,13 @@ export class ProtonRemote implements RemoteFs {
     }
 
     private async fullWalk() {
-        this.log('parcours complet du Drive');
+        this.log('full Drive walk');
         const previous = this.entries;
         this.entries = new Map();
         try {
             await this.walk(this.rootUid);
         } catch (e) {
-            // Parcours incomplet : garder l'ancien miroir, surtout pas un miroir partiel.
+            // Incomplete walk: keep the old mirror, never a partial one.
             this.entries = previous;
             throw e;
         }
@@ -150,7 +150,7 @@ export class ProtonRemote implements RemoteFs {
     async snapshot(): Promise<Snapshot> {
         this.load();
         if (!this.eventId) {
-            // L'identifiant d'événement d'abord : ce qui change pendant le parcours sera rejoué.
+            // Event id first: whatever changes during the walk will be replayed.
             for await (const ev of this.sdk.iterateEvents(this.scopeId)) this.eventId = ev.eventId;
             await this.fullWalk();
             this.save();
@@ -171,7 +171,7 @@ export class ProtonRemote implements RemoteFs {
                         await this.fullWalk();
                         break;
                     case DriveEventType.TreeRemove:
-                        throw new Error('volume Drive retiré : arrêt');
+                        throw new Error('Drive volume removed: stopping');
                     default:
                         break;
                 }
@@ -271,7 +271,7 @@ export class ProtonRemote implements RemoteFs {
         const controller = downloader.downloadToStream(stream);
         await controller.completion();
         await writer.end();
-        if (controller.isDownloadCompleteWithSignatureIssues()) this.log(`signature non vérifiée : ${id}`);
+        if (controller.isDownloadCompleteWithSignatureIssues()) this.log(`signature not verified: ${id}`);
     }
 
     async trash(id: string): Promise<void> {

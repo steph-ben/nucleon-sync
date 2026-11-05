@@ -11,7 +11,7 @@ import type { RemoteFs, Source } from '../src/core/interfaces';
 import { type Entry, ROOT } from '../src/core/types';
 import { Hub } from './sim';
 
-/** Faux Drive partagé, lisant et écrivant de vrais fichiers. Le contenu sert aussi d'empreinte locale. */
+/** Shared fake Drive, reading and writing real files. The content also serves as the local hash. */
 class FileRemote implements RemoteFs {
     constructor(
         private hub: Hub,
@@ -80,7 +80,7 @@ async function settle(...ms: ReturnType<typeof machine>[]) {
         }
         if (!work) return;
     }
-    throw new Error('ne converge pas');
+    throw new Error('does not converge');
 }
 
 function tree(root: string, rel = ''): Record<string, string> {
@@ -99,8 +99,8 @@ function allFiles(dir: string): string[] {
     return readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? allFiles(path.join(dir, e.name)) : [readFileSync(path.join(dir, e.name), 'utf8')]));
 }
 
-describe('deux machines, vrais fichiers', () => {
-    test('renommer un dossier se propage sans transfert, et l’inode côté B est conservé', async () => {
+describe('two machines, real files', () => {
+    test('renaming a folder propagates without transfer, and the inode on side B is kept', async () => {
         const hub = new Hub();
         const a = machine('A', hub);
         const b = machine('B', hub);
@@ -116,20 +116,20 @@ describe('deux machines, vrais fichiers', () => {
         expect(Bun.file(path.join(b.root, 'Musique/Piano/f.txt')).lastModified).toBe(before);
     });
 
-    test('suppression : le contenu est en quarantaine sur l’autre machine et dans la corbeille', async () => {
+    test('deletion: the content is in quarantine on the other machine and in the trash', async () => {
         const hub = new Hub();
         const a = machine('A', hub);
         const b = machine('B', hub);
-        writeFileSync(path.join(a.root, 'lettre.txt'), 'précieux');
+        writeFileSync(path.join(a.root, 'letter.txt'), 'précieux');
         await settle(a, b);
-        rmSync(path.join(a.root, 'lettre.txt'));
+        rmSync(path.join(a.root, 'letter.txt'));
         await settle(a, b);
         expect(tree(b.root)).toEqual({});
         expect(allFiles(b.quarantine)).toContain('précieux');
         expect([...hub.nodes.values()][0]!.trashed).toBe(true);
     });
 
-    test('sauvegarde atomique d’éditeur (nouvel inode) : nouvelle révision, pas de suppression', async () => {
+    test('atomic editor save (new inode): new revision, no deletion', async () => {
         const hub = new Hub();
         const a = machine('A', hub);
         writeFileSync(path.join(a.root, 'doc.txt'), 'v1');
@@ -142,7 +142,7 @@ describe('deux machines, vrais fichiers', () => {
         expect(nodes[0]!.revisions).toEqual(['v1', 'v2']);
     });
 
-    test('conflit réel : les deux versions sur les deux machines', async () => {
+    test('real conflict: both versions on both machines', async () => {
         const hub = new Hub();
         const a = machine('A', hub);
         const b = machine('B', hub);
@@ -155,30 +155,30 @@ describe('deux machines, vrais fichiers', () => {
         expect(Object.values(tree(a.root)).sort()).toEqual(['version A', 'version B']);
     });
 
-    test('.DS_Store, .venv et liens symboliques ne partent pas', async () => {
+    test('.DS_Store, .venv and symlinks are not uploaded', async () => {
         const hub = new Hub();
         const a = machine('A', hub);
         const outside = path.join(a.root, '..', 'secret.txt');
-        writeFileSync(outside, 'hors racine');
+        writeFileSync(outside, 'outside root');
         writeFileSync(path.join(a.root, '.DS_Store'), 'x');
         mkdirSync(path.join(a.root, '.venv'));
         writeFileSync(path.join(a.root, '.venv/lib'), 'x');
-        symlinkSync(outside, path.join(a.root, 'lien'));
-        writeFileSync(path.join(a.root, 'vrai.txt'), 'ok');
+        symlinkSync(outside, path.join(a.root, 'link'));
+        writeFileSync(path.join(a.root, 'real.txt'), 'ok');
         await settle(a);
-        expect(hub.tree()).toEqual({ 'vrai.txt': 'ok' });
+        expect(hub.tree()).toEqual({ 'real.txt': 'ok' });
     });
 
-    test('fichier vide : synchronisé, contrairement à rclone avec --min-size', async () => {
+    test('empty file: synced, unlike rclone with --min-size', async () => {
         const hub = new Hub();
         const a = machine('A', hub);
         const b = machine('B', hub);
-        writeFileSync(path.join(a.root, 'coucou'), '');
+        writeFileSync(path.join(a.root, 'hello'), '');
         await settle(a, b);
-        expect(existsSync(path.join(b.root, 'coucou'))).toBe(true);
+        expect(existsSync(path.join(b.root, 'hello'))).toBe(true);
     });
 
-    test('reprise après arrêt : une nouvelle instance repart de la base sans rien retransférer', async () => {
+    test('resume after stop: a new instance restarts from the base without re-transferring anything', async () => {
         const hub = new Hub();
         const a = machine('A', hub);
         writeFileSync(path.join(a.root, 'f'), 'x');
@@ -188,7 +188,7 @@ describe('deux machines, vrais fichiers', () => {
         expect((await again.planOnly()).actions).toEqual([]);
     });
 
-    test('date de modification seule : aucun envoi', async () => {
+    test('modification date only: no upload', async () => {
         const hub = new Hub();
         const a = machine('A', hub);
         writeFileSync(path.join(a.root, 'f'), 'x');
@@ -199,7 +199,7 @@ describe('deux machines, vrais fichiers', () => {
         expect([...hub.nodes.values()][0]!.revisions.length).toBe(1);
     });
 
-    test('dossier local vide de marqueur : aucune action', async () => {
+    test('local folder without marker: no action', async () => {
         const hub = new Hub();
         const a = machine('A', hub);
         writeFileSync(path.join(a.root, 'f'), 'x');

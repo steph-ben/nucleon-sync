@@ -18,16 +18,16 @@ const DEBOUNCE_MS = 3000;
 interface Config {
     localRoot: string;
     /**
-     * `device:<nom>/<dossier>` pour un espace isolé, `root` pour Mes fichiers. Le sous-dossier est
-     * nécessaire pour tester : Proton interdit les fichiers à la racine d'un device, et le
-     * renommage de ses dossiers de premier niveau par un client autre que son appli de bureau.
+     * `device:<name>/<folder>` for an isolated space, `root` for My files. The subfolder is
+     * needed for testing: Proton forbids files at the root of a device, and renaming its
+     * top-level folders from any client other than its desktop app.
      */
     remote: string;
     deviceName: string;
     maxDeletes: number;
-    /** Doit être vrai pour synchroniser Mes fichiers : protège contre un lancement de test sur le vrai Drive. */
+    /** Must be true to sync My files: protects against running a test on the real Drive. */
     allowDriveRoot?: boolean;
-    /** Journal détaillé : événements de surveillance, causes de réveil, durée de chaque passe. */
+    /** Detailed log: watcher events, wake-up causes, duration of each pass. */
     verbose?: boolean;
 }
 
@@ -37,7 +37,7 @@ function configPath() {
 
 function loadConfig(): Config {
     const file = configPath();
-    if (!existsSync(file)) throw new Error(`configuration absente : ${file}. Lancer : proton-sync init <dossier> <device:nom/dossier|root>`);
+    if (!existsSync(file)) throw new Error(`configuration missing: ${file}. Run: proton-sync init <folder> <device:name/folder|root>`);
     return JSON.parse(readFileSync(file, 'utf8')) as Config;
 }
 
@@ -62,12 +62,12 @@ type Ctx = Awaited<ReturnType<typeof sdkContext>>;
 
 async function resolveRoot(ctx: Ctx, cfg: Config) {
     if (cfg.remote === 'root') {
-        if (!cfg.allowDriveRoot) throw new Error('synchroniser Mes fichiers demande "allowDriveRoot": true dans la configuration');
+        if (!cfg.allowDriveRoot) throw new Error('syncing My files requires "allowDriveRoot": true in the configuration');
         const root = await ctx.sdk.getMyFilesRootFolder();
         return { rootUid: root.uid, scopeId: root.treeEventScopeId };
     }
     const m = /^device:([^/]+)(?:\/([^/]+))?$/.exec(cfg.remote);
-    if (!m) throw new Error(`cible distante invalide : ${cfg.remote}`);
+    if (!m) throw new Error(`invalid remote target: ${cfg.remote}`);
     let device;
     for await (const d of ctx.sdk.iterateDevices()) if (d.name.ok && d.name.value === m[1]) device = d;
     if (!device) {
@@ -105,7 +105,7 @@ async function buildEngine(cfg: Config, ctx: Ctx, log: (s: string) => void) {
 function summarize(plan: Plan) {
     const counts = new Map<string, number>();
     for (const a of plan.actions) counts.set(a.t, (counts.get(a.t) ?? 0) + 1);
-    return [...counts].map(([k, v]) => `${k}=${v}`).join(' ') || 'rien à faire';
+    return [...counts].map(([k, v]) => `${k}=${v}`).join(' ') || 'nothing to do';
 }
 
 function acquireLock() {
@@ -115,7 +115,7 @@ function acquireLock() {
         const pid = Number(readFileSync(file, 'utf8'));
         try {
             process.kill(pid, 0);
-            throw new Error(`déjà en cours (pid ${pid})`);
+            throw new Error(`already running (pid ${pid})`);
         } catch (e) {
             if ((e as NodeJS.ErrnoException).code !== 'ESRCH') throw e;
         }
@@ -127,7 +127,7 @@ function acquireLock() {
         try {
             unlinkSync(file);
         } catch {
-            /* rien à faire */
+            /* nothing to do */
         }
     });
 }
@@ -136,51 +136,51 @@ async function daemon(cfg: Config) {
     const log = logger();
     acquireLock();
     const ctx = await sdkContext();
-    if (!ctx.auth.isLoggedIn()) throw new Error('non connecté : lancer proton-sync login');
+    if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run proton-sync login');
     const { engine, store } = await buildEngine(cfg, ctx, log);
 
     const verbose = cfg.verbose ?? false;
     let wake: (() => void) | undefined;
     let debounce: ReturnType<typeof setTimeout> | undefined;
     let running = false;
-    let cause = 'démarrage';
+    let cause = 'startup';
     const trigger = () => {
         clearTimeout(debounce);
         debounce = setTimeout(() => {
-            if (verbose) log(`surveillance : calme depuis ${DEBOUNCE_MS} ms${running ? ', mais une passe est en cours : réveil sans effet' : ', réveil de la boucle'}`);
+            if (verbose) log(`watcher: quiet for ${DEBOUNCE_MS} ms${running ? ', but a pass is running: wake-up has no effect' : ', waking the loop'}`);
             wake?.();
         }, DEBOUNCE_MS);
     };
-    // Le scan reste la référence : la surveillance sert seulement à réagir vite.
+    // The scan remains the reference: the watcher only serves to react quickly.
     watch(cfg.localRoot, { recursive: true }, (event, name) => {
         if (!name || String(name).includes('.proton-sync-tmp')) return;
-        if (verbose) log(`surveillance : ${event} ${name}${running ? ' (pendant une passe)' : ''}`);
+        if (verbose) log(`watcher: ${event} ${name}${running ? ' (during a pass)' : ''}`);
         trigger();
     });
 
     let failures = 0;
-    log(`démarrage ${APP_VERSION} racine=${cfg.localRoot} cible=${cfg.remote} verbose=${verbose}`);
+    log(`startup ${APP_VERSION} root=${cfg.localRoot} target=${cfg.remote} verbose=${verbose}`);
     for (;;) {
         let delay = POLL_SECONDS * 1000;
         const started = Date.now();
         running = true;
-        if (verbose) log(`passe : début (cause : ${cause})`);
+        if (verbose) log(`pass: start (cause: ${cause})`);
         try {
             const approve = store.getKv('approve-deletes') === '1';
             const r = await engine.cycle(approve);
             if (approve) store.setKv('approve-deletes', '0');
             store.setKv('status', JSON.stringify({ at: new Date().toISOString(), summary: summarize(r.plan), held: r.plan.held.length, warnings: r.plan.warnings, errors: r.errors }));
             const took = `${Date.now() - started} ms`;
-            if (r.plan.actions.length || r.errors.length) log(`${summarize(r.plan)} erreurs=${r.errors.length} ${r.errors.slice(0, 3).join(' | ')} (${took})`);
-            else if (verbose) log(`passe : rien à faire (${took})`);
-            if (r.plan.held.length) log(`${r.plan.held.length} suppressions en attente : proton-sync plan, puis proton-sync approve`);
+            if (r.plan.actions.length || r.errors.length) log(`${summarize(r.plan)} errors=${r.errors.length} ${r.errors.slice(0, 3).join(' | ')} (${took})`);
+            else if (verbose) log(`pass: nothing to do (${took})`);
+            if (r.plan.held.length) log(`${r.plan.held.length} deletions on hold: proton-sync plan, then proton-sync approve`);
             failures = r.errors.length ? failures + 1 : 0;
-            // Du travail fait : repasser vite pour confirmer l'état stable.
+            // Work was done: run again soon to confirm the state is stable.
             if (r.plan.actions.length) delay = 2000;
         } catch (e) {
             failures++;
             const safety = e instanceof SafetyStop;
-            log(`${safety ? 'ARRÊT DE SÉCURITÉ' : 'erreur'} : ${e instanceof Error ? e.message : String(e)}`);
+            log(`${safety ? 'SAFETY STOP' : 'error'}: ${e instanceof Error ? e.message : String(e)}`);
             store.setKv('status', JSON.stringify({ at: new Date().toISOString(), error: String(e) }));
         } finally {
             running = false;
@@ -188,11 +188,11 @@ async function daemon(cfg: Config) {
         if (failures) delay = Math.min(POLL_SECONDS * 1000 * 2 ** Math.min(failures, 4), 15 * 60 * 1000);
         await new Promise<void>((resolve) => {
             const t = setTimeout(() => {
-                cause = failures ? 'reprise après erreur' : delay === 2000 ? 'contrôle après travail' : 'sondage du Drive';
+                cause = failures ? 'retry after error' : delay === 2000 ? 'check after work' : 'Drive poll';
                 resolve();
             }, delay);
             wake = () => {
-                cause = 'changement local';
+                cause = 'local change';
                 clearTimeout(t);
                 resolve();
             };
@@ -201,11 +201,11 @@ async function daemon(cfg: Config) {
 }
 
 function printPlan(plan: Plan) {
-    console.log(`résumé : ${summarize(plan)}`);
+    console.log(`summary: ${summarize(plan)}`);
     for (const a of plan.actions) console.log(JSON.stringify(a));
-    if (plan.held.length) console.log(`retenues (${plan.held.length}) :`);
+    if (plan.held.length) console.log(`held (${plan.held.length}):`);
     for (const a of plan.held) console.log(JSON.stringify(a));
-    for (const w of plan.warnings) console.log(`attention : ${w}`);
+    for (const w of plan.warnings) console.log(`warning: ${w}`);
 }
 
 async function main() {
@@ -213,26 +213,26 @@ async function main() {
     switch (cmd) {
         case 'init': {
             const [dir, remote] = args;
-            if (!dir || !remote) throw new Error('usage : proton-sync init <dossier> <device:nom/dossier|root>');
+            if (!dir || !remote) throw new Error('usage: proton-sync init <folder> <device:name/folder|root>');
             const localRoot = path.resolve(dir);
             mkdirSync(path.dirname(configPath()), { recursive: true });
             createRootMarker(localRoot);
             const cfg: Config = { localRoot, remote, deviceName: hostname().split('.')[0]!.replace(/[^\w-]/g, ''), maxDeletes: 20 };
             writeFileSync(configPath(), `${JSON.stringify(cfg, null, 4)}\n`);
-            console.log(`configuration écrite : ${configPath()}`);
+            console.log(`configuration written: ${configPath()}`);
             return;
         }
         case 'login': {
             const ctx = await sdkContext();
-            await ctx.auth.authViaWeb((url: string) => console.log(`Ouvre cette adresse pour te connecter :\n${url}`));
-            console.log('connecté');
+            await ctx.auth.authViaWeb((url: string) => console.log(`Open this address to log in:\n${url}`));
+            console.log('logged in');
             await ctx.dispose();
             return;
         }
         case 'logout': {
             const ctx = await sdkContext();
             await ctx.auth.logout();
-            console.log('déconnecté');
+            console.log('logged out');
             await ctx.dispose();
             return;
         }
@@ -241,7 +241,7 @@ async function main() {
             const cfg = loadConfig();
             const log = logger();
             const ctx = await sdkContext();
-            if (!ctx.auth.isLoggedIn()) throw new Error('non connecté : lancer proton-sync login');
+            if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run proton-sync login');
             const { engine, store } = await buildEngine(cfg, ctx, log);
             if (cmd === 'plan') printPlan(await engine.planOnly());
             else {
@@ -249,8 +249,8 @@ async function main() {
                 const r = await engine.cycle(approve);
                 if (approve) store.setKv('approve-deletes', '0');
                 printPlan(r.plan);
-                console.log(`fait=${r.done} ignorées=${r.skipped} erreurs=${r.errors.length}`);
-                for (const e of r.errors) console.log(`erreur : ${e}`);
+                console.log(`done=${r.done} skipped=${r.skipped} errors=${r.errors.length}`);
+                for (const e of r.errors) console.log(`error: ${e}`);
             }
             await ctx.dispose();
             return;
@@ -261,26 +261,26 @@ async function main() {
         case 'approve': {
             const store = new SqliteStore(path.join(DATA, 'state.sqlite'));
             store.setKv('approve-deletes', '1');
-            console.log('suppressions approuvées pour la prochaine passe');
+            console.log('deletions approved for the next pass');
             return;
         }
         case 'status': {
             const store = new SqliteStore(path.join(DATA, 'state.sqlite'));
-            console.log(store.getKv('status') ?? 'aucune passe enregistrée');
+            console.log(store.getKv('status') ?? 'no pass recorded');
             return;
         }
         case 'version':
             console.log(APP_VERSION);
             return;
         default:
-            console.log('usage : proton-sync init|login|logout|plan|once|run|approve|status|version');
+            console.log('usage: proton-sync init|login|logout|plan|once|run|approve|status|version');
     }
 }
 
 main().then(
     () => process.exit(0),
     (e) => {
-        console.error(`erreur : ${e instanceof Error ? e.message : String(e)}`);
+        console.error(`error: ${e instanceof Error ? e.message : String(e)}`);
         process.exit(1);
     },
 );

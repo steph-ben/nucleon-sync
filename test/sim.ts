@@ -4,7 +4,7 @@ import { type BaseRec, type Entry, type Kind, ROOT, type Snapshot } from '../src
 export class Crash extends Error {}
 
 export interface Chaos {
-    /** Appelé avant chaque opération d'adaptateur : peut lever Crash ou simuler l'utilisateur. */
+    /** Called before each adapter operation: may throw Crash or simulate the user. */
     before(op: string): void;
 }
 export const noChaos: Chaos = { before() {} };
@@ -63,7 +63,7 @@ export class SimLocal implements LocalFs {
         const i = path.lastIndexOf('/');
         if (i < 0) return { parent: ROOT, name: path };
         const p = this.find(path.slice(0, i));
-        if (!p || p.kind !== 'dir') throw new Error(`pas de parent ${path}`);
+        if (!p || p.kind !== 'dir') throw new Error(`no parent ${path}`);
         return { parent: p.id, name: path.slice(i + 1) };
     }
     private entry(n: Node): Entry {
@@ -91,26 +91,26 @@ export class SimLocal implements LocalFs {
     }
 
     async assertRootSafe() {
-        if (!this.rootOk) throw new Error('racine absente');
+        if (!this.rootOk) throw new Error('root missing');
     }
     async scan(): Promise<Snapshot> {
         return new Map([...this.nodes.values()].map((n) => [n.id, this.entry(n)]));
     }
     async mkdir(path: string) {
         this.chaos.before('local.mkdir');
-        if (this.find(path)) throw new PathBusy(`existe déjà ${path}`);
+        if (this.find(path)) throw new PathBusy(`already exists ${path}`);
         const { parent, name } = this.parentOf(path);
         return this.entry(this.add(parent, name, 'dir', ''));
     }
     async move(from: string, to: string) {
         this.chaos.before('local.move');
         const n = this.find(from);
-        if (!n) throw new Error(`absent ${from}`);
+        if (!n) throw new Error(`missing ${from}`);
         const existing = this.find(to);
-        if (existing && existing !== n) throw new PathBusy(`destination occupée ${to}`);
+        if (existing && existing !== n) throw new PathBusy(`destination busy ${to}`);
         const { parent, name } = this.parentOf(to);
-        // Comme un vrai système de fichiers : un dossier n'entre pas dans lui-même.
-        if (this.subtree(n.id).some((x) => x.id === parent)) throw new Error(`déplacement dans soi-même ${from}`);
+        // Like a real file system: a folder cannot go into itself.
+        if (this.subtree(n.id).some((x) => x.id === parent)) throw new Error(`move into itself ${from}`);
         n.parent = parent;
         n.name = name;
     }
@@ -121,7 +121,7 @@ export class SimLocal implements LocalFs {
     async quarantine(path: string) {
         this.chaos.before('local.quarantine');
         const n = this.find(path);
-        if (!n) throw new Error(`absent ${path}`);
+        if (!n) throw new Error(`missing ${path}`);
         for (const c of this.subtree(n.id)) {
             if (c.kind === 'file') this.quarantined.push(c.content);
             this.nodes.delete(c.id);
@@ -129,7 +129,7 @@ export class SimLocal implements LocalFs {
     }
     async openSource(path: string): Promise<Source> {
         const n = this.find(path);
-        if (!n) throw new Error(`absent ${path}`);
+        if (!n) throw new Error(`missing ${path}`);
         return { size: n.content.length, mtime: n.mtime };
     }
     async writeFile(path: string, expected: string | undefined, _mtime: number, fill: (tmp: string) => Promise<void>, beforeInstall?: () => Promise<void>) {
@@ -137,10 +137,10 @@ export class SimLocal implements LocalFs {
         await fill(tmp);
         const content = this.tmp.get(tmp)!;
         this.tmp.delete(tmp);
-        if (expected !== undefined && content !== expected) throw new Error('empreinte invalide');
+        if (expected !== undefined && content !== expected) throw new Error('invalid hash');
         await beforeInstall?.();
         this.chaos.before('local.write');
-        if (this.find(path)) throw new PathBusy(`destination occupée ${path}`);
+        if (this.find(path)) throw new PathBusy(`destination busy ${path}`);
         const { parent, name } = this.parentOf(path);
         return this.entry(this.add(parent, name, 'file', content));
     }
@@ -159,7 +159,7 @@ export class Hub {
 
     add(parent: string, name: string, kind: Kind, content: string, prot = false): HubNode {
         const n: HubNode = { id: `r${++this.seq}`, parent, name, kind, content, mtime: this.seq, rev: 1, trashed: false, protected: prot, revisions: [content] };
-        if (this.taken(parent, name)) throw new PathBusy(`nom pris ${name}`);
+        if (this.taken(parent, name)) throw new PathBusy(`name taken ${name}`);
         this.nodes.set(n.id, n);
         return n;
     }
@@ -178,7 +178,7 @@ export class Hub {
         n.revisions.push(content);
     }
     rename(id: string, parent: string, name: string) {
-        if (this.taken(parent, name, id)) throw new PathBusy(`nom pris ${name}`);
+        if (this.taken(parent, name, id)) throw new PathBusy(`name taken ${name}`);
         const n = this.nodes.get(id)!;
         n.parent = parent;
         n.name = name;
@@ -201,7 +201,7 @@ export class Hub {
     }
 }
 
-/** Vue d'un appareil sur le Drive : mêmes contraintes que le vrai (noms uniques). */
+/** A device's view of the Drive: same constraints as the real one (unique names). */
 export class SimRemote implements RemoteFs {
     chaos: Chaos = noChaos;
     constructor(
@@ -216,7 +216,7 @@ export class SimRemote implements RemoteFs {
     private live(id: string) {
         if (id === ROOT) return;
         const n = this.hub.nodes.get(id);
-        if (!n || !this.hub.alive(n)) throw new Error(`nœud absent ${id}`);
+        if (!n || !this.hub.alive(n)) throw new Error(`node missing ${id}`);
     }
     async mkdir(parent: string, name: string) {
         this.chaos.before('remote.mkdir');
@@ -227,14 +227,14 @@ export class SimRemote implements RemoteFs {
         this.chaos.before('remote.move');
         this.live(id);
         this.live(parent);
-        for (let p = parent; p !== ROOT; p = this.hub.nodes.get(p)!.parent) if (p === id) throw new Error('déplacement dans soi-même');
+        for (let p = parent; p !== ROOT; p = this.hub.nodes.get(p)!.parent) if (p === id) throw new Error('move into itself');
         this.hub.rename(id, parent, name);
         return this.hub.entry(this.hub.nodes.get(id)!);
     }
     private read(path: string, expected: string | undefined) {
         const n = this.local.find(path);
-        if (!n) throw new Error(`absent ${path}`);
-        if (expected !== undefined && n.content !== expected) throw new Error('fichier modifié pendant l’envoi');
+        if (!n) throw new Error(`missing ${path}`);
+        if (expected !== undefined && n.content !== expected) throw new Error('file modified during upload');
         return n.content;
     }
     async upload(parent: string, name: string, path: string, _s: Source, expected: string | undefined) {

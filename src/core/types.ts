@@ -2,10 +2,10 @@ export type Kind = 'file' | 'dir';
 
 export const ROOT = '__root__';
 
-/** Nom transitoire pendant un échange de noms, ignoré par les scanners. */
+/** Transient name during a name swap, ignored by scanners. */
 export const SWAP_PREFIX = '.proton-sync-swap-';
 
-/** Un élément vu d'un côté. `parent` est un identifiant du même côté, ou ROOT. */
+/** An item seen on one side. `parent` is an id on the same side, or ROOT. */
 export interface Entry {
     id: string;
     parent: string;
@@ -13,20 +13,20 @@ export interface Entry {
     kind: Kind;
     size: number;
     mtime: number;
-    /** SHA-1 hex du contenu. Côté distant : peut manquer si Proton ne le déclare pas. */
+    /** SHA-1 hex of the content. Remote side: may be missing if Proton does not report it. */
     hash?: string;
-    /** Côté distant : identifiant de révision. */
+    /** Remote side: revision id. */
     rev?: string;
     /**
-     * Élément présent mais à ne jamais synchroniser ni toucher : doc Proton, tableur Proton,
-     * nom indéchiffrable. Il compte pour empêcher la suppression de son dossier parent.
+     * Item that is present but must never be synced or touched: Proton doc, Proton sheet,
+     * undecryptable name. It counts as preventing deletion of its parent folder.
      */
     protected?: boolean;
 }
 
 export type Snapshot = Map<string, Entry>;
 
-/** Dernier état commun connu d'un élément. */
+/** Last known common state of an item. */
 export interface BaseRec {
     key: string;
     parent: string;
@@ -40,7 +40,7 @@ export interface BaseRec {
     rev?: string;
 }
 
-/** Référence vers un dossier parent qui peut ne pas encore exister de l'autre côté. */
+/** Reference to a parent folder that may not exist yet on the other side. */
 export type Ref =
     | { t: 'root' }
     | { t: 'rec'; key: string }
@@ -48,7 +48,7 @@ export type Ref =
     | { t: 'newRemote'; id: string };
 
 export type Action =
-    /** Le dossier ou fichier local devient une copie de conflit, pour garder les deux versions. */
+    /** The local folder or file becomes a conflict copy, to keep both versions. */
     | { t: 'conflictRename'; localId: string; newName: string }
     | { t: 'remoteMkdir'; localId: string; parent: Ref; name: string }
     | { t: 'localMkdir'; remoteId: string; parent: Ref; name: string }
@@ -59,33 +59,33 @@ export type Action =
     | { t: 'uploadRevision'; key: string }
     | { t: 'download'; remoteId: string; parent: Ref; name: string }
     | { t: 'downloadRevision'; key: string }
-    /** Met la base à jour sans rien transférer. Sans `content`, seule la position change. */
+    /** Updates the base without transferring anything. Without `content`, only the position changes. */
     | { t: 'refresh'; key: string; content: boolean }
     /**
-     * Oublie l'enregistrement : l'élément est parti des deux côtés, ou redevient un élément neuf.
-     * Avec `ifGone`, seulement si cet ancêtre a bien été supprimé dans la même passe.
+     * Forgets the record: the item is gone from both sides, or becomes a new item again.
+     * With `ifGone`, only if that ancestor was actually deleted in the same pass.
      */
     | { t: 'forget'; key: string; ifGone?: string }
     | { t: 'remoteTrash'; key: string }
     | { t: 'localQuarantine'; key: string };
 
 export interface Plan {
-    /** Enregistrements dont l'élément a changé d'identifiant au même endroit. */
+    /** Records whose item changed id at the same location. */
     rebinds: { key: string; localId: string; remoteId: string }[];
     actions: Action[];
-    /** Suppressions retenues, en attente d'approbation. */
+    /** Deletions held back, awaiting approval. */
     held: Action[];
     warnings: string[];
 }
 
 export interface ReconcileOptions {
     deviceName: string;
-    /** Date du jour AAAA-MM-JJ, passée en paramètre pour garder la fonction pure. */
+    /** Today's date as YYYY-MM-DD, passed in as a parameter to keep the function pure. */
     today: string;
-    /** Système de fichiers local insensible à la casse (macOS par défaut). */
+    /** Local file system is case-insensitive (macOS default). */
     caseInsensitive: boolean;
-    /** Au-delà, les suppressions réelles attendent une approbation. */
+    /** Above this, real deletions wait for approval. */
     maxDeletes: number;
-    /** Approbation donnée pour cette passe. */
+    /** Approval granted for this pass. */
     approveDeletes?: boolean;
 }

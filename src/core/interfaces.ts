@@ -1,40 +1,40 @@
 import type { BaseRec, Entry, Snapshot } from './types';
 
-/** Lecture d'un fichier local à envoyer. L'empreinte réelle est vérifiée pendant la lecture. */
-/** Le nom visé est occupé : se règle à la passe suivante, sans gravité. */
+/** The target name is busy: resolves on the next pass, harmless. */
 export class PathBusy extends Error {}
 
+/** A local file being read for upload. The real hash is verified during the read. */
 export interface Source {
     size: number;
     mtime: number;
 }
 
 export interface LocalFs {
-    /** Échoue si la racine est absente ou sans marqueur. */
+    /** Fails if the root is missing or has no marker. */
     assertRootSafe(): Promise<void>;
-    /** `known` permet de réutiliser les empreintes des fichiers inchangés. */
+    /** `known` allows reusing hashes of unchanged files. */
     scan(known: Map<string, BaseRec>): Promise<Snapshot>;
     mkdir(path: string): Promise<Entry>;
-    /** Renomme sans jamais écraser : échoue si la destination existe. */
+    /** Renames without ever overwriting: fails if the destination exists. */
     move(from: string, to: string): Promise<void>;
-    /** Vrai si le fichier ou dossier correspond encore à ce qui a été scanné. */
+    /** True if the file or folder still matches what was scanned. */
     isUnchanged(path: string, entry: Entry): Promise<boolean>;
-    /** Déplace vers la quarantaine, sans rien détruire. */
+    /** Moves to quarantine, destroying nothing. */
     quarantine(path: string): Promise<void>;
-    /** Prépare l'envoi d'un fichier. */
+    /** Prepares a file for upload. */
     openSource(path: string): Promise<Source>;
-    /** Écrit via un temporaire puis renomme ; échoue si la destination existe. */
+    /** Writes via a temp file then renames; fails if the destination exists. */
     writeFile(
         path: string,
         expectedHash: string | undefined,
         mtime: number,
         fill: (tmpPath: string) => Promise<void>,
-        /** Appelé une fois le contenu complet et vérifié, juste avant de le mettre en place. */
+        /** Called once the content is complete and verified, just before putting it in place. */
         beforeInstall?: () => Promise<void>,
     ): Promise<Entry>;
 }
 
-/** Volontairement sans suppression définitive ni vidage de corbeille. */
+/** Deliberately has no permanent deletion or trash emptying. */
 export interface RemoteFs {
     snapshot(): Promise<Snapshot>;
     mkdir(parentId: string, name: string): Promise<Entry>;

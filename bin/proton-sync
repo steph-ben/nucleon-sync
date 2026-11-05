@@ -1,5 +1,5 @@
 #!/bin/bash
-# Lanceur : résout son vrai chemin (liens symboliques compris) puis démarre src/main.ts avec bun.
+# Launcher: resolves its real path (including symlinks) then starts src/main.ts with bun.
 set -e
 SRC="${BASH_SOURCE[0]}"
 while [ -L "$SRC" ]; do
@@ -14,7 +14,7 @@ if command -v bun >/dev/null 2>&1; then
 elif [ -x "$HOME/.local/bin/bun" ]; then
     BUN="$HOME/.local/bin/bun"
 else
-    echo "proton-sync : bun introuvable (PATH ou ~/.local/bin/bun)" >&2
+    echo "proton-sync: bun not found (PATH or ~/.local/bin/bun)" >&2
     exit 1
 fi
 

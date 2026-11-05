@@ -1,5 +1,5 @@
 [Unit]
-Description=proton-sync : synchronisation bidirectionnelle avec Proton Drive
+Description=proton-sync: two-way sync with Proton Drive
 After=network-online.target
 Wants=network-online.target
 
