@@ -206,6 +206,8 @@ export class Engine {
     private resolve(ref: Ref): { key: string; localId: string; remoteId: string } {
         if (ref.t === 'root') return { key: ROOT, localId: ROOT, remoteId: ROOT };
         for (const r of this.recs.values()) {
+            // A parent is always a folder: a stale file record may hold the same reused inode.
+            if (r.kind !== 'dir') continue;
             const hit = ref.t === 'rec' ? r.key === ref.key : ref.t === 'newLocal' ? r.localId === ref.id : r.remoteId === ref.id;
             if (hit) return { key: r.key, localId: r.localId, remoteId: r.remoteId };
         }

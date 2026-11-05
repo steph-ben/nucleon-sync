@@ -106,6 +106,8 @@ export interface MachineOptions {
     isFatal?: (e: unknown) => boolean;
     log?: (level: string, message: string) => void;
     home?: string;
+    /** Replaces the exclusion rule. Called for each scanned name, so a test can act during a scan. */
+    ignore?: (name: string, isDir: boolean) => boolean;
 }
 
 export type Machine = ReturnType<typeof machine>;
@@ -119,7 +121,7 @@ export function machine(tag: string, hub: Hub, o: MachineOptions = {}) {
     const quarantine = path.join(home, 'quarantine');
     const dbPath = path.join(home, 'state.sqlite');
     const store = new SqliteStore(dbPath);
-    const local = new RealLocalFs(root, quarantine, { ignore: defaultIgnore });
+    const local = new RealLocalFs(root, quarantine, { ignore: o.ignore ?? defaultIgnore });
     const drive = new FakeDrive(hub, root);
     let k = 0;
     const engineOptions = { deviceName: tag, caseInsensitive: o.caseInsensitive ?? false, maxDeletes: o.maxDeletes ?? 20, newKey: () => `${tag}${Date.now()}-${++k}`, today: () => '2026-11-05', isFatal: o.isFatal, log: o.log as never };

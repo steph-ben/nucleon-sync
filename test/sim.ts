@@ -161,6 +161,7 @@ export class Hub {
     add(parent: string, name: string, kind: Kind, content: string, prot = false): HubNode {
         const n: HubNode = { id: `r${++this.seq}`, parent, name, kind, content, mtime: this.seq, rev: 1, trashed: false, protected: prot, revisions: [content] };
         if (this.taken(parent, name)) throw new PathBusy(`name taken ${name}`);
+        if (parent !== ROOT && this.nodes.get(parent)?.kind !== 'dir') throw new Error(`parent is not a folder: ${parent}`);
         this.nodes.set(n.id, n);
         return n;
     }
