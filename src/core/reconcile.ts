@@ -403,7 +403,11 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
     for (const e of [...newL()].sort((a, b) => entryDepth(a, L) - entryDepth(b, L))) {
         let name = nameOfL(e);
         const parent = canonL(e.parent);
-        if (occ.has(slot(parent, name))) {
+        if (name.startsWith(SWAP_PREFIX)) {
+            // Élément orphelin d'une coupure : il garde son contenu sous un nom lisible.
+            name = freeName(parent, 'recupere');
+            conflicts.push({ t: 'conflictRename', localId: e.id, newName: name });
+        } else if (occ.has(slot(parent, name))) {
             name = freeName(parent, name);
             conflicts.push({ t: 'conflictRename', localId: e.id, newName: name });
         }
