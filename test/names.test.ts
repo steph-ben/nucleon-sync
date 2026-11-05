@@ -46,4 +46,18 @@ describe('names', () => {
         }
         expect(offenders).toEqual([]);
     });
+
+    test('no French accents in user-facing source', () => {
+        // scripts/real-check.sh is not scanned: its accented file name is a deliberate test input.
+        const FRENCH_ACCENT = /[àâçéèêëîïôùûü]/i;
+        const offenders: string[] = [];
+        for (const dir of ['src', 'desktop', 'deploy']) {
+            for (const file of listFiles(dir)) {
+                const bytes = fs.readFileSync(path.join(repo, file));
+                if (bytes.includes(0)) continue; // binary file
+                if (FRENCH_ACCENT.test(bytes.toString('utf8'))) offenders.push(file);
+            }
+        }
+        expect(offenders).toEqual([]);
+    });
 });
