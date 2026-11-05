@@ -167,11 +167,8 @@ async function daemon(cfg: Config) {
     watch(cfg.localRoot, { recursive: true }, (event, name) => {
         if (!name) return;
         const origin = tracker.classify(String(name), Date.now());
-        if (origin === 'ignored') return;
-        if (origin === 'own') {
-            log('DEBUG', `watcher: ${event} ${name} (written by this daemon, ignored)`);
-            return;
-        }
+        // Noise and echoes of the daemon's own writes: nothing worth a line.
+        if (origin !== 'local') return;
         log('DEBUG', `watcher: local change: ${event} ${name}${running ? ' (during a pass)' : ''}`);
         trigger();
     });
