@@ -152,6 +152,20 @@ describe('RealLocalFs', () => {
         expect(fs.readFileSync(path.join(root, 'd/b.txt'), 'utf8')).toBe('precious');
     });
 
+    test('a file written moments ago is not trusted for its timestamps', async () => {
+        w('f', 'aaaa');
+        const st = fs.lstatSync(path.join(root, 'f'));
+        const ctime = Math.floor(st.ctimeMs);
+        const id = `${st.dev}:${st.ino}`;
+        const known = new Map([[id, { key: 'k', parent: ROOT, name: 'f', kind: 'file' as const, localId: id, remoteId: 'r', hash: 'stale', size: 4, localMtime: Math.floor(st.mtimeMs), localCtime: 0 }]]);
+        const fresh = new RealLocalFs(root, quar, { now: () => ctime + 100 });
+        const entry = (await fresh.scan(known)).get(id)!;
+        expect(entry.ctime).toBe(0);
+        expect(entry.hash).not.toBe('stale');
+        const settled = new RealLocalFs(root, quar, { now: () => ctime + 60000 });
+        expect((await settled.scan(new Map())).get(id)!.ctime).toBe(ctime);
+    });
+
     test('writeFile: success, mtime and hash', async () => {
         const e = await L.writeFile('n.txt', 'aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d', 1_700_000_000_000, async (t) => void fs.writeFileSync(t, 'hello'));
         expect(e.hash).toBe('aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d');

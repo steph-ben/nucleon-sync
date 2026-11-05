@@ -56,10 +56,18 @@ export async function detectCaseInsensitive(root: string): Promise<boolean> {
     }
 }
 
+/**
+ * Timestamps tick coarsely (a few ms on Linux): a file rewritten right after being hashed can keep
+ * the same size, mtime and ctime. Until a file has been quiet this long its hash is never reused.
+ */
+const RACY_MS = 2000;
+
 export interface LocalFsOptions {
     ignore?: (name: string, isDir: boolean) => boolean;
     /** ISO date/time; used to name the day's quarantine folder. */
     clock?: () => string;
+    /** Current time in ms. */
+    now?: () => number;
     /** Injectable to test the EXDEV case. */
     rename?: (from: string, to: string) => Promise<void>;
     /** Injectable to test an incomplete copy between volumes. */
@@ -70,6 +78,7 @@ export class RealLocalFs implements LocalFs {
     scanWarnings: string[] = [];
     private ignore: (name: string, isDir: boolean) => boolean;
     private clock: () => string;
+    private now: () => number;
     private rename: (from: string, to: string) => Promise<void>;
     private copy: (from: string, to: string) => Promise<void>;
 
@@ -80,8 +89,15 @@ export class RealLocalFs implements LocalFs {
     ) {
         this.ignore = opts.ignore ?? defaultIgnore;
         this.clock = opts.clock ?? (() => new Date().toISOString());
+        this.now = opts.now ?? Date.now;
         this.rename = opts.rename ?? fsp.rename;
         this.copy = opts.copy ?? ((from, to) => fsp.cp(from, to, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true }));
+    }
+
+    /** The ctime to remember, or 0 while the file is too recent for its timestamps to prove anything. */
+    private settledCtime(ctimeMs: number): number {
+        const ctime = Math.floor(ctimeMs);
+        return this.now() - ctime < RACY_MS ? 0 : ctime;
     }
 
     /** Safe absolute path: rejects `..` and absolute paths. */
@@ -138,7 +154,7 @@ export class RealLocalFs implements LocalFs {
             let id = `${st.dev}:${st.ino}`;
             if (snap.has(id)) id = `${id}#${childRel}`;
             const mtime = Math.floor(st.mtimeMs);
-            const ctime = Math.floor(st.ctimeMs);
+            const ctime = this.settledCtime(st.ctimeMs);
             if (isDir) {
                 snap.set(id, { id, parent: parentId, name, kind: 'dir', size: 0, mtime });
                 await this.walk(childRel, id, snap, known);
@@ -146,7 +162,7 @@ export class RealLocalFs implements LocalFs {
             }
             const k = known.get(id);
             let hash: string | undefined;
-            if (k?.hash && k.size === st.size && k.localMtime === mtime && (k.localCtime === undefined || k.localCtime === ctime)) hash = k.hash;
+            if (k?.hash && k.size === st.size && k.localMtime === mtime && (k.localCtime === undefined || (ctime !== 0 && k.localCtime === ctime))) hash = k.hash;
             else {
                 try {
                     hash = await sha1File(path.join(abs, name));
@@ -193,7 +209,7 @@ export class RealLocalFs implements LocalFs {
             const st = await fsp.lstat(this.absolutePath(rel));
             if (`${st.dev}:${st.ino}` !== entry.id && !entry.id.startsWith(`${st.dev}:${st.ino}#`)) return false;
             if (entry.kind === 'dir') return st.isDirectory();
-            return st.isFile() && st.size === entry.size && Math.floor(st.mtimeMs) === entry.mtime && (entry.ctime === undefined || Math.floor(st.ctimeMs) === entry.ctime);
+            return st.isFile() && st.size === entry.size && Math.floor(st.mtimeMs) === entry.mtime && (!entry.ctime || Math.floor(st.ctimeMs) === entry.ctime);
         } catch {
             return false;
         }
@@ -264,7 +280,7 @@ export class RealLocalFs implements LocalFs {
             // Removing the temporary hard link changes the inode's ctime: read it afterwards.
             await fsp.unlink(tmp).catch(() => {});
             const st = await fsp.lstat(dest);
-            return { id: `${st.dev}:${st.ino}`, parent: ROOT, name: path.basename(rel), kind: 'file', size: st.size, mtime: Math.floor(st.mtimeMs), ctime: Math.floor(st.ctimeMs), hash };
+            return { id: `${st.dev}:${st.ino}`, parent: ROOT, name: path.basename(rel), kind: 'file', size: st.size, mtime: Math.floor(st.mtimeMs), ctime: this.settledCtime(st.ctimeMs), hash };
         } finally {
             await fsp.unlink(tmp).catch(() => {});
         }
