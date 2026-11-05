@@ -390,9 +390,15 @@ export class Engine {
         }
     }
 
+    /** Two names the local disk treats as one are equal here. */
+    private localName(name: string) {
+        const n = name.normalize('NFC');
+        return this.options.caseInsensitive ? n.toLowerCase() : n;
+    }
+
     private async vacateLocal(parentId: string, name: string) {
         for (const e of this.L.values()) {
-            const rec = e.parent === parentId && e.name.normalize('NFC') === name.normalize('NFC') ? this.recByLocal(e.id) : undefined;
+            const rec = e.parent === parentId && this.localName(e.name) === this.localName(name) ? this.recByLocal(e.id) : undefined;
             if (!rec || !this.canVacate(rec.key)) continue;
             const from = this.path(e.id);
             const tmp = `${SWAP_PREFIX}${this.options.deviceName}-${++this.seq}`;
@@ -426,7 +432,8 @@ export class Engine {
             const snap = a.t === 'remoteMove' ? this.R : this.L;
             const pid = a.t === 'remoteMove' ? parent.remoteId : parent.localId;
             const self = a.t === 'remoteMove' ? this.recs.get(a.key)!.remoteId : this.recs.get(a.key)!.localId;
-            for (const e of snap.values()) if (e.id !== self && e.parent === pid && e.name.normalize('NFC') === a.name.normalize('NFC')) return e;
+            const same = a.t === 'remoteMove' ? (x: string) => x.normalize('NFC') === a.name.normalize('NFC') : (x: string) => this.localName(x) === this.localName(a.name);
+            for (const e of snap.values()) if (e.id !== self && e.parent === pid && same(e.name)) return e;
             return undefined;
         };
         // Parent/child inversion: the child must come out before the parent goes in.

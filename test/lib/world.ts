@@ -176,8 +176,17 @@ export function allFiles(dir: string): string[] {
 /** Every version the sync saw must stay recoverable: locally, on the Drive, or in quarantine. */
 export class Ledger {
     private seen = new Set<string>();
+    /** Off when the test itself decides what the sync saw: a version replaced before any pass is not protected. */
+    trackWrites = true;
     saw(content: string) {
         this.seen.add(content);
+    }
+    /** The user destroyed this version themselves, before the sync could copy it anywhere. */
+    forgive(content: string) {
+        this.seen.delete(content);
+    }
+    wrote(content: string) {
+        if (this.trackWrites) this.seen.add(content);
     }
     missing(hub: Hub, ms: Machine[]): string[] {
         const everywhere = new Set<string>();
@@ -211,7 +220,7 @@ export function world(o: MachineOptions = {}) {
         node,
         mkdir: (rel: string) => hub.add(parentId(rel), base(rel), 'dir', ''),
         write(rel: string, content: string) {
-            ledger.saw(content);
+            ledger.wrote(content);
             let existing;
             try {
                 existing = node(rel);
@@ -236,7 +245,7 @@ export function world(o: MachineOptions = {}) {
     const write = (m: Machine, rel: string, content: string) => {
         mkdirSync(path.dirname(m.abs(rel)), { recursive: true });
         writeFileSync(m.abs(rel), content);
-        ledger.saw(content);
+        ledger.wrote(content);
     };
     return {
         hub,

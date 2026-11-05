@@ -1,0 +1,40 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  long:
+    name: Long fuzz and safety mutants
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Dependencies
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          bash scripts/patch-crypto.sh
+
+      - name: Long fuzz
+        run: bun test test/fuzz.test.ts test/fuzz-real.test.ts
+        env:
+          FUZZ_N: 20000
+          FUZZ_REAL_N: 1500
+
+      - name: Safety mutants
+        run: bun scripts/mutants.ts

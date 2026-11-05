@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
 
 permissions:
@@ -14,9 +13,13 @@ concurrency:
 
 jobs:
   test:
-    name: Tests and type checking (ubuntu)
-    runs-on: ubuntu-latest
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -38,8 +41,14 @@ jobs:
       - name: Main tests
         run: bun test test/local.test.ts test/scenarios.test.ts test/integration.test.ts test/proton-adapter.test.ts test/journal.test.ts
 
+      - name: Catalogue
+        run: |
+          CATALOG_OUT="$RUNNER_TEMP/catalog.jsonl" bun test test/catalog
+          bun scripts/catalog-report.ts "$RUNNER_TEMP/catalog.jsonl" "$RUNNER_TEMP/test-catalog.md"
+          cat "$RUNNER_TEMP/test-catalog.md" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Fuzz tests
-        run: bun test test/fuzz.test.ts
+        run: bun test test/fuzz.test.ts test/fuzz-real.test.ts
 
       # Errors from node_modules/@protontech/crypto are known: only those
       # from src/ and test/ fail the job.

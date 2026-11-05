@@ -166,6 +166,22 @@ describe('machine life', () => {
         w.assertConverged();
     });
 
+    row({ id: 'machine.inode-reuse-both-moved', area, gesture: 'A reused inode becomes a folder, and a file moves into it on both sides', expected: 'The base keeps the right parent, no endless work' }, async () => {
+        const w = await seeded();
+        const rec = w.a.store.all().find((r) => r.name === 'z.txt')!;
+        rmSync(w.a.abs('z.txt'));
+        w.mkdir(w.a, 'Nouveau');
+        const st = statSync(w.a.abs('Nouveau'));
+        w.a.store.put({ ...rec, localId: `${st.dev}:${st.ino}` });
+        w.move(w.a, 'Notes/n.md', 'Nouveau/n.md');
+        w.web.mkdir('Nouveau');
+        w.web.move('Notes/n.md', 'Nouveau/n.md');
+        await w.settle();
+        w.assertConverged();
+        const moved = w.a.store.all().find((r) => r.name === 'n.md')!;
+        expect(w.a.store.all().find((r) => r.key === moved.parent)?.name).toBe('Nouveau');
+    });
+
     row({ id: 'machine.clock-back', area, gesture: 'The clock goes back: an edited file has an older date', expected: 'The edit is still uploaded' }, async () => {
         const w = await seeded();
         writeFileSync(w.a.abs('z.txt'), 'edit du passé');

@@ -70,6 +70,18 @@ describe('names', () => {
         expect(w.web.node('Photo.jpg').id).toBe(id);
     });
 
+    row({ id: 'name.swap-across-case', area, gesture: 'Two files swap names on the Drive, one name differing only by case', expected: 'The swap goes through, no endless retry' }, async () => {
+        const w = world({ caseInsensitive: await fsIsCaseInsensitive() });
+        w.write(w.a, 'A', 'un');
+        w.write(w.a, 'b', 'deux');
+        await w.settle();
+        w.web.move('A', 't');
+        w.web.move('b', 'a');
+        w.web.move('t', 'b');
+        await w.settle();
+        w.assertConverged();
+    });
+
     row({ id: 'name.case-collision', area, gesture: 'Photo.jpg and photo.jpg both on the Drive, reaching a case-insensitive Mac', expected: 'One is downloaded, the other stays on the Drive with a warning. Nothing is lost', status: 'limit', note: 'The second file is not on the Mac until one is renamed. It stays safe on the Drive.' }, async () => {
         const w = world({ caseInsensitive: true });
         w.web.write('Photo.jpg', 'une');
