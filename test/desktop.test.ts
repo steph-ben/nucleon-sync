@@ -6,7 +6,7 @@ import path from 'node:path';
 import { type DesktopState, notificationsFor, render, writeState } from '../src/desktop/state';
 import { makeIgnore } from '../src/desktop/exclude';
 import { DesktopTracker } from '../src/desktop/tracker';
-import { signIn } from '../src/desktop/signin';
+import { isOutdatedClient, retryDelaySeconds, signIn } from '../src/desktop/signin';
 import { recentActivity } from '../src/desktop/activity';
 import { noteCommand } from '../src/desktop/notify';
 import { buildConfig } from '../src/desktop/setup';
@@ -340,4 +340,17 @@ test('the notice is printed before the sign-in address', async () => {
     await signIn({ authViaWeb: async (show) => show('https://x.test/y') }, (l) => lines.push(l));
     expect(lines[0]).toBe('This is a third-party application not officially supported by Proton.');
     expect(lines.some((l) => l.includes('https://x.test/y'))).toBe(true);
+});
+
+test('only the server text for an outdated client is recognised', () => {
+    expect(isOutdatedClient('You need to update this app in order to perform this operation')).toBe(true);
+    expect(isOutdatedClient('Upgrade the app to call the endpoint this way')).toBe(true);
+    expect(isOutdatedClient('network unreachable')).toBe(false);
+    expect(isOutdatedClient('cannot read photo 5003.jpg')).toBe(false);
+});
+test('an outdated client waits one hour, other failures back off up to 15 minutes', () => {
+    expect(retryDelaySeconds(1, true, 60)).toBe(3600);
+    expect(retryDelaySeconds(9, true, 60)).toBe(3600);
+    expect(retryDelaySeconds(1, false, 60)).toBe(120);
+    expect(retryDelaySeconds(9, false, 60)).toBe(900);
 });
