@@ -33,9 +33,11 @@ Copie de sécurité : `~/proton-safety-2026-11-05` sur le Mac. Les 5 documents P
 
 4. Initialiser sur le Mac :
 
-        proton-sync init ~/Proton root
+        export PROTON_SYNC_HOME=~/.local/share/proton-sync-main
+        ~/dev/proton-sync/bin/proton-sync init ~/ProtonSync root
 
-   Puis ajouter à la main `"allowDriveRoot": true` dans `~/.local/share/proton-sync/config.json`.
+   Puis ajouter à la main `"allowDriveRoot": true` dans `~/.local/share/proton-sync-main/config.json`.
+   Ne pas réutiliser `~/.local/share/proton-sync` : sa base contient le bac à sable.
 
 5. Contrôler le plan :
 
@@ -50,7 +52,10 @@ Copie de sécurité : `~/proton-safety-2026-11-05` sur le Mac. Les 5 documents P
 
 7. Démarrer le démon sur le Mac :
 
-        launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/org.protonsync.daemon.plist
+        launchctl bootstrap gui/$(id -u) ~/.local/share/proton-sync-main/org.protonsync.daemon.plist
+
+   Ce fichier est préparé à part : dans `~/Library/LaunchAgents`, launchd le démarrerait dès la prochaine ouverture de session.
+   Une fois la bascule validée, le copier dans `~/Library/LaunchAgents` pour un démarrage automatique.
 
    Puis refaire les étapes 4 à 6 sur Linux, et démarrer le démon :
 

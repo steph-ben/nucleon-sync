@@ -25,6 +25,8 @@
     <dict>
         <key>PATH</key>
         <string>__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>PROTON_SYNC_HOME</key>
+        <string>__HOME__/.local/share/proton-sync-main</string>
     </dict>
 </dict>
 </plist>
