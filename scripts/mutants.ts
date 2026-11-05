@@ -61,7 +61,8 @@ async function testsPass() {
 let survivors = 0;
 try {
     if (!(await testsPass())) throw new Error('the suite is red before any mutation');
-    const mutants = MUTANTS.filter((m) => !m.needsCaseInsensitiveDisk || process.platform === 'darwin');
+    const only = process.env.MUTANT;
+    const mutants = MUTANTS.filter((m) => (!m.needsCaseInsensitiveDisk || process.platform === 'darwin') && (!only || m.name.includes(only)));
     for (const m of mutants) {
         const file = path.join(copy, m.file);
         const original = readFileSync(file, 'utf8');
