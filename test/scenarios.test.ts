@@ -228,3 +228,19 @@ describe('corbeille', () => {
         expect(hub.tree()).toEqual({ Reloger: '<dir>' });
     });
 });
+
+describe('inversion', () => {
+    test('un dossier enfant devient le parent de son ancien parent', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        const rb = hub.add(ROOT, 'b', 'dir', '');
+        const ra = hub.add(rb.id, 'a', 'dir', '');
+        hub.add(ra.id, 'f', 'file', 'F');
+        await settle(m);
+        hub.rename(ra.id, ROOT, 'd');
+        hub.rename(rb.id, ra.id, 'b');
+        await settle(m);
+        expect(m.local.tree()).toEqual(hub.tree());
+        expect(hub.tree()['d/f']).toBe('F');
+    });
+});

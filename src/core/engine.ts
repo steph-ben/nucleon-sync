@@ -289,11 +289,19 @@ export class Engine {
             for (const e of snap.values()) if (e.id !== self && e.parent === pid && e.name.normalize('NFC') === a.name.normalize('NFC')) return e;
             return undefined;
         };
+        // Inversion parent/enfant : l'enfant doit sortir avant que le parent entre dedans.
+        const inOwnSubtree = (a: (typeof pending)[number], parent: { localId: string; remoteId: string }) => {
+            const snap = a.t === 'remoteMove' ? this.R : this.L;
+            const self = a.t === 'remoteMove' ? this.recs.get(a.key)!.remoteId : this.recs.get(a.key)!.localId;
+            let guard = 0;
+            for (let c = a.t === 'remoteMove' ? parent.remoteId : parent.localId; c !== ROOT && guard++ < 10000; c = snap.get(c)?.parent ?? ROOT) if (c === self) return true;
+            return false;
+        };
         while (pending.length) {
             let progressed = false;
             for (const a of [...pending]) {
                 const p = this.resolve(a.parent);
-                if (occupied(a, p)) continue;
+                if (occupied(a, p) || inOwnSubtree(a, p)) continue;
                 await this.applyMove(a, p);
                 pending.splice(pending.indexOf(a), 1);
                 progressed = true;
@@ -301,7 +309,8 @@ export class Engine {
             if (progressed) continue;
             const a = pending[0]!;
             const p = this.resolve(a.parent);
-            const blocker = occupied(a, p)!;
+            const blocker = occupied(a, p);
+            if (!blocker) throw new PathBusy(`déplacement impossible pour l'instant : ${a.name}`);
             const tmp = `${SWAP_PREFIX}${++this.seq}`;
             const blockerAction = pending.find((m) => (m.t === 'remoteMove' ? this.recs.get(m.key)!.remoteId : this.recs.get(m.key)!.localId) === blocker.id);
             // Occupée par un élément qui ne bouge pas : souvent une suppression à venir, à reprendre ensuite.
