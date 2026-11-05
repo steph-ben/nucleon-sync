@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { LEGACY_ROOT_MARKER, ROOT_MARKER } from '../src/names';
 import { spawnSync } from 'node:child_process';
-import { activeLegacyService, applyMigration, findLegacy, isDaemonRunning, legacyDaemonFor, planMigration, type MigrationIo } from '../src/migrate';
+import { activeLegacyService, knownStopCommands, applyMigration, findLegacy, isDaemonRunning, legacyDaemonFor, planMigration, type MigrationIo } from '../src/migrate';
 
 let home: string;
 let legacy: string;
@@ -233,5 +233,45 @@ describe('isDaemonRunning', () => {
         expect(isDaemonRunning(legacy)).toBe(false);
         fs.rmSync(lock());
         expect(isDaemonRunning(legacy)).toBe(false);
+    });
+});
+
+describe('round 2', () => {
+    const MAC = 'org.protonsync.daemon';
+    const launchctl = (loaded: boolean, disabledOutput: string) => (_c: string, a: string[]) =>
+        a[0] === 'print' ? { status: loaded ? 0 : 113, stdout: '' } : { status: 0, stdout: disabledOutput };
+
+    test('1. the known names are probed without any unit file (Linux)', () => {
+        const run = (_c: string, a: string[]) => ({ status: a.includes('is-active') ? 0 : 3, stdout: '' });
+        expect(activeLegacyService(home, 1000, run, 'linux')).toContain('proton-sync.service is active');
+    });
+
+    test('1. a loaded macOS unit is found without any plist file', () => {
+        expect(activeLegacyService(home, 501, launchctl(true, ''), 'darwin')).toContain('loaded');
+    });
+
+    test('1. nothing loaded and no plist: not blocked', () => {
+        expect(activeLegacyService(home, 501, launchctl(false, ''), 'darwin')).toBeUndefined();
+    });
+
+    test('3. print-disabled accepts "disabled" and "true" as disabled, and blocks when not disabled', () => {
+        fs.mkdirSync(path.join(home, 'Library/LaunchAgents'), { recursive: true });
+        fs.writeFileSync(path.join(home, `Library/LaunchAgents/${MAC}.plist`), '');
+        expect(activeLegacyService(home, 501, launchctl(false, `"${MAC}" => disabled`), 'darwin')).toBeUndefined();
+        expect(activeLegacyService(home, 501, launchctl(false, `\t"${MAC}" => true`), 'darwin')).toBeUndefined();
+        expect(activeLegacyService(home, 501, launchctl(false, `"${MAC}" => enabled`), 'darwin')).toContain('not disabled');
+        expect(activeLegacyService(home, 501, launchctl(false, ''), 'darwin')).toContain('not disabled');
+    });
+
+    test('2. empty commands list falls back to the known-name commands', () => {
+        const blocked = planMigration(legacy, fresh, stopped, { commands: [], activeService: () => 'proton-sync.service is active' }).blocked!;
+        for (const command of knownStopCommands()) expect(blocked).toContain(command);
+        expect(blocked).not.toMatch(/Run by hand: $/);
+    });
+
+    test('2. a live lock with no loaded unit says kill <pid>', () => {
+        fs.writeFileSync(path.join(legacy, 'daemon.lock'), '4242');
+        const blocked = planMigration(legacy, fresh, (d) => d === legacy, { commands: [] }).blocked!;
+        expect(blocked).toContain('kill 4242');
     });
 });

@@ -42,20 +42,34 @@ const realRun: RunCommand = (command, args) => {
     return { status: r.status, stdout: r.stdout ?? '' };
 };
 
-/** Describes the first legacy service that is running or set to start by itself. */
-export function activeLegacyService(home: string, uid: number, run: RunCommand = realRun): string | undefined {
-    const found = findLegacy(home).services;
-    for (const service of found) {
-        if (service === 'proton-sync.service') {
-            if (run('systemctl', ['--user', 'is-active', service]).status === 0) return `${service} is active`;
-            if (run('systemctl', ['--user', 'is-enabled', service]).stdout.trim() === 'enabled') return `${service} is enabled`;
-        } else {
-            const label = `gui/${uid}/${service}`;
-            if (run('launchctl', ['print', label]).status === 0) return `${service} is loaded`;
-            if (!run('launchctl', ['print-disabled', `gui/${uid}`]).stdout.includes(`"${service}" => disabled`)) return `${service} is not disabled`;
-        }
+const LINUX_UNIT = 'proton-sync.service';
+const MAC_LABEL = 'org.protonsync.daemon';
+
+/** launchctl print-disabled prints '"label" => disabled' (or '=> true' on older macOS). */
+function isDisabledInLaunchctl(output: string, label: string): boolean {
+    return new RegExp(`"${label}"\\s*=>\\s*(disabled|true)\\b`).test(output);
+}
+
+/**
+ * Describes the legacy service if it is running or set to start by itself.
+ * The known names are always probed: the unit file may live anywhere (it can be bootstrapped from a data folder).
+ */
+export function activeLegacyService(home: string, uid: number, run: RunCommand = realRun, platform: string = process.platform): string | undefined {
+    if (platform === 'darwin') {
+        if (run('launchctl', ['print', `gui/${uid}/${MAC_LABEL}`]).status === 0) return `${MAC_LABEL} is loaded`;
+        // Not loaded: only a plist we can see makes it start at login, and only if not disabled.
+        const hasPlist = findLegacy(home).services.includes(MAC_LABEL);
+        if (hasPlist && !isDisabledInLaunchctl(run('launchctl', ['print-disabled', `gui/${uid}`]).stdout, MAC_LABEL)) return `${MAC_LABEL} is not disabled`;
+        return undefined;
     }
+    if (run('systemctl', ['--user', 'is-active', LINUX_UNIT]).status === 0) return `${LINUX_UNIT} is active`;
+    if (run('systemctl', ['--user', 'is-enabled', LINUX_UNIT]).stdout.trim() === 'enabled') return `${LINUX_UNIT} is enabled`;
     return undefined;
+}
+
+/** The two commands to stop and disable the legacy service of this platform, by its known name. */
+export function knownStopCommands(platform: string = process.platform): string[] {
+    return stopCommands(platform === 'darwin' ? MAC_LABEL : LINUX_UNIT);
 }
 
 /** A live legacy daemon in a legacy data folder whose config syncs the same folder as the new one. */
@@ -87,6 +101,14 @@ export function findLegacy(home: string): { dataDirs: string[]; services: string
 export function stopCommands(service: string): string[] {
     if (service === 'proton-sync.service') return [`systemctl --user stop ${service}`, `systemctl --user disable ${service}`];
     return [`launchctl bootout gui/$(id -u)/${service}`, `launchctl disable gui/$(id -u)/${service}`];
+}
+
+function lockPid(dir: string): number | undefined {
+    try {
+        return Number(fs.readFileSync(path.join(dir, 'daemon.lock'), 'utf8')) || undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 /** True when daemon.lock in this data folder holds the pid of a live process. */
@@ -134,8 +156,11 @@ export function planMigration(legacyDir: string, newDir: string, isRunning: (dir
     const service = options.activeService?.();
     if (running || service) {
         const what = running ? `a daemon is running from ${running}` : service;
-        const commands = (options.commands ?? [...stopCommands('proton-sync.service'), ...stopCommands('org.protonsync.daemon')]).join(' ; ');
-        return block(`stop the old daemon first (${what}). Run by hand: ${commands}`);
+        const commands = options.commands?.length ? options.commands : knownStopCommands();
+        // No loaded unit: stopping a unit would do nothing, the process itself must be stopped.
+        const pid = running && !service ? lockPid(running) : undefined;
+        const todo = pid ? [`kill ${pid}`] : commands;
+        return block(`stop the old daemon first (${what}). Run by hand: ${todo.join(' ; ')}`);
     }
     const problem = markerProblem(localRoot);
     if (problem) return block(problem);
