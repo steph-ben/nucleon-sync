@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, watch, writeFileSync, writeSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, watch, writeFileSync, writeSync } from 'node:fs';
 import { homedir, hostname, platform } from 'node:os';
 import path from 'node:path';
 
@@ -8,6 +8,10 @@ import { ProtonRemote } from './adapters/proton';
 import { SqliteStore } from './adapters/sqlite-store';
 import { Engine, SafetyStop } from './core/engine';
 import type { Logger, Plan } from './core/types';
+import { makeIgnore } from './desktop/exclude';
+import { sendNote } from './desktop/notify';
+import type { View } from './desktop/state';
+import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
 import { ChangeTracker } from './watch';
 
 const VERSION = '0.1.0';
@@ -16,6 +20,11 @@ const DATA = process.env.PROTON_SYNC_HOME ?? path.join(homedir(), '.local/share/
 const POLL_SECONDS = 60;
 const DEBOUNCE_MS = 3000;
 const HEARTBEAT_MS = 60 * 60 * 1000;
+/** The icons read this file: older than DAEMON_GONE_MS means nobody is syncing. */
+const STATE_REFRESH_MS = 30 * 1000;
+const DAEMON_GONE_MS = 3 * 60 * 1000;
+const STATE_FILE = path.join(DATA, 'desktop.json');
+const PAUSE_FILE = path.join(DATA, 'paused');
 
 interface Config {
     localRoot: string;
@@ -29,6 +38,8 @@ interface Config {
     maxDeletes: number;
     /** Must be true to sync My files: protects against running a test on the real Drive. */
     allowDriveRoot?: boolean;
+    /** Name patterns never synced, on top of the built-in ones. */
+    exclude?: string[];
     /** Detailed log: watcher events, wake-up causes, duration of each pass. */
     verbose?: boolean;
 }
@@ -44,6 +55,31 @@ function loadConfig(): Config {
 }
 
 /** One line per event: "<ISO time> <LEVEL> <message>". DEBUG lines only when `verbose` is on. */
+function saveConfig(cfg: Config) {
+    const file = configPath();
+    writeFileSync(`${file}.tmp`, `${JSON.stringify(cfg, null, 4)}\n`);
+    renameSync(`${file}.tmp`, file);
+}
+
+function daemonPid(): number | undefined {
+    try {
+        return Number(readFileSync(path.join(DATA, 'daemon.lock'), 'utf8')) || undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/** Wakes the daemon, or with SIGTERM lets its service restart it with a new configuration. */
+function signalDaemon(signal: 'SIGUSR1' | 'SIGTERM') {
+    const pid = daemonPid();
+    if (!pid) return;
+    try {
+        process.kill(pid, signal);
+    } catch {
+        /* the daemon is not running */
+    }
+}
+
 function logger(verbose = false): Logger {
     mkdirSync(DATA, { recursive: true });
     const file = path.join(DATA, 'proton-sync.log');
@@ -87,14 +123,15 @@ async function resolveRoot(ctx: Ctx, cfg: Config) {
     return { rootUid: root.uid, scopeId: root.treeEventScopeId };
 }
 
-async function buildEngine(cfg: Config, ctx: Ctx, log: Logger, touched?: (paths: string[]) => void) {
+async function buildEngine(cfg: Config, ctx: Ctx, log: Logger, touched?: (paths: string[]) => void, progress?: (done: number, total: number, line: string) => void) {
     mkdirSync(DATA, { recursive: true });
     const store = new SqliteStore(path.join(DATA, 'state.sqlite'));
     const quarantine = path.join(DATA, 'quarantine');
-    const local = new RealLocalFs(cfg.localRoot, quarantine, { ignore: defaultIgnore });
+    const ignore = makeIgnore(cfg.exclude ?? []);
+    const local = new RealLocalFs(cfg.localRoot, quarantine, { ignore });
     await local.assertRootSafe();
     const { rootUid, scopeId } = await resolveRoot(ctx, cfg);
-    const remote = new ProtonRemote(ctx.sdk, rootUid, scopeId, store, log, (p) => local.absolutePath(p), defaultIgnore);
+    const remote = new ProtonRemote(ctx.sdk, rootUid, scopeId, store, log, (p) => local.absolutePath(p), ignore);
     const engine = new Engine(local, remote, store, {
         deviceName: cfg.deviceName,
         caseInsensitive: await detectCaseInsensitive(cfg.localRoot),
@@ -103,6 +140,7 @@ async function buildEngine(cfg: Config, ctx: Ctx, log: Logger, touched?: (paths:
         today: () => new Date().toISOString().slice(0, 10),
         log,
         touched,
+        progress,
     });
     return { engine, store };
 }
@@ -149,10 +187,20 @@ async function daemon(cfg: Config) {
     }
     const ctx = await sdkContext();
     if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run proton-sync login');
-    const tracker = new ChangeTracker(defaultIgnore);
-    const { engine, store } = await buildEngine(cfg, ctx, log, (paths) => tracker.own(paths, Date.now()));
+    const tracker = new ChangeTracker(makeIgnore(cfg.exclude ?? []));
+    let desktop: DesktopTracker | undefined;
+    const { engine, store } = await buildEngine(cfg, ctx, log, (paths) => tracker.own(paths, Date.now()), (done, total, line) => desktop?.progress(done, total, line));
+    desktop = new DesktopTracker(STATE_FILE, process.pid, store, sendNote, Date.now, () => existsSync(PAUSE_FILE));
+    const view = desktop;
+    view.flush();
+    setInterval(() => view.flush(), STATE_REFRESH_MS);
 
     let wake: (() => void) | undefined;
+    process.on('SIGUSR1', () => {
+        view.flush();
+        cause = 'command';
+        wake?.();
+    });
     let debounce: ReturnType<typeof setTimeout> | undefined;
     let running = false;
     let cause = 'startup';
@@ -183,6 +231,16 @@ async function daemon(cfg: Config) {
     let lastWarnings = new Set<string>();
     let beat = { at: Date.now(), passes: 0, withErrors: 0 };
     for (;;) {
+        if (existsSync(PAUSE_FILE)) {
+            log('INFO', 'paused: no pass until resume');
+            view.flush();
+            while (existsSync(PAUSE_FILE)) {
+                await new Promise<void>((resolve) => {
+                    wake = resolve;
+                });
+            }
+            log('INFO', 'resumed');
+        }
         let delay = POLL_SECONDS * 1000;
         const started = Date.now();
         const local = tracker.drain();
@@ -191,9 +249,11 @@ async function daemon(cfg: Config) {
         running = true;
         log('INFO', `pass ${pass} start: ${cause}${local.length ? `; local changes: ${some(local)}` : ''}`);
         try {
+            view.passStart();
             const approve = store.getKv('approve-deletes') === '1';
             const r = await engine.cycle(approve);
             if (approve) store.setKv('approve-deletes', '0');
+            view.passDone(r);
             store.setKv('status', JSON.stringify({ at: new Date().toISOString(), summary: summarize(r.plan), held: r.plan.held.length, warnings: r.plan.warnings, errors: r.errors }));
             const took = seconds(Date.now() - started);
             if (r.plan.actions.length || r.errors.length) log('INFO', `pass ${pass} done in ${took}: done=${r.done} skipped=${r.skipped} errors=${r.errors.length}`);
@@ -214,6 +274,7 @@ async function daemon(cfg: Config) {
             failures++;
             beat.withErrors++;
             const safety = e instanceof SafetyStop;
+            view.passFailed(e, safety);
             const message = e instanceof Error ? e.message : String(e);
             log('ERROR', `${safety ? 'safety stop (no file was touched)' : `pass ${pass} failed`}: ${message}`);
             store.setKv('status', JSON.stringify({ at: new Date().toISOString(), error: String(e) }));
@@ -307,19 +368,63 @@ async function main() {
         case 'approve': {
             const store = new SqliteStore(path.join(DATA, 'state.sqlite'));
             store.setKv('approve-deletes', '1');
+            signalDaemon('SIGUSR1');
             console.log('deletions approved for the next pass');
             return;
         }
         case 'status': {
+            let saved: { heartbeatAt: number; view: View } | undefined;
+            try {
+                saved = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+            } catch {
+                /* no daemon ever ran */
+            }
+            if (!saved || Date.now() - saved.heartbeatAt > DAEMON_GONE_MS) {
+                console.log('Synchro arrêtée : le démon ne tourne pas.');
+                return;
+            }
+            console.log(saved.view.title);
+            for (const l of saved.view.lines) console.log(`  ${l}`);
+            return;
+        }
+        case 'pause':
+            mkdirSync(DATA, { recursive: true });
+            writeFileSync(PAUSE_FILE, '');
+            signalDaemon('SIGUSR1');
+            console.log('en pause');
+            return;
+        case 'resume':
+            if (existsSync(PAUSE_FILE)) unlinkSync(PAUSE_FILE);
+            signalDaemon('SIGUSR1');
+            console.log('reprise');
+            return;
+        case 'seen': {
             const store = new SqliteStore(path.join(DATA, 'state.sqlite'));
-            console.log(store.getKv('status') ?? 'no pass recorded');
+            store.setKv(UNSEEN_KEY, '[]');
+            signalDaemon('SIGUSR1');
+            return;
+        }
+        case 'exclude': {
+            const [action, pattern] = args;
+            const cfg = loadConfig();
+            const list = cfg.exclude ?? [];
+            if (action === 'list' || !action) {
+                for (const p of list) console.log(p);
+                return;
+            }
+            if ((action !== 'add' && action !== 'remove') || !pattern) throw new Error('usage: proton-sync exclude list|add <pattern>|remove <pattern>');
+            cfg.exclude = action === 'add' ? [...new Set([...list, pattern])] : list.filter((p) => p !== pattern);
+            saveConfig(cfg);
+            // The patterns are read at start: the service restarts the daemon.
+            signalDaemon('SIGTERM');
+            console.log(`exclusions: ${cfg.exclude.join(', ') || 'none'}`);
             return;
         }
         case 'version':
             console.log(APP_VERSION);
             return;
         default:
-            console.log('usage: proton-sync init|login|logout|plan|once|run|approve|status|version');
+            console.log('usage: proton-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|exclude|version');
     }
 }
 

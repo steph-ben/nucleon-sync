@@ -7,6 +7,10 @@ export interface CycleResult {
     done: number;
     skipped: number;
     errors: string[];
+    /** Paths really sent to the trash or to quarantine in this pass. */
+    deleted: string[];
+    /** Conflict copies really created in this pass. */
+    conflicts: number;
 }
 
 export class SafetyStop extends Error {}
@@ -24,7 +28,7 @@ export class Engine {
         private local: LocalFs,
         private remote: RemoteFs,
         private store: Store,
-        private options: Omit<ReconcileOptions, 'today'> & { newKey: () => string; today: () => string; log?: (level: LogLevel, message: string) => void; touched?: (paths: string[]) => void; isFatal?: (e: unknown) => boolean; emptyGuardMin?: number },
+        private options: Omit<ReconcileOptions, 'today'> & { newKey: () => string; today: () => string; log?: (level: LogLevel, message: string) => void; touched?: (paths: string[]) => void; progress?: (done: number, total: number, line: string) => void; isFatal?: (e: unknown) => boolean; emptyGuardMin?: number },
     ) {}
 
     async planOnly(approveDeletes = false): Promise<Plan> {
@@ -49,13 +53,24 @@ export class Engine {
         let skipped = 0;
         let hardFailure = false;
         const errors: string[] = [];
+        const deleted: string[] = [];
+        let conflicts = 0;
+        const visible = plan.actions.filter((a) => this.describe(a).level !== 'DEBUG').length;
+        let handled = 0;
         const guarded = async (actions: Action[], run: () => Promise<boolean>) => {
             // Described before running: paths change once the action is done.
             const what = actions.map((a) => this.describe(a));
             for (const w of what) if (w.touch) this.options.touched?.(w.touch);
+            for (const w of what) {
+                if (w.level === 'DEBUG') continue;
+                this.options.progress?.(handled, visible, w.line);
+                handled++;
+            }
             try {
                 if (await run()) {
                     done++;
+                    for (const w of what) if (w.deleted) deleted.push(w.deleted);
+                    conflicts += actions.filter((a) => a.t === 'conflictRename').length;
                     for (const w of what) this.report(w.level, w.line);
                 } else {
                     skipped++;
@@ -95,7 +110,7 @@ export class Engine {
             await guarded([a], () => this.apply(a));
         }
         await flushMoves();
-        return { plan, done, skipped, errors };
+        return { plan, done, skipped, errors, deleted, conflicts };
     }
 
     private report(level: LogLevel, message: string) {
@@ -124,7 +139,7 @@ export class Engine {
     }
 
     /** One readable line per action: direction, operation, path. Never throws: logging must not break a sync. */
-    private describe(a: Action): { level: LogLevel; line: string; touch?: string[] } {
+    private describe(a: Action): { level: LogLevel; line: string; touch?: string[]; deleted?: string } {
         const join = (parent: Ref, name: string) => {
             const p = this.refPath(parent);
             return p ? `${p}/${name}` : name;
@@ -157,10 +172,10 @@ export class Engine {
                     return { level: 'INFO', line: `drive→local  move  ${from} -> ${to}`, touch: [from, to] };
                 }
                 case 'remoteTrash':
-                    return { level: 'INFO', line: `local→drive  trash  ${this.basePath(a.key)}` };
+                    return { level: 'INFO', line: `local→drive  trash  ${this.basePath(a.key)}`, deleted: this.basePath(a.key) };
                 case 'localQuarantine': {
                     const at = this.basePath(a.key);
-                    return { level: 'INFO', line: `drive→local  quarantine  ${at}`, touch: [at] };
+                    return { level: 'INFO', line: `drive→local  quarantine  ${at}`, touch: [at], deleted: at };
                 }
                 case 'conflictRename': {
                     const from = this.path(a.localId);

@@ -29,7 +29,14 @@ export class FakeDrive implements RemoteFs {
     constructor(
         private hub: Hub,
         private root: string,
+        /** Same exclusions as the real adapter: applied to the Drive too, descendants included. */
+        private ignore: (name: string, isDir: boolean) => boolean = () => false,
     ) {}
+
+    private excluded(id: string): boolean {
+        for (let n = this.hub.nodes.get(id); n; n = this.hub.nodes.get(n.parent)) if (this.ignore(n.name, n.kind === 'dir')) return true;
+        return false;
+    }
 
     /** The next `times` calls of `op` fail with this error. */
     fail(op: DriveOp, error: () => Error, times = 1) {
@@ -52,7 +59,7 @@ export class FakeDrive implements RemoteFs {
     async snapshot() {
         this.gate('snapshot');
         const m = new Map<string, Entry>();
-        for (const n of this.hub.nodes.values()) if (this.hub.alive(n)) m.set(n.id, this.entry(n.id));
+        for (const n of this.hub.nodes.values()) if (this.hub.alive(n) && !this.excluded(n.id)) m.set(n.id, this.entry(n.id));
         return m;
     }
     async mkdir(parent: string, name: string) {
@@ -122,7 +129,7 @@ export function machine(tag: string, hub: Hub, o: MachineOptions = {}) {
     const dbPath = path.join(home, 'state.sqlite');
     const store = new SqliteStore(dbPath);
     const local = new RealLocalFs(root, quarantine, { ignore: o.ignore ?? defaultIgnore });
-    const drive = new FakeDrive(hub, root);
+    const drive = new FakeDrive(hub, root, o.ignore);
     let k = 0;
     const engineOptions = { deviceName: tag, caseInsensitive: o.caseInsensitive ?? false, maxDeletes: o.maxDeletes ?? 20, newKey: () => `${tag}${Date.now()}-${++k}`, today: () => '2026-11-05', isFatal: o.isFatal, log: o.log as never };
     const engine = new Engine(local, drive, store, engineOptions);
