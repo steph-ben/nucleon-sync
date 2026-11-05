@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -173,6 +173,46 @@ describe('install.sh', () => {
         const r = Bun.spawnSync([sh, v1.script], { env: { PATH: emptyBin, HOME: home, NUCLEON_UNAME_S: 'Linux', NUCLEON_UNAME_M: 'x86_64' } });
         expect(r.exitCode).toBe(1);
         expect(r.stderr.toString()).toContain('curl');
+        expect(existsSync(path.join(home, '.local'))).toBe(false);
+    });
+
+    test('a failed move into versions/ leaves current on the previous version and prints no success', () => {
+        const home = newHome();
+        install(v1.script, home, v1);
+        const versions = path.join(app(home), 'versions');
+        chmodSync(versions, 0o555);
+        try {
+            const r = install(v2.script, home, v2);
+            expect(r.code).toBe(1);
+            expect(r.out).not.toContain('is installed');
+            expect(readlinkSync(path.join(app(home), 'current'))).toBe('versions/1.0.0');
+        } finally {
+            chmodSync(versions, 0o755);
+        }
+    });
+
+    test('a bun that cannot start installs nothing', () => {
+        const home = newHome();
+        const badDir = mkdtempSync(path.join(work, 'badbun-'));
+        mkdirSync(path.join(badDir, 'bun-linux-x64'));
+        writeFileSync(path.join(badDir, 'bun-linux-x64/bun'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+        const zip = path.join(badDir, 'bun-linux-x64.zip');
+        run(['zip', '-qr', zip, 'bun-linux-x64'], badDir);
+        const r = install(v1.script, home, v1, { NUCLEON_BUN_URL: `file://${zip}`, NUCLEON_BUN_SHA256: sha(zip) });
+        expect(r.code).toBe(1);
+        expect(r.err).toContain('does not start');
+        expect(existsSync(path.join(app(home), 'bun'))).toBe(false);
+        expect(existsSync(path.join(app(home), 'current'))).toBe(false);
+        expect(existsSync(link(home))).toBe(false);
+    });
+
+    test('running as root is refused (id stub)', () => {
+        const home = newHome();
+        const stubDir = mkdtempSync(path.join(work, 'idstub-'));
+        writeFileSync(path.join(stubDir, 'id'), '#!/bin/sh\necho 0\n', { mode: 0o755 });
+        const r = install(v1.script, home, v1, { PATH: `${stubDir}:${process.env.PATH}` });
+        expect(r.code).toBe(1);
+        expect(r.err).toContain('root');
         expect(existsSync(path.join(home, '.local'))).toBe(false);
     });
 

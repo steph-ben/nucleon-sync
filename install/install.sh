@@ -83,29 +83,42 @@ install_bun() {
     curl -fsSL "${NUCLEON_BUN_URL:-$BUN_BASE_URL/$BUN_FILE}" -o "$TMP/bun.zip" || fail "could not download bun."
     verify "$TMP/bun.zip" "${NUCLEON_BUN_SHA256:-$BUN_SHA256}"
     unzip -q "$TMP/bun.zip" -d "$TMP/bun-unzipped" || fail "could not unzip bun."
-    mkdir -p "$TMP/bun-new"
+    mkdir "$TMP/bun-new"
     cp "$TMP"/bun-unzipped/*/bun "$TMP/bun-new/bun" || fail "the bun zip has no bun program."
-    chmod +x "$TMP/bun-new/bun"
-    rm -rf "$APP/bun"
-    mv "$TMP/bun-new" "$APP/bun"
+    chmod +x "$TMP/bun-new/bun" || fail "could not make bun executable."
+    "$TMP/bun-new/bun" --version >/dev/null 2>&1 || fail "the downloaded bun does not start on this system. Nothing was installed."
+    # Old bun aside, new bun in, old bun deleted. If the second move fails, the old bun comes back.
+    if [ -d "$APP/bun" ]; then
+        mv "$APP/bun" "$TMP/bun-old" || fail "could not replace bun."
+    fi
+    if ! mv "$TMP/bun-new" "$APP/bun"; then
+        [ ! -d "$TMP/bun-old" ] || mv "$TMP/bun-old" "$APP/bun"
+        fail "could not install bun."
+    fi
 }
 
 # Unpacks nucleon-sync $VERSION into $APP/versions/$VERSION unless it is already there.
 install_version() {
-    [ -d "$APP/versions/$VERSION" ] && return
+    if [ -d "$APP/versions/$VERSION" ]; then
+        return
+    fi
     echo "Downloading nucleon-sync $VERSION..."
     curl -fsSL "${NUCLEON_BASE_URL:-https://github.com/steph-ben/nucleon-sync/releases/download/v$VERSION}/nucleon-sync-$VERSION.tar.gz" -o "$TMP/app.tar.gz" || fail "could not download nucleon-sync $VERSION."
     verify "$TMP/app.tar.gz" "$ARCHIVE_SHA256"
     mkdir "$TMP/version"
     tar -xzf "$TMP/app.tar.gz" -C "$TMP/version" || fail "could not unpack the archive."
-    mkdir -p "$APP/versions"
-    mv "$TMP/version" "$APP/versions/$VERSION"
+    mkdir -p "$APP/versions" || fail "could not create $APP/versions."
+    # Without this check, mv would put the folder inside an existing one.
+    [ ! -e "$APP/versions/$VERSION" ] || fail "$APP/versions/$VERSION appeared during the install. Run the installer again."
+    mv "$TMP/version" "$APP/versions/$VERSION" || fail "could not move nucleon-sync $VERSION into place."
+    [ -x "$APP/versions/$VERSION/bin/nucleon-sync" ] || fail "nucleon-sync $VERSION is incomplete after unpacking."
 }
 
 switch_to_version() {
-    ln -sfn "versions/$VERSION" "$APP/current"
-    mkdir -p "$HOME/.local/bin"
-    ln -sfn "$APP/current/bin/nucleon-sync" "$HOME/.local/bin/nucleon-sync"
+    [ -x "$APP/versions/$VERSION/bin/nucleon-sync" ] || fail "nucleon-sync $VERSION is missing. Nothing was switched."
+    ln -sfn "versions/$VERSION" "$APP/current" || fail "could not switch to nucleon-sync $VERSION."
+    mkdir -p "$HOME/.local/bin" || fail "could not create ~/.local/bin."
+    ln -sfn "$APP/current/bin/nucleon-sync" "$HOME/.local/bin/nucleon-sync" || fail "could not link the command."
 }
 
 print_next_steps() {
@@ -121,15 +134,17 @@ print_next_steps() {
 }
 
 main() {
+    set -eu
     check_tools
     [ "$(id -u)" != 0 ] || fail "do not run this as root. It installs into your home folder."
     detect_platform
 
     DATA="$HOME/.local/share/nucleon-sync"
     APP="$DATA/app"
-    mkdir -p "$DATA/.tmp" "$APP"
+    mkdir -p "$DATA/.tmp" "$APP" || fail "could not create $DATA."
     TMP="$(mktemp -d "$DATA/.tmp/install.XXXXXX")" || fail "could not create a temporary folder."
-    trap 'rm -rf "$TMP"; rmdir "$DATA/.tmp" 2>/dev/null' EXIT
+    trap 'rm -rf "$TMP"; rmdir "$DATA/.tmp" 2>/dev/null || true' EXIT
+    trap 'exit 1' HUP INT TERM
 
     install_bun
     install_version
