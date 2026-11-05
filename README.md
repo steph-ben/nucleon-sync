@@ -29,6 +29,11 @@ Ensuite :
 
 Pour passer de rclone à proton-sync, suivre `docs/migration.md`.
 
+## Intégration continue
+
+GitHub Actions (`.github/workflows/ci.yml`, ubuntu seul, bun 1.4.2) lance sur chaque push vers `main` et chaque pull request : les tests (`local`, `scenarios`, `integration`, `proton-adapter`), le fuzz, puis `tsc --noEmit` qui échoue sur toute erreur dans `src/` ou `test/`.
+Aucun accès à Proton, au trousseau ni au réseau n'est nécessaire. Pour reproduire en local, lancer les commandes de `CLAUDE.md` (section Commandes).
+
 ## Commandes
 
 - `init <dossier> <device:nom/dossier|root>` : écrit la configuration.

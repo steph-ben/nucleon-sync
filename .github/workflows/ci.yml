@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests et typage (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Comme scripts/install.sh pour les dépendances, sans liens ni services.
+      - name: Dépendances
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          bash scripts/patch-crypto.sh
+
+      - name: Tests principaux
+        run: bun test test/local.test.ts test/scenarios.test.ts test/integration.test.ts test/proton-adapter.test.ts
+
+      - name: Tests fuzz
+        run: bun test test/fuzz.test.ts
+
+      # Les erreurs de node_modules/@protontech/crypto sont connues : seules
+      # celles de src/ et test/ font échouer le job.
+      - name: Typage
+        run: |
+          npx tsc --noEmit > "$RUNNER_TEMP/tsc.log" 2>&1 || true
+          if grep -E "^(src|test)/" "$RUNNER_TEMP/tsc.log"; then
+            echo "Erreurs de typage dans src/ ou test/" >&2
+            exit 1
+          fi
+          echo "Aucune erreur de typage dans src/ ou test/."
