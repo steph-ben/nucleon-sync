@@ -1,6 +1,6 @@
 import { type LocalFs, PathBusy, type RemoteFs, type Store } from './interfaces';
 import { reconcile } from './reconcile';
-import { type Action, type BaseRec, type Entry, ROOT, type Plan, type ReconcileOptions, type Ref, type Snapshot } from './types';
+import { type Action, type BaseRec, type Entry, ROOT, type Plan, type ReconcileOptions, type Ref, type Snapshot, SWAP_PREFIX } from './types';
 
 export interface CycleResult {
     plan: Plan;
@@ -13,7 +13,6 @@ export class SafetyStop extends Error {}
 
 /** En dessous, vider un tout petit dossier est un geste normal, pas une panne. */
 const EMPTY_GUARD_MIN = 5;
-const SWAP_PREFIX = '.proton-sync-swap-';
 
 export class Engine {
     private recs = new Map<string, BaseRec>();
@@ -21,6 +20,7 @@ export class Engine {
     private R: Snapshot = new Map();
     private seq = 0;
     private doomed = new Set<string>();
+    private pendingMoves = new Set<string>();
 
     constructor(
         private local: LocalFs,
@@ -37,7 +37,12 @@ export class Engine {
     /** Une passe : recharge l'état réel, planifie, exécute. Reprendre après coupure = relancer. */
     async cycle(approveDeletes = false): Promise<CycleResult> {
         const plan = await this.planOnly(approveDeletes);
-        for (const b of plan.rebinds) this.save({ ...this.recs.get(b.key)!, localId: b.localId, remoteId: b.remoteId });
+        for (const b of plan.rebinds) {
+            const rec = this.recs.get(b.key)!;
+            // Nouveau nœud distant : sa révision reste à comparer, même après une coupure.
+            this.save({ ...rec, localId: b.localId, remoteId: b.remoteId, rev: b.remoteId === rec.remoteId ? rec.rev : undefined });
+        }
+        this.pendingMoves = new Set(plan.actions.flatMap((a) => (a.t === 'remoteMove' || a.t === 'localMove' ? [a.key] : [])));
         this.doomed = new Set(plan.actions.flatMap((a) => (a.t === 'remoteTrash' || a.t === 'localQuarantine' || (a.t === 'forget' && a.ifGone) ? [a.key] : [])));
         let done = 0;
         let skipped = 0;
@@ -150,6 +155,7 @@ export class Engine {
             case 'remoteMkdir': {
                 const p = this.resolve(a.parent);
                 const l = this.L.get(a.localId)!;
+                await this.vacateRemote(p.remoteId, a.name);
                 const r = await this.remote.mkdir(p.remoteId, a.name);
                 this.R.set(r.id, r);
                 this.save(this.makeRec(l, r, p.key, a.name));
@@ -158,6 +164,7 @@ export class Engine {
             case 'localMkdir': {
                 const p = this.resolve(a.parent);
                 const r = this.R.get(a.remoteId)!;
+                await this.vacateLocal(p.localId, a.name);
                 const dir = p.localId === ROOT ? a.name : `${this.path(p.localId)}/${a.name}`;
                 const l = await this.local.mkdir(dir);
                 l.parent = p.localId;
@@ -259,6 +266,27 @@ export class Engine {
     private recByLocal(id: string) {
         for (const r of this.recs.values()) if (r.localId === id) return r;
         return undefined;
+    }
+
+    /** Le nom est tenu par un élément sur le point d'aller ailleurs : il cède la place. */
+    private async vacateRemote(parentId: string, name: string) {
+        for (const e of this.R.values()) {
+            const rec = e.parent === parentId && e.name.normalize('NFC') === name.normalize('NFC') ? this.recByRemote(e.id) : undefined;
+            if (!rec || !this.pendingMoves.has(rec.key)) continue;
+            const moved = await this.remote.move(e.id, e.parent, `${SWAP_PREFIX}${++this.seq}`);
+            this.R.set(moved.id, moved);
+        }
+    }
+
+    private async vacateLocal(parentId: string, name: string) {
+        for (const e of this.L.values()) {
+            const rec = e.parent === parentId && e.name.normalize('NFC') === name.normalize('NFC') ? this.recByLocal(e.id) : undefined;
+            if (!rec || !this.pendingMoves.has(rec.key)) continue;
+            const from = this.path(e.id);
+            const tmp = `${SWAP_PREFIX}${++this.seq}`;
+            await this.local.move(from, parentId === ROOT ? tmp : `${this.path(parentId)}/${tmp}`);
+            e.name = tmp;
+        }
     }
 
     private parentKey(localParent: string): string {

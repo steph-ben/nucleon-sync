@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { Engine } from '../src/core/engine';
 import { ROOT } from '../src/core/types';
 import { PathBusy } from '../src/core/interfaces';
-import { Hub, MemStore, SimLocal, SimRemote } from './sim';
+import { Crash, Hub, MemStore, SimLocal, SimRemote } from './sim';
 
 function device(tag: string, hub: Hub) {
     const local = new SimLocal(tag);
@@ -15,6 +15,7 @@ function device(tag: string, hub: Hub) {
         caseInsensitive: false,
         maxDeletes: 20,
         newKey: () => `${tag}k${++k}`,
+        isFatal: (e) => e instanceof Crash,
         today: () => '2026-11-05',
     });
     return { local, remote, store, engine };
@@ -260,5 +261,40 @@ describe('double déplacement', () => {
         expect(rd.trashed).toBe(false);
         expect(m.local.tree()).toEqual(hub.tree());
         expect(hub.tree()['d/Music']).toBe('F');
+    });
+});
+
+describe('reprise et noms', () => {
+    test('fichier d rangé dans un nouveau dossier d', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        const f = m.local.add(ROOT, 'd', 'file', 'F');
+        await settle(m);
+        const dir = m.local.add(ROOT, 'tmp', 'dir', '');
+        f.parent = dir.id;
+        f.name = 'Music';
+        dir.name = 'd';
+        await settle(m);
+        expect(hub.tree()).toEqual({ d: '<dir>', 'd/Music': 'F' });
+        expect(m.local.tree()).toEqual(hub.tree());
+    });
+
+    test('coupure juste après une reliaison : la version distante est quand même reçue', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        m.local.add(ROOT, 'd', 'file', 'v1');
+        await settle(m);
+        const old = [...hub.nodes.values()][0]!;
+        hub.trash(old.id);
+        hub.add(ROOT, 'd', 'file', 'v2');
+        m.local.chaos = {
+            before() {
+                throw new Crash('coupure');
+            },
+        };
+        await m.engine.cycle().catch(() => {});
+        m.local.chaos = { before() {} };
+        await settle(m);
+        expect(m.local.tree()).toEqual({ d: 'v2' });
     });
 });

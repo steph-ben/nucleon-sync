@@ -2,6 +2,9 @@ export type Kind = 'file' | 'dir';
 
 export const ROOT = '__root__';
 
+/** Nom transitoire pendant un échange de noms, ignoré par les scanners. */
+export const SWAP_PREFIX = '.proton-sync-swap-';
+
 /** Un élément vu d'un côté. `parent` est un identifiant du même côté, ou ROOT. */
 export interface Entry {
     id: string;

@@ -1,4 +1,4 @@
-import { type Action, type BaseRec, type Entry, type Plan, ROOT, type ReconcileOptions, type Ref, type Snapshot } from './types';
+import { type Action, type BaseRec, type Entry, type Plan, ROOT, type ReconcileOptions, type Ref, type Snapshot, SWAP_PREFIX } from './types';
 
 const nfc = (s: string) => s.normalize('NFC');
 
@@ -81,7 +81,8 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
             l,
             r,
             lMoved: !!l && movedFrom(l, rec, recOfL),
-            rMoved: !!r && movedFrom(r, rec, recOfR),
+            // Un nom transitoire laissé par une coupure n'est pas un choix de l'utilisateur.
+            rMoved: !!r && movedFrom(r, rec, recOfR) && !r.name.startsWith(SWAP_PREFIX),
             lMod: !!l && rec.kind === 'file' && l.hash !== rec.hash,
             rMod: !!r && rec.kind === 'file' && (r.rev !== rec.rev || r.id !== rec.remoteId),
         });
