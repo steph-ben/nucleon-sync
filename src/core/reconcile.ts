@@ -130,7 +130,8 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
                         result = true;
                         break;
                     }
-                    const stays = cs[other] ? !(side === 'l' ? cs.rMoved : cs.lMoved) : keep(cs);
+                    // En double déplacement, le distant gagne : le côté distant garde toujours son enfant.
+                    const stays = cs[other] ? (side === 'l' ? !cs.rMoved : !(cs.lMoved && !cs.rMoved)) : keep(cs);
                     if (stays) {
                         result = true;
                         break;

@@ -244,3 +244,21 @@ describe('inversion', () => {
         expect(hub.tree()['d/f']).toBe('F');
     });
 });
+
+describe('double déplacement', () => {
+    test('supprimé en local, mais un élément déplacé des deux côtés y reste : le dossier est gardé', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        const rd = hub.add(ROOT, 'd', 'dir', '');
+        const rf = hub.add(ROOT, 'a', 'file', 'F');
+        await settle(m);
+        m.local.find('a')!.name = 'b';
+        const d = m.local.find('d')!;
+        m.local.nodes.delete(d.id);
+        hub.rename(rf.id, rd.id, 'Music');
+        await settle(m);
+        expect(rd.trashed).toBe(false);
+        expect(m.local.tree()).toEqual(hub.tree());
+        expect(hub.tree()['d/Music']).toBe('F');
+    });
+});
