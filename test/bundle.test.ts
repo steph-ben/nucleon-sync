@@ -50,4 +50,14 @@ describe('release bundle', () => {
         expect(build.exitCode).toBe(1);
         expect(build.stderr.toString()).toContain('src/names.ts');
     });
+
+    // Last, because it builds again. The tag v0.2.0-beta differs from the version 0.2.0.
+    test('install.sh downloads from the release tag, not from v<version>', async () => {
+        const build = Bun.spawnSync(['bash', 'scripts/build-release.sh', VERSION, `v${VERSION}-beta`], { cwd: repo, env: { ...process.env, SKIP_BUNDLE_TESTS: '1' }, stderr: 'pipe' });
+        expect(build.exitCode).toBe(0);
+        const script = await Bun.file(path.join(dist, 'install.sh')).text();
+        expect(script).toContain(`/download/$TAG}`);
+        expect(script).toContain(`TAG="v${VERSION}-beta"`);
+        expect(script).toContain(`VERSION="${VERSION}"`);
+    });
 });

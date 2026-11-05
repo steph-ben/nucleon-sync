@@ -11,6 +11,7 @@
 
 # Filled in by scripts/build-release.sh.
 VERSION="@VERSION@"
+TAG="@TAG@"
 ARCHIVE_SHA256="@ARCHIVE_SHA256@"
 
 BUN_VERSION="1.4.2"
@@ -103,7 +104,7 @@ install_version() {
         return
     fi
     echo "Downloading nucleon-sync $VERSION..."
-    curl -fsSL "${NUCLEON_BASE_URL:-https://github.com/steph-ben/nucleon-sync/releases/download/v$VERSION}/nucleon-sync-$VERSION.tar.gz" -o "$TMP/app.tar.gz" || fail "could not download nucleon-sync $VERSION."
+    curl -fsSL "${NUCLEON_BASE_URL:-https://github.com/steph-ben/nucleon-sync/releases/download/$TAG}/nucleon-sync-$VERSION.tar.gz" -o "$TMP/app.tar.gz" || fail "could not download nucleon-sync $VERSION."
     verify "$TMP/app.tar.gz" "$ARCHIVE_SHA256"
     mkdir "$TMP/version"
     tar -xzf "$TMP/app.tar.gz" -C "$TMP/version" || fail "could not unpack the archive."

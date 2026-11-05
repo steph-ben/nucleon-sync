@@ -1,8 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { parse } from 'yaml';
 
-const workflow = parse(readFileSync('.github/workflows/release.yml', 'utf8'));
+const workflow = Bun.YAML.parse(readFileSync('.github/workflows/release.yml', 'utf8')) as any;
 const jobs = workflow.jobs;
 const publishSteps = JSON.stringify(jobs.publish.steps);
 
@@ -29,4 +28,13 @@ test('publishes the three assets, beta as prerelease', () => {
     expect(publishSteps).toContain('dist/SHA256SUMS');
     expect(publishSteps).toContain('dist/install.sh');
     expect(publishSteps).toContain('--prerelease');
+});
+
+test('publish refuses a tag that is not on main', () => {
+    expect(jobs.publish.steps[0].with['fetch-depth']).toBe(0);
+    expect(publishSteps).toContain('git merge-base --is-ancestor \\"$GITHUB_SHA\\" origin/main');
+});
+
+test('the build gets the tag as well as the version', () => {
+    expect(publishSteps).toContain('build-release.sh \\"$VERSION\\" \\"$GITHUB_REF_NAME\\"');
 });
