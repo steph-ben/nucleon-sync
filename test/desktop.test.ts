@@ -186,7 +186,7 @@ describe('notification command', () => {
 });
 
 describe('commands', () => {
-    const main = path.join(import.meta.dir, '../src/main.ts');
+    const main = process.env.NUCLEON_ENTRY ?? path.join(import.meta.dir, '../src/main.ts');
     async function cli(home: string, ...args: string[]) {
         const p = Bun.spawn([process.execPath, main, ...args], { env: { ...process.env, NUCLEON_SYNC_HOME: home }, stdout: 'pipe', stderr: 'pipe' });
         const out = await new Response(p.stdout).text();

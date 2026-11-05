@@ -10,7 +10,7 @@ import { Hub } from '../sim';
 
 const area = 'Machine life';
 const child = path.join(import.meta.dir, '../lib/sync-child.ts');
-const main = path.join(import.meta.dir, '../../src/main.ts');
+const main = process.env.NUCLEON_ENTRY ?? path.join(import.meta.dir, '../../src/main.ts');
 const ROOT_HINT = 'Proton';
 
 async function seeded() {

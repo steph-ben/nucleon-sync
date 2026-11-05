@@ -9,7 +9,11 @@ while [ -L "$SRC" ]; do
 done
 ROOT="$(cd -P "$(dirname "$SRC")/.." && pwd)"
 
-if command -v bun >/dev/null 2>&1; then
+# Installed: ROOT is <app>/versions/<v>, and <app>/bun/bun is the bun shipped with the app.
+APP="$ROOT/../.."
+if [ -x "$APP/bun/bun" ] && [ -f "$ROOT/nucleon-sync.js" ]; then
+    BUN="$APP/bun/bun"
+elif command -v bun >/dev/null 2>&1; then
     BUN="$(command -v bun)"
 elif [ -x "$HOME/.local/bin/bun" ]; then
     BUN="$HOME/.local/bin/bun"
@@ -20,4 +24,7 @@ else
     exit 1
 fi
 
+if [ -f "$ROOT/nucleon-sync.js" ]; then
+    exec "$BUN" run "$ROOT/nucleon-sync.js" "$@"
+fi
 exec "$BUN" run "$ROOT/src/main.ts" "$@"

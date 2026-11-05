@@ -3,3 +3,4 @@ vendor/proton-sdk/cli/release/
 *.log
 .DS_Store
 .superpowers/
+dist/
