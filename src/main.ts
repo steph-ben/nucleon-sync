@@ -10,6 +10,7 @@ import { Engine, SafetyStop } from './core/engine';
 import type { Logger, Plan } from './core/types';
 import { recentActivity } from './desktop/activity';
 import { makeIgnore } from './desktop/exclude';
+import { signIn } from './desktop/signin';
 import { sendNote } from './desktop/notify';
 import { buildConfig } from './desktop/setup';
 import type { View } from './desktop/state';
@@ -338,7 +339,7 @@ async function main() {
         }
         case 'login': {
             const ctx = await sdkContext();
-            await ctx.auth.authViaWeb((url: string) => console.log(`Open this address to log in:\n${url}`));
+            await signIn(ctx.auth, console.log);
             console.log('logged in');
             await ctx.dispose();
             return;
@@ -407,7 +408,7 @@ async function main() {
             createRootMarker(folder);
             saveConfig(cfg);
             const ctx = await sdkContext();
-            if (!ctx.auth.isLoggedIn()) await ctx.auth.authViaWeb((url: string) => console.log(`Open this address to log in:\n${url}`));
+            if (!ctx.auth.isLoggedIn()) await signIn(ctx.auth, console.log);
             const log = logger(false);
             const { engine } = await buildEngine(cfg, ctx, log);
             const plan = await engine.planOnly();

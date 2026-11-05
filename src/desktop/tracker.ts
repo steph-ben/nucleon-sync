@@ -1,4 +1,5 @@
 import type { CycleResult } from '../core/engine';
+import { isOutdatedClient } from './signin';
 import { type DesktopState, type Note, notificationsFor, type Problem, writeState } from './state';
 
 const FAILURES_BEFORE_ALERT = 3;
@@ -66,6 +67,7 @@ export class DesktopTracker {
         this.failures++;
         let problems: Problem[] = [];
         if (safety) problems = [{ kind: 'safety', message: `Safety stop: ${message}` }];
+        else if (isOutdatedClient(message)) problems = [{ kind: 'outdated', message: 'This version is no longer accepted by Proton: run nucleon-sync update' }];
         else if (isSession(message)) problems = [{ kind: 'session', message: 'Proton session expired: run nucleon-sync login' }];
         else if (this.failures >= FAILURES_BEFORE_ALERT) problems = [{ kind: 'failing', message: `Sync failed: ${message}` }];
         this.state = { ...this.state, syncing: false, transfer: undefined, problems };

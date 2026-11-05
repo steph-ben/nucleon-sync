@@ -1,7 +1,7 @@
 import { renameSync, writeFileSync } from 'node:fs';
 
 export interface Problem {
-    kind: 'session' | 'unreadable' | 'failing' | 'safety';
+    kind: 'session' | 'unreadable' | 'failing' | 'safety' | 'outdated';
     message: string;
 }
 

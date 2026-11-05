@@ -6,6 +6,8 @@ import path from 'node:path';
 import { type DesktopState, notificationsFor, render, writeState } from '../src/desktop/state';
 import { makeIgnore } from '../src/desktop/exclude';
 import { DesktopTracker } from '../src/desktop/tracker';
+import { signIn } from '../src/desktop/signin';
+import { THIRD_PARTY_NOTICE } from '../src/names';
 import { recentActivity } from '../src/desktop/activity';
 import { noteCommand } from '../src/desktop/notify';
 import { buildConfig } from '../src/desktop/setup';
@@ -141,6 +143,14 @@ describe('DesktopTracker', () => {
         t.passDone(done);
         t.passFailed(new Error('session expired: 401'), false);
         expect(notes[0]!.body).toContain('nucleon-sync login');
+    });
+    test('an outdated-client answer becomes one clear problem, not endless retries', () => {
+        const { t, notes } = tracker();
+        t.passDone(done);
+        t.passFailed(new Error('You need to update this app in order to perform this operation'), false);
+        expect(t.state.problems).toHaveLength(1);
+        expect(t.state.problems[0]!.kind).toBe('outdated');
+        expect(notes[0]!.body).toBe('This version is no longer accepted by Proton: run nucleon-sync update');
     });
     test('a safety stop is a problem at once', () => {
         const { t, notes } = tracker();
@@ -324,4 +334,11 @@ print(json.dumps(m.read_activity(sys.argv[2]),ensure_ascii=False));print(m.read_
         expect(JSON.parse(first!)).toEqual(expected);
         expect(second).toBe('[]');
     });
+});
+
+test('the notice is printed before the sign-in address', async () => {
+    const lines: string[] = [];
+    await signIn({ authViaWeb: async (show) => show('https://x.test/y') }, (l) => lines.push(l));
+    expect(lines[0]).toBe(THIRD_PARTY_NOTICE);
+    expect(lines.some((l) => l.includes('https://x.test/y'))).toBe(true);
 });
