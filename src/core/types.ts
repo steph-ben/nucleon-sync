@@ -1,5 +1,8 @@
 export type Kind = 'file' | 'dir';
 
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+export type Logger = (level: LogLevel, message: string) => void;
+
 export const ROOT = '__root__';
 
 /** Transient name during a name swap, ignored by scanners. */

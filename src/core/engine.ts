@@ -1,6 +1,6 @@
 import { type LocalFs, PathBusy, type RemoteFs, type Store } from './interfaces';
 import { reconcile } from './reconcile';
-import { type Action, type BaseRec, type Entry, ROOT, type Plan, type ReconcileOptions, type Ref, type Snapshot, SWAP_PREFIX } from './types';
+import { type Action, type BaseRec, type Entry, type LogLevel, ROOT, type Plan, type ReconcileOptions, type Ref, type Snapshot, SWAP_PREFIX } from './types';
 
 export interface CycleResult {
     plan: Plan;
@@ -24,7 +24,7 @@ export class Engine {
         private local: LocalFs,
         private remote: RemoteFs,
         private store: Store,
-        private options: Omit<ReconcileOptions, 'today'> & { newKey: () => string; today: () => string; log?: (s: string) => void; isFatal?: (e: unknown) => boolean; emptyGuardMin?: number },
+        private options: Omit<ReconcileOptions, 'today'> & { newKey: () => string; today: () => string; log?: (level: LogLevel, message: string) => void; touched?: (paths: string[]) => void; isFatal?: (e: unknown) => boolean; emptyGuardMin?: number },
     ) {}
 
     async planOnly(approveDeletes = false): Promise<Plan> {
@@ -46,21 +46,32 @@ export class Engine {
         let skipped = 0;
         let hardFailure = false;
         const errors: string[] = [];
-        const guarded = async (run: () => Promise<boolean>) => {
+        const guarded = async (actions: Action[], run: () => Promise<boolean>) => {
+            // Described before running: paths change once the action is done.
+            const what = actions.map((a) => this.describe(a));
+            for (const w of what) if (w.touch) this.options.touched?.(w.touch);
             try {
-                if (await run()) done++;
-                else skipped++;
+                if (await run()) {
+                    done++;
+                    for (const w of what) this.report(w.level, w.line);
+                } else {
+                    skipped++;
+                    for (const w of what) this.report('INFO', `${w.line} (skipped: the item changed or is not safe to remove yet, retried on the next pass)`);
+                }
             } catch (e) {
                 if (this.options.isFatal?.(e)) throw e;
-                if (!(e instanceof PathBusy)) hardFailure = true;
-                errors.push(e instanceof Error ? e.message : String(e));
+                const message = e instanceof Error ? e.message : String(e);
+                const busy = e instanceof PathBusy;
+                if (!busy) hardFailure = true;
+                errors.push(message);
+                for (const w of what) this.report(busy ? 'WARN' : 'ERROR', `${w.line}: ${message}${busy ? ' (will retry on the next pass)' : ''}`);
             }
         };
         const moves: Action[] = [];
         const flushMoves = async () => {
             if (moves.length) {
                 const batch = moves.splice(0);
-                await guarded(async () => {
+                await guarded(batch, async () => {
                     await this.runMoves(batch);
                     return true;
                 });
@@ -75,12 +86,93 @@ export class Engine {
             // After a real error, nothing is deleted: an item to save may have been left inside.
             if (hardFailure && (a.t === 'remoteTrash' || a.t === 'localQuarantine')) {
                 skipped++;
+                this.report('WARN', `${this.describe(a).line} (skipped: an earlier error in this pass, nothing is deleted after an error)`);
                 continue;
             }
-            await guarded(() => this.apply(a));
+            await guarded([a], () => this.apply(a));
         }
         await flushMoves();
         return { plan, done, skipped, errors };
+    }
+
+    private report(level: LogLevel, message: string) {
+        this.options.log?.(level, message);
+    }
+
+    /** Path of a record from the base, e.g. "Music/Piano/a.mp3". */
+    private basePath(key: string): string {
+        const parts: string[] = [];
+        for (let k = key, guard = 0; k !== ROOT && guard++ < 10000; ) {
+            const r = this.recs.get(k);
+            if (!r) break;
+            parts.unshift(r.name);
+            k = r.parent;
+        }
+        return parts.join('/');
+    }
+
+    private refPath(ref: Ref): string {
+        try {
+            const key = this.resolve(ref).key;
+            return key === ROOT ? '' : this.basePath(key);
+        } catch {
+            return '?';
+        }
+    }
+
+    /** One readable line per action: direction, operation, path. Never throws: logging must not break a sync. */
+    private describe(a: Action): { level: LogLevel; line: string; touch?: string[] } {
+        const join = (parent: Ref, name: string) => {
+            const p = this.refPath(parent);
+            return p ? `${p}/${name}` : name;
+        };
+        try {
+            switch (a.t) {
+                case 'remoteMkdir':
+                    return { level: 'INFO', line: `local→drive  mkdir  ${join(a.parent, a.name)}` };
+                case 'localMkdir': {
+                    const to = join(a.parent, a.name);
+                    return { level: 'INFO', line: `drive→local  mkdir  ${to}`, touch: [to] };
+                }
+                case 'upload':
+                    return { level: 'INFO', line: `local→drive  upload  ${join(a.parent, a.name)}` };
+                case 'uploadRevision':
+                    return { level: 'INFO', line: `local→drive  upload new version  ${this.basePath(a.key)}` };
+                case 'download': {
+                    const to = join(a.parent, a.name);
+                    return { level: 'INFO', line: `drive→local  download  ${to}`, touch: [to] };
+                }
+                case 'downloadRevision': {
+                    const at = this.basePath(a.key);
+                    return { level: 'INFO', line: `drive→local  download new version  ${at}`, touch: [at] };
+                }
+                case 'remoteMove':
+                    return { level: 'INFO', line: `local→drive  move  ${this.basePath(a.key)} -> ${join(a.parent, a.name)}` };
+                case 'localMove': {
+                    const from = this.basePath(a.key);
+                    const to = join(a.parent, a.name);
+                    return { level: 'INFO', line: `drive→local  move  ${from} -> ${to}`, touch: [from, to] };
+                }
+                case 'remoteTrash':
+                    return { level: 'INFO', line: `local→drive  trash  ${this.basePath(a.key)}` };
+                case 'localQuarantine': {
+                    const at = this.basePath(a.key);
+                    return { level: 'INFO', line: `drive→local  quarantine  ${at}`, touch: [at] };
+                }
+                case 'conflictRename': {
+                    const from = this.path(a.localId);
+                    const dir = from.includes('/') ? `${from.slice(0, from.lastIndexOf('/'))}/` : '';
+                    return { level: 'INFO', line: `local  conflict copy  ${from} -> ${dir}${a.newName}`, touch: [from, `${dir}${a.newName}`] };
+                }
+                case 'link':
+                case 'refresh':
+                case 'forget':
+                    return { level: 'DEBUG', line: `bookkeeping  ${a.t}  ${'key' in a ? this.basePath(a.key) : a.localId}` };
+            }
+        } catch {
+            /* fall through */
+        }
+        return { level: 'INFO', line: `${a.t}  (path unavailable)` };
     }
 
     private async load() {

@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 import { DriveEventType, type MaybeMissingNode, type NodeEntity, NodeType, NodeWithSameNameExistsValidationError, type ProtonDriveClient } from '@protontech/drive-sdk';
 
 import { PathBusy, type RemoteFs, type Source } from '../core/interfaces';
-import { type Entry, ROOT, type Snapshot } from '../core/types';
+import { type Entry, type Logger, ROOT, type Snapshot } from '../core/types';
 
 const PROTON_NATIVE = /^application\/vnd\.proton\./;
 
@@ -77,7 +77,7 @@ export class ProtonRemote implements RemoteFs {
         private rootUid: string,
         private scopeId: string,
         private kv: KvStore,
-        private log: (s: string) => void = () => {},
+        private log: Logger = () => {},
         /** The engine uses paths relative to the local root. */
         private absolute: (rel: string) => string = (p) => p,
         /** Same exclusions as locally: otherwise a .DS_Store on the Drive would be downloaded again endlessly. */
@@ -116,7 +116,7 @@ export class ProtonRemote implements RemoteFs {
     }
 
     private async fullWalk() {
-        this.log('full Drive walk');
+        this.log('INFO', 'reading the whole Drive tree (first run or Drive asked for a refresh)');
         const previous = this.entries;
         this.entries = new Map();
         try {
@@ -156,8 +156,10 @@ export class ProtonRemote implements RemoteFs {
             this.save();
         } else {
             let changed = false;
+            let seen = 0;
             for await (const ev of this.sdk.iterateEvents(this.scopeId, this.eventId)) {
                 changed = true;
+                seen++;
                 switch (ev.type) {
                     case DriveEventType.NodeCreated:
                     case DriveEventType.NodeUpdated:
@@ -178,6 +180,7 @@ export class ProtonRemote implements RemoteFs {
                 if (ev.eventId !== 'none') this.eventId = ev.eventId;
             }
             if (changed) this.save();
+            this.log('DEBUG', `Drive: ${seen} event(s) since the last poll`);
         }
         return this.visible();
     }
@@ -271,7 +274,7 @@ export class ProtonRemote implements RemoteFs {
         const controller = downloader.downloadToStream(stream);
         await controller.completion();
         await writer.end();
-        if (controller.isDownloadCompleteWithSignatureIssues()) this.log(`signature not verified: ${id}`);
+        if (controller.isDownloadCompleteWithSignatureIssues()) this.log('WARN', `downloaded file has a signature issue (kept anyway): ${id}`);
     }
 
     async trash(id: string): Promise<void> {
