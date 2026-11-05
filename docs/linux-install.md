@@ -4,7 +4,7 @@ Stop at the first step that is not as described. Nothing here touches the Drive 
 
 ## 1. Install and test
 
-    git clone -b reliability git@github.com:steph-ben/proton-sync.git ~/dev/proton-sync
+    git clone -b desktop git@github.com:steph-ben/proton-sync.git ~/dev/proton-sync
     ~/dev/proton-sync/scripts/linux-setup.sh
 
 It installs bun 1.4.2, the dependencies, the `proton-sync` command and the service file, then runs every test in
