@@ -79,7 +79,7 @@ async function buildEngine(cfg: Config, ctx: Ctx, log: (s: string) => void) {
     const local = new RealLocalFs(cfg.localRoot, quarantine, { ignore: defaultIgnore });
     await local.assertRootSafe();
     const { rootUid, scopeId } = await resolveRoot(ctx, cfg);
-    const remote = new ProtonRemote(ctx.sdk, rootUid, scopeId, store, log, (p) => local.absolutePath(p));
+    const remote = new ProtonRemote(ctx.sdk, rootUid, scopeId, store, log, (p) => local.absolutePath(p), defaultIgnore);
     const engine = new Engine(local, remote, store, {
         deviceName: cfg.deviceName,
         caseInsensitive: await detectCaseInsensitive(cfg.localRoot),

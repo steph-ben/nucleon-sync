@@ -146,6 +146,18 @@ describe('miroir', () => {
     });
 });
 
+test('les exclusions s’appliquent aussi au Drive, descendants compris', async () => {
+    const drive = new FakeDrive();
+    const kv = new Map<string, string>();
+    const ignore = (name: string) => name === '.DS_Store' || name === '.venv';
+    const remote = new ProtonRemote(drive as unknown as DriveApi, ROOT_UID, 's', { getKv: (k) => kv.get(k), setKv: (k, v) => void kv.set(k, v) }, () => {}, (p) => p, ignore);
+    drive.add(node('ds', ROOT_UID, '.DS_Store'));
+    drive.add(folder('v', ROOT_UID, '.venv'));
+    drive.add(node('lib', 'v', 'lib'));
+    drive.add(node('ok', ROOT_UID, 'garde'));
+    expect([...(await remote.snapshot()).keys()]).toEqual(['ok']);
+});
+
 test('le code du démon ne contient aucune suppression définitive', async () => {
     const src = ['src/adapters/proton.ts', 'src/main.ts', 'src/core/engine.ts'].map((f) => readFileSync(f, 'utf8')).join('\n');
     for (const forbidden of ['deleteNodes', 'emptyTrash', 'deleteRevision', 'deleteDevice']) expect(src.includes(`.${forbidden}(`)).toBe(false);

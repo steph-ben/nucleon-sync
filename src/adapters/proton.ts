@@ -80,6 +80,8 @@ export class ProtonRemote implements RemoteFs {
         private log: (s: string) => void = () => {},
         /** Le moteur parle en chemins relatifs à la racine locale. */
         private absolute: (rel: string) => string = (p) => p,
+        /** Mêmes exclusions qu'en local : sans cela, un .DS_Store du Drive serait retéléchargé sans fin. */
+        private ignore: (name: string, isDir: boolean) => boolean = () => false,
     ) {}
 
     private load() {
@@ -177,7 +179,15 @@ export class ProtonRemote implements RemoteFs {
             }
             if (changed) this.save();
         }
-        return new Map([...this.entries.values()].map((e) => [e.id, { ...e }]));
+        return this.visible();
+    }
+
+    private visible(): Snapshot {
+        const ignored = (e: Entry | undefined): boolean => {
+            for (let c = e; c; c = this.entries.get(c.parent)) if (!c.protected && this.ignore(c.name, c.kind === 'dir')) return true;
+            return false;
+        };
+        return new Map([...this.entries.values()].filter((e) => !ignored(e)).map((e) => [e.id, { ...e }]));
     }
 
     private uid(id: string) {

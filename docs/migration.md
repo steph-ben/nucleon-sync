@@ -41,7 +41,7 @@ Copie de sécurité : `~/proton-safety-2026-11-05` sur le Mac. Les 5 documents P
 
         proton-sync plan
 
-   Résultat attendu : uniquement des actions `link`, aucun envoi, téléchargement ni mise à la corbeille.
+   Résultat attendu : uniquement des actions `link`, plus un seul `upload` pour `coucou`, le vrai fichier vide que rclone ignorait. Aucun téléchargement, aucune mise à la corbeille.
    Si le plan contient autre chose : s'arrêter, ne pas lancer `once`, comprendre l'écart.
 
 6. Première passe :
