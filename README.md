@@ -44,7 +44,7 @@ No access to Proton, the keychain or the network is needed. To reproduce locally
 - `approve`: approves the large deletions that were held back.
 - `status`: readable state, and whether the daemon is running.
 - `pause` / `resume`: suspends and resumes the sync.
-- `activity [n]`: the last things that really happened to files, also shown in the icon's window.
+- `activity [n]`: the last things that really happened to files, from the journal, also shown in the icon's window.
 - `seen`: acknowledges the files recently sent to the trash or quarantine.
 - `exclude list|add <pattern>|remove <pattern>`: name patterns never synced (`*`, `?`, trailing `/` for folders). Excluded items stay where they are.
 - `setup`: guided first configuration, shows the plan and changes nothing.

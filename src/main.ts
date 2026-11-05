@@ -8,6 +8,7 @@ import { ProtonRemote } from './adapters/proton';
 import { SqliteStore } from './adapters/sqlite-store';
 import { Engine, SafetyStop } from './core/engine';
 import type { Logger, Plan } from './core/types';
+import { recentActivity } from './desktop/activity';
 import { makeIgnore } from './desktop/exclude';
 import { sendNote } from './desktop/notify';
 import { buildConfig } from './desktop/setup';
@@ -144,7 +145,6 @@ async function buildEngine(cfg: Config, ctx: Ctx, log: Logger, touched?: (paths:
         log,
         touched,
         progress,
-        activity: (line, error) => store.addActivity(Date.now(), line, error),
     });
     return { engine, store };
 }
@@ -421,13 +421,11 @@ async function main() {
         case 'update':
             console.log(checkForUpdate(path.join(import.meta.dir, '..'), sendNote, () => signalDaemon('SIGTERM')));
             return;
-        case 'activity': {
-            const store = new SqliteStore(path.join(DATA, 'state.sqlite'));
-            for (const a of store.recentActivity(Number(args[0]) || 30).reverse()) {
-                console.log(`${new Date(a.at).toLocaleString()}  ${a.label}  ${a.path}${a.error ? `  (${a.error})` : ''}`);
+        case 'activity':
+            for (const a of recentActivity(path.join(DATA, 'proton-sync.log'), Number(args[0]) || 30).reverse()) {
+                console.log(`${a.at}  ${a.label}  ${a.path}${a.error ? `  (${a.error})` : ''}`);
             }
             return;
-        }
         case 'pause':
             mkdirSync(DATA, { recursive: true });
             writeFileSync(PAUSE_FILE, '');

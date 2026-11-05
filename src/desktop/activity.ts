@@ -1,16 +1,14 @@
+import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
+
 export interface Activity {
+    at: string;
     label: string;
     path: string;
     error?: string;
 }
 
-export interface ActivityRow {
-    at: number;
-    label: string;
-    path: string;
-    error: string | null;
-}
-
+const TAIL_BYTES = 256 * 1024;
+const LINE = /^(\S+) (INFO |ERROR) (local→drive|drive→local|local) {2}(.+?) {2}(.+)$/;
 const LABELS: Record<string, string> = {
     upload: 'Envoyé',
     'upload new version': 'Envoyé (nouvelle version)',
@@ -21,13 +19,43 @@ const LABELS: Record<string, string> = {
     'conflict copy': 'Conflit : copie créée',
 };
 
-/** Journal lines read "<direction>  <operation>  <path>": the window shows them in plain words. */
-export function describeActivity(line: string, error?: string): Activity {
-    const [direction = '', op = '', ...rest] = line.split(/\s{2,}/);
-    const toDrive = direction === 'local→drive';
-    let label = LABELS[op] ?? op;
-    if (op === 'move') label = toDrive ? 'Déplacé sur le Drive' : 'Déplacé ici';
-    if (op === 'mkdir') label = toDrive ? 'Dossier créé sur le Drive' : 'Dossier créé ici';
-    const path = rest.join('  ');
-    return error ? { label: `Erreur : ${label}`, path, error } : { label, path };
+function tail(file: string): string {
+    let fd: number;
+    try {
+        fd = openSync(file, 'r');
+    } catch {
+        return '';
+    }
+    try {
+        const size = fstatSync(fd).size;
+        const length = Math.min(size, TAIL_BYTES);
+        const buffer = Buffer.alloc(length);
+        readSync(fd, buffer, 0, length, size - length);
+        return buffer.toString('utf8');
+    } finally {
+        closeSync(fd);
+    }
+}
+
+function describe(op: string, toDrive: boolean): string {
+    if (op === 'move') return toDrive ? 'Déplacé sur le Drive' : 'Déplacé ici';
+    if (op === 'mkdir') return toDrive ? 'Dossier créé sur le Drive' : 'Dossier créé ici';
+    return LABELS[op] ?? op;
+}
+
+/** The journal already holds every real action: newest first, in plain words. Reads its end only. */
+export function recentActivity(file: string, limit: number): Activity[] {
+    const rows: Activity[] = [];
+    for (const line of tail(file).split('\n').reverse()) {
+        const m = LINE.exec(line);
+        if (!m) continue;
+        const [, at, level, direction, op, rest] = m as unknown as [string, string, string, string, string, string];
+        const label = describe(op, direction === 'local→drive');
+        if (level === 'ERROR') {
+            const cut = rest.indexOf(': ');
+            rows.push({ at, label: `Erreur : ${label}`, path: cut < 0 ? rest : rest.slice(0, cut), error: cut < 0 ? '' : rest.slice(cut + 2) });
+        } else rows.push({ at, label, path: rest });
+        if (rows.length === limit) break;
+    }
+    return rows;
 }

@@ -28,7 +28,7 @@ export class Engine {
         private local: LocalFs,
         private remote: RemoteFs,
         private store: Store,
-        private options: Omit<ReconcileOptions, 'today'> & { newKey: () => string; today: () => string; log?: (level: LogLevel, message: string) => void; touched?: (paths: string[]) => void; progress?: (done: number, total: number, line: string) => void; activity?: (line: string, error?: string) => void; isFatal?: (e: unknown) => boolean; emptyGuardMin?: number },
+        private options: Omit<ReconcileOptions, 'today'> & { newKey: () => string; today: () => string; log?: (level: LogLevel, message: string) => void; touched?: (paths: string[]) => void; progress?: (done: number, total: number, line: string) => void; isFatal?: (e: unknown) => boolean; emptyGuardMin?: number },
     ) {}
 
     async planOnly(approveDeletes = false): Promise<Plan> {
@@ -71,10 +71,7 @@ export class Engine {
                     done++;
                     for (const w of what) if (w.deleted) deleted.push(w.deleted);
                     conflicts += actions.filter((a) => a.t === 'conflictRename').length;
-                    for (const w of what) {
-                        this.report(w.level, w.line);
-                        if (w.level !== 'DEBUG') this.options.activity?.(w.line);
-                    }
+                    for (const w of what) this.report(w.level, w.line);
                 } else {
                     skipped++;
                     for (const w of what) this.report('INFO', `${w.line} (skipped: the item changed or is not safe to remove yet, retried on the next pass)`);
@@ -85,10 +82,7 @@ export class Engine {
                 const busy = e instanceof PathBusy;
                 if (!busy) hardFailure = true;
                 errors.push(message);
-                for (const w of what) {
-                    this.report(busy ? 'WARN' : 'ERROR', `${w.line}: ${message}${busy ? ' (will retry on the next pass)' : ''}`);
-                    if (!busy) this.options.activity?.(w.line, message);
-                }
+                for (const w of what) this.report(busy ? 'WARN' : 'ERROR', `${w.line}: ${message}${busy ? ' (will retry on the next pass)' : ''}`);
             }
         };
         const moves: Action[] = [];

@@ -1,7 +1,6 @@
 // Menu bar icon. Reads the daemon's desktop.json and runs proton-sync commands: all logic stays in the daemon.
 // Usage: proton-sync-tray <path to proton-sync> <data folder>
 import AppKit
-import SQLite3
 
 let daemonGoneSeconds = 180.0
 
@@ -20,24 +19,46 @@ struct Activity {
     let file: String
 }
 
-/// Newest first. Read-only; a base without the table yet gives an empty list.
-func readActivity(home: String) -> [Activity] {
-    var db: OpaquePointer?
-    let path = URL(fileURLWithPath: home).appendingPathComponent("state.sqlite").path
-    defer { sqlite3_close(db) }
-    guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return [] }
-    var stmt: OpaquePointer?
-    defer { sqlite3_finalize(stmt) }
-    let sql = "SELECT at, label, path, COALESCE(error, '') FROM activity ORDER BY id DESC LIMIT 200"
-    guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-    let format = DateFormatter()
-    format.dateFormat = "dd/MM HH:mm:ss"
+let tailBytes = 256 * 1024
+let labels = ["upload": "Envoyé", "upload new version": "Envoyé (nouvelle version)", "download": "Reçu",
+              "download new version": "Reçu (nouvelle version)", "trash": "Mis à la corbeille",
+              "quarantine": "Mis en quarantaine", "conflict copy": "Conflit : copie créée"]
+
+func describe(_ op: String, toDrive: Bool) -> String {
+    if op == "move" { return toDrive ? "Déplacé sur le Drive" : "Déplacé ici" }
+    if op == "mkdir" { return toDrive ? "Dossier créé sur le Drive" : "Dossier créé ici" }
+    return labels[op] ?? op
+}
+
+/// Newest first, from the end of the daemon's journal.
+func readActivity(home: String, limit: Int = 200) -> [Activity] {
+    let url = URL(fileURLWithPath: home).appendingPathComponent("proton-sync.log")
+    guard let file = try? FileHandle(forReadingFrom: url) else { return [] }
+    defer { try? file.close() }
+    guard let size = try? file.seekToEnd() else { return [] }
+    try? file.seek(toOffset: size > UInt64(tailBytes) ? size - UInt64(tailBytes) : 0)
+    guard let data = try? file.readToEnd() else { return [] }
+    let parse = ISO8601DateFormatter()
+    parse.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let show = DateFormatter()
+    show.dateFormat = "dd/MM HH:mm:ss"
     var rows: [Activity] = []
-    while sqlite3_step(stmt) == SQLITE_ROW {
-        let at = Date(timeIntervalSince1970: sqlite3_column_double(stmt, 0) / 1000)
-        let error = String(cString: sqlite3_column_text(stmt, 3))
-        let file = String(cString: sqlite3_column_text(stmt, 2))
-        rows.append(Activity(when: format.string(from: at), what: String(cString: sqlite3_column_text(stmt, 1)), file: error.isEmpty ? file : "\(file)  (\(error))"))
+    for line in String(decoding: data, as: UTF8.self).split(separator: "\n").reversed() {
+        guard line.count > 31 else { continue }
+        let body = line.dropFirst(25)
+        let isError = body.hasPrefix("ERROR ")
+        guard isError || body.hasPrefix("INFO  ") else { continue }
+        let parts = body.dropFirst(6).components(separatedBy: "  ")
+        guard parts.count >= 3, ["local→drive", "drive→local", "local"].contains(parts[0]) else { continue }
+        var file = parts[2...].joined(separator: "  ")
+        var what = describe(parts[1], toDrive: parts[0] == "local→drive")
+        if isError {
+            what = "Erreur : " + what
+            if let colon = file.range(of: ": ") { file = "\(file[..<colon.lowerBound])  (\(file[colon.upperBound...]))" }
+        }
+        let at = parse.date(from: String(line.prefix(24))).map(show.string(from:)) ?? ""
+        rows.append(Activity(when: at, what: what, file: file))
+        if rows.count == limit { break }
     }
     return rows
 }
@@ -208,6 +229,10 @@ final class Tray: NSObject, NSApplicationDelegate {
 }
 
 let args = CommandLine.arguments
+if args.count == 3 && args[1] == "--print-activity" {
+    for a in readActivity(home: args[2]) { print("\(a.when) | \(a.what) | \(a.file)") }
+    exit(0)
+}
 guard args.count == 3 else {
     print("usage: proton-sync-tray <path to proton-sync> <data folder>")
     exit(1)

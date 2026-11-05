@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { type DesktopState, notificationsFor, render, writeState } from '../src/desktop/state';
 import { makeIgnore } from '../src/desktop/exclude';
 import { DesktopTracker } from '../src/desktop/tracker';
-import { SqliteStore } from '../src/adapters/sqlite-store';
-import { describeActivity } from '../src/desktop/activity';
+import { recentActivity } from '../src/desktop/activity';
 import { noteCommand } from '../src/desktop/notify';
 import { buildConfig } from '../src/desktop/setup';
 import { decideUpdate } from '../src/desktop/update';
@@ -270,58 +269,59 @@ print(m.read_state(sys.argv[2],1000)["level"]);print(m.read_state(sys.argv[2],99
     expect(out.trim().split('\n')).toEqual(['ok', 'stopped', 'stopped']);
 });
 
-describe('activity', () => {
-    test('journal lines become plain words', () => {
-        expect(describeActivity('local→drive  upload  Notes/a.md')).toEqual({ label: 'Envoyé', path: 'Notes/a.md' });
-        expect(describeActivity('drive→local  download new version  z.txt')).toEqual({ label: 'Reçu (nouvelle version)', path: 'z.txt' });
-        expect(describeActivity('local→drive  move  A -> B').label).toBe('Déplacé sur le Drive');
-        expect(describeActivity('drive→local  move  A -> B').label).toBe('Déplacé ici');
-        expect(describeActivity('local→drive  trash  a.txt').label).toBe('Mis à la corbeille');
-        expect(describeActivity('drive→local  quarantine  a.txt').label).toBe('Mis en quarantaine');
-        expect(describeActivity('local  conflict copy  a -> b').label).toBe('Conflit : copie créée');
-        expect(describeActivity('local→drive  upload  a.txt', 'quota')).toEqual({ label: 'Erreur : Envoyé', path: 'a.txt', error: 'quota' });
+describe('activity comes from the journal', () => {
+    const LOG = [
+        '2026-11-05T10:00:00.000Z INFO  pass 1 start: Drive poll',
+        '2026-11-05T10:00:01.000Z DEBUG bookkeeping  refresh  a.txt',
+        '2026-11-05T10:00:02.000Z INFO  local→drive  upload  Notes/été.md',
+        '2026-11-05T10:00:03.000Z INFO  drive→local  download new version  z.txt',
+        '2026-11-05T10:00:04.000Z INFO  local→drive  move  A -> B',
+        '2026-11-05T10:00:05.000Z INFO  local  conflict copy  a -> b',
+        '2026-11-05T10:00:06.000Z WARN  drive→local  download  x (will retry on the next pass)',
+        '2026-11-05T10:00:07.000Z ERROR local→drive  upload  b.txt: quota exceeded: try later',
+        '2026-11-05T10:00:08.000Z INFO  drive→local  quarantine  vieux.txt',
+    ].join('\n');
+    const logFile = () => {
+        const f = path.join(mkdtempSync(path.join(tmpdir(), 'proton-sync-log-')), 'proton-sync.log');
+        writeFileSync(f, `${LOG}\n`);
+        return f;
+    };
+
+    test('plain words, newest first, without bookkeeping or retries', () => {
+        const rows = recentActivity(logFile(), 10);
+        expect(rows.map((r) => [r.label, r.path])).toEqual([
+            ['Mis en quarantaine', 'vieux.txt'],
+            ['Erreur : Envoyé', 'b.txt'],
+            ['Conflit : copie créée', 'a -> b'],
+            ['Déplacé sur le Drive', 'A -> B'],
+            ['Reçu (nouvelle version)', 'z.txt'],
+            ['Envoyé', 'Notes/été.md'],
+        ]);
+        expect(rows[1]!.error).toBe('quota exceeded: try later');
     });
 
-    test('the sync records what really happened, not bookkeeping', async () => {
-        const hub = new Hub();
-        const seen: string[] = [];
-        const a = machine('A', hub, { activity: (line) => seen.push(line) });
-        await Bun.write(a.abs('Notes/n.md'), 'note');
-        await settle(a);
-        expect(seen).toEqual(['local→drive  mkdir  Notes', 'local→drive  upload  Notes/n.md']);
+    test('only the end of a huge journal is read', () => {
+        const f = logFile();
+        appendFileSync(f, `${'2026-11-05T09:00:00.000Z INFO  local→drive  upload  old.txt\n'.repeat(200000)}${LOG}\n`);
+        const started = performance.now();
+        expect(recentActivity(f, 3)).toHaveLength(3);
+        expect(performance.now() - started).toBeLessThan(200);
     });
 
-    test('a failed action is recorded with its cause', async () => {
-        const hub = new Hub();
-        const seen: [string, string | undefined][] = [];
-        const a = machine('A', hub, { activity: (line, error) => seen.push([line, error]) });
-        await Bun.write(a.abs('b.txt'), 'b');
-        a.drive.fail('upload', () => new Error('quota'));
-        await a.engine.cycle();
-        expect(seen).toEqual([['local→drive  upload  b.txt', 'quota']]);
+    test('no journal yet', () => {
+        expect(recentActivity('/nonexistent/proton-sync.log', 10)).toEqual([]);
     });
 
-    test('stored newest first, in plain words, and bounded', () => {
-        const file = path.join(mkdtempSync(path.join(tmpdir(), 'proton-sync-act-')), 'state.sqlite');
-        const store = new SqliteStore(file);
-        for (let i = 0; i < 1010; i++) store.addActivity(i, `local→drive  upload  f${i}`);
-        const rows = store.recentActivity(3);
-        expect(rows.map((r) => r.path)).toEqual(['f1009', 'f1008', 'f1007']);
-        expect(rows[0]).toMatchObject({ at: 1009, label: 'Envoyé' });
-        expect(store.recentActivity(5000)).toHaveLength(1000);
-        store.close();
-    });
-
-    test.skipIf(!hasPython)('the Linux window reads it, and survives a base without the table', async () => {
-        const h = mkdtempSync(path.join(tmpdir(), 'proton-sync-pyact-'));
-        const store = new SqliteStore(path.join(h, 'state.sqlite'));
-        store.addActivity(1000, 'local→drive  upload  été.txt');
-        store.close();
+    test.skipIf(!hasPython)('the Linux window reads the same thing as the command', async () => {
+        const f = logFile();
         const script = path.join(import.meta.dir, '../desktop/linux/proton-sync-tray.py');
-        const code = `import importlib.util,sys
+        const code = `import importlib.util,sys,json
 s=importlib.util.spec_from_file_location("t",sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
-print(m.read_activity(sys.argv[2])[0][1:]);print(m.read_activity("/nonexistent"))`;
-        const p = Bun.spawn(['python3', '-I', '-c', code, script, h], { stdout: 'pipe', stderr: 'pipe' });
-        expect((await new Response(p.stdout).text()).trim().split('\n')).toEqual(["('Envoyé', 'été.txt', '')", '[]']);
+print(json.dumps(m.read_activity(sys.argv[2]),ensure_ascii=False));print(m.read_activity("/nonexistent"))`;
+        const p = Bun.spawn(['python3', '-I', '-c', code, script, path.dirname(f)], { stdout: 'pipe', stderr: 'pipe' });
+        const [first, second] = (await new Response(p.stdout).text()).trim().split('\n');
+        const expected = recentActivity(f, 200).map((r) => [r.at, r.label, r.path, r.error ?? '']);
+        expect(JSON.parse(first!)).toEqual(expected);
+        expect(second).toBe('[]');
     });
 });

@@ -5,15 +5,26 @@ GNOME shows no tray icon without the AppIndicator extension. Fedora:
     sudo dnf install gnome-shell-extension-appindicator libayatana-appindicator-gtk3 python3-gobject
     gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com
 """
+import calendar
 import json
 import os
-import pathlib
-import sqlite3
+import re
 import subprocess
 import sys
 import time
 
 DAEMON_GONE_SECONDS = 180
+TAIL_BYTES = 256 * 1024
+LINE = re.compile(r"^(\S+) (INFO |ERROR) (local→drive|drive→local|local)  (.+?)  (.+)$")
+LABELS = {
+    "upload": "Envoyé",
+    "upload new version": "Envoyé (nouvelle version)",
+    "download": "Reçu",
+    "download new version": "Reçu (nouvelle version)",
+    "trash": "Mis à la corbeille",
+    "quarantine": "Mis en quarantaine",
+    "conflict copy": "Conflit : copie créée",
+}
 ICONS = {
     "ok": "emblem-ok-symbolic",
     "syncing": "emblem-synchronizing-symbolic",
@@ -44,19 +55,41 @@ def read_state(home, now):
         return STOPPED
 
 
+def iso_seconds(at):
+    return calendar.timegm(time.strptime(at[:19], "%Y-%m-%dT%H:%M:%S"))
+
+
+def describe(op, to_drive):
+    if op == "move":
+        return "Déplacé sur le Drive" if to_drive else "Déplacé ici"
+    if op == "mkdir":
+        return "Dossier créé sur le Drive" if to_drive else "Dossier créé ici"
+    return LABELS.get(op, op)
+
+
 def read_activity(home, limit=200):
-    """Newest first, as (time, what, file, error). Read-only; nothing yet means an empty list."""
-    db = pathlib.Path(home, "state.sqlite")
-    if not db.exists():
-        return []
+    """Newest first, as [time, what, file, error], from the end of the daemon's journal."""
     try:
-        con = sqlite3.connect(db.as_uri() + "?mode=ro", uri=True, timeout=1)
-        try:
-            rows = con.execute("SELECT at, label, path, COALESCE(error, '') FROM activity ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-        finally:
-            con.close()
-    except sqlite3.Error:
+        with open(os.path.join(home, "proton-sync.log"), "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - TAIL_BYTES))
+            text = f.read().decode("utf-8", "replace")
+    except OSError:
         return []
+    rows = []
+    for line in reversed(text.split("\n")):
+        found = LINE.match(line)
+        if not found:
+            continue
+        at, level, direction, op, rest = found.groups()
+        label = describe(op, direction == "local→drive")
+        error = ""
+        if level == "ERROR":
+            rest, _, error = rest.partition(": ")
+            label = "Erreur : " + label
+        rows.append([at, label, rest, error])
+        if len(rows) == limit:
+            break
     return rows
 
 
@@ -77,7 +110,7 @@ def main(binary, home):
     def fill(store):
         store.clear()
         for at, label, path, error in read_activity(home):
-            when = time.strftime("%d/%m %H:%M:%S", time.localtime(at / 1000))
+            when = time.strftime("%d/%m %H:%M:%S", time.localtime(iso_seconds(at)))
             store.append([when, label, f"{path}  ({error})" if error else path])
         return window["open"] is not None
 
