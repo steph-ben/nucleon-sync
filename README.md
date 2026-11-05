@@ -56,6 +56,7 @@ Fichier `config.json`, dans `~/.local/share/proton-sync` par défaut. `proton-sy
 | `deviceName` | oui | Nom de la machine, repris dans le nom des copies de conflit et des fichiers temporaires. `init` le déduit du nom d'hôte. |
 | `maxDeletes` | oui | Au-delà de ce nombre de fichiers supprimés en une passe, les suppressions sont retenues jusqu'à `proton-sync approve`. `init` met 20. |
 | `allowDriveRoot` | seulement avec `root` | Doit valoir `true` pour accepter `remote: "root"`. Sans lui, toute commande qui vise Mes fichiers s'arrête avant d'accéder au Drive. Cette seconde confirmation évite de lancer un test sur le vrai Drive. Ignoré pour une cible `device:`. |
+| `verbose` | non | `true` pour un journal détaillé : chaque événement de surveillance, la cause de chaque passe (changement local, sondage du Drive…) et sa durée. Produit une ligne par minute même au repos. Défaut : `false`. |
 
 Exemple pour Mes fichiers :
 

@@ -27,6 +27,8 @@ interface Config {
     maxDeletes: number;
     /** Doit être vrai pour synchroniser Mes fichiers : protège contre un lancement de test sur le vrai Drive. */
     allowDriveRoot?: boolean;
+    /** Journal détaillé : événements de surveillance, causes de réveil, durée de chaque passe. */
+    verbose?: boolean;
 }
 
 function configPath() {
@@ -137,27 +139,40 @@ async function daemon(cfg: Config) {
     if (!ctx.auth.isLoggedIn()) throw new Error('non connecté : lancer proton-sync login');
     const { engine, store } = await buildEngine(cfg, ctx, log);
 
+    const verbose = cfg.verbose ?? false;
     let wake: (() => void) | undefined;
     let debounce: ReturnType<typeof setTimeout> | undefined;
+    let running = false;
+    let cause = 'démarrage';
     const trigger = () => {
         clearTimeout(debounce);
-        debounce = setTimeout(() => wake?.(), DEBOUNCE_MS);
+        debounce = setTimeout(() => {
+            if (verbose) log(`surveillance : calme depuis ${DEBOUNCE_MS} ms${running ? ', mais une passe est en cours : réveil sans effet' : ', réveil de la boucle'}`);
+            wake?.();
+        }, DEBOUNCE_MS);
     };
     // Le scan reste la référence : la surveillance sert seulement à réagir vite.
-    watch(cfg.localRoot, { recursive: true }, (_e, name) => {
-        if (name && !String(name).includes('.proton-sync-tmp')) trigger();
+    watch(cfg.localRoot, { recursive: true }, (event, name) => {
+        if (!name || String(name).includes('.proton-sync-tmp')) return;
+        if (verbose) log(`surveillance : ${event} ${name}${running ? ' (pendant une passe)' : ''}`);
+        trigger();
     });
 
     let failures = 0;
-    log(`démarrage ${APP_VERSION} racine=${cfg.localRoot} cible=${cfg.remote}`);
+    log(`démarrage ${APP_VERSION} racine=${cfg.localRoot} cible=${cfg.remote} verbose=${verbose}`);
     for (;;) {
         let delay = POLL_SECONDS * 1000;
+        const started = Date.now();
+        running = true;
+        if (verbose) log(`passe : début (cause : ${cause})`);
         try {
             const approve = store.getKv('approve-deletes') === '1';
             const r = await engine.cycle(approve);
             if (approve) store.setKv('approve-deletes', '0');
             store.setKv('status', JSON.stringify({ at: new Date().toISOString(), summary: summarize(r.plan), held: r.plan.held.length, warnings: r.plan.warnings, errors: r.errors }));
-            if (r.plan.actions.length || r.errors.length) log(`${summarize(r.plan)} erreurs=${r.errors.length} ${r.errors.slice(0, 3).join(' | ')}`);
+            const took = `${Date.now() - started} ms`;
+            if (r.plan.actions.length || r.errors.length) log(`${summarize(r.plan)} erreurs=${r.errors.length} ${r.errors.slice(0, 3).join(' | ')} (${took})`);
+            else if (verbose) log(`passe : rien à faire (${took})`);
             if (r.plan.held.length) log(`${r.plan.held.length} suppressions en attente : proton-sync plan, puis proton-sync approve`);
             failures = r.errors.length ? failures + 1 : 0;
             // Du travail fait : repasser vite pour confirmer l'état stable.
@@ -167,11 +182,17 @@ async function daemon(cfg: Config) {
             const safety = e instanceof SafetyStop;
             log(`${safety ? 'ARRÊT DE SÉCURITÉ' : 'erreur'} : ${e instanceof Error ? e.message : String(e)}`);
             store.setKv('status', JSON.stringify({ at: new Date().toISOString(), error: String(e) }));
+        } finally {
+            running = false;
         }
         if (failures) delay = Math.min(POLL_SECONDS * 1000 * 2 ** Math.min(failures, 4), 15 * 60 * 1000);
         await new Promise<void>((resolve) => {
-            const t = setTimeout(resolve, delay);
+            const t = setTimeout(() => {
+                cause = failures ? 'reprise après erreur' : delay === 2000 ? 'contrôle après travail' : 'sondage du Drive';
+                resolve();
+            }, delay);
             wake = () => {
+                cause = 'changement local';
                 clearTimeout(t);
                 resolve();
             };
