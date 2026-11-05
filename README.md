@@ -1,6 +1,6 @@
 # proton-sync
 
-**Statut : non testé sur le vrai Drive.**
+**Statut : testé sur le vrai service dans un espace isolé, entre deux dossiers d'un même Mac. Pas encore testé sur Linux ni sur « Mes fichiers ».**
 
 Démon de synchronisation bidirectionnelle entre `~/Proton` et Proton Drive, pour macOS 12 Intel et Linux.
 Il remplace `rclone bisync`. Conception détaillée : `docs/design.md`.
@@ -8,11 +8,13 @@ Il remplace `rclone bisync`. Conception détaillée : `docs/design.md`.
 Client personnel et non officiel, basé sur le SDK Proton Drive. Sans lien avec Proton.
 Il s'identifie auprès de Proton comme `external-drive-protonsync`.
 
+Limites de Proton pour les espaces device, d'où le sous-dossier obligatoire en test : pas de fichier à la racine, et pas de renommage ou déplacement des dossiers de premier niveau par un client autre que l'appli de bureau.
+
 ## Installation
 
-Prérequis : bun et npm. Le dépôt est attendu dans `~/proton-sync`.
+Prérequis : bun et npm. Le dépôt est attendu dans `~/dev/proton-sync`.
 
-    cd ~/proton-sync
+    cd ~/dev/proton-sync
     scripts/install.sh
 
 Le script installe les dépendances, applique `scripts/patch-crypto.sh`, crée le lien
@@ -22,14 +24,14 @@ Il ne démarre rien : il affiche la commande à lancer. Il peut être relancé s
 Ensuite :
 
     proton-sync login
-    proton-sync init <dossier> <device:nom|root>
+    proton-sync init <dossier> <device:nom/dossier|root>
     proton-sync plan
 
 Pour passer de rclone à proton-sync, suivre `docs/migration.md`.
 
 ## Commandes
 
-- `init <dossier> <device:nom|root>` : écrit la configuration.
+- `init <dossier> <device:nom/dossier|root>` : écrit la configuration.
 - `login` / `logout` : connexion et déconnexion à Proton.
 - `plan` : affiche ce qui serait fait, sans rien modifier.
 - `once` : une seule passe de synchronisation.

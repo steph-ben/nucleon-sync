@@ -4,12 +4,12 @@ Procédure pour les deux machines (Mac et Linux). Ne passer à l'étape suivante
 
 Copie de sécurité : `~/proton-safety-2026-11-05` sur le Mac. Les 5 documents Proton natifs n'y sont pas.
 
-1. Test isolé, sans toucher à `~/Proton`, dans un espace `device:proton-sync-test` avec un dossier temporaire :
+1. Test isolé, sans toucher à `~/Proton`, dans un espace `device:proton-sync-test/sandbox` avec un dossier temporaire :
 
         mkdir -p /tmp/ps-test
         export PROTON_SYNC_HOME=/tmp/ps-home
         proton-sync login
-        proton-sync init /tmp/ps-test device:proton-sync-test
+        proton-sync init /tmp/ps-test device:proton-sync-test/sandbox
         proton-sync plan
         proton-sync once
 

@@ -6,7 +6,7 @@
     <string>org.protonsync.daemon</string>
     <key>ProgramArguments</key>
     <array>
-        <string>__HOME__/proton-sync/bin/proton-sync</string>
+        <string>__HOME__/dev/proton-sync/bin/proton-sync</string>
         <string>run</string>
     </array>
     <key>RunAtLoad</key>
