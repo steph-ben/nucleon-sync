@@ -111,6 +111,11 @@ export type UpdateDeps = {
     wait: () => Promise<void>;
 };
 
+/** install.sh unpacks into versions/<numbers>, without the channel: 0.3.0-beta and 0.3.0 share one folder. */
+export function versionFolder(release: string): string {
+    return release.split('-')[0] ?? release;
+}
+
 /** Name of the version folder the code runs from: the segment after "versions" in its real path. */
 export function runningVersion(codeDir: string): string | undefined {
     try {
@@ -143,6 +148,14 @@ export async function runUpdate(d: UpdateDeps): Promise<string> {
     if (!latest) return 'no update check';
     if (decideUpdate({ current: d.current, latest }) === 'none') return 'up to date';
 
+    const folderName = versionFolder(latest);
+    const previousLink = readlinkSync(path.join(d.appDir, 'current'));
+    const previous = path.basename(previousLink);
+    const keep = [previous, runningVersion(d.codeDir) ?? previous];
+    // install.sh skips a folder that exists, so a beta and a stable release of the same number would collide.
+    if (keep.includes(folderName)) return `update refused: ${latest} would unpack into versions/${folderName}, which is the version in use. Nothing was changed.`;
+    // A leftover of an earlier failed update would be skipped by install.sh too.
+    removeVersion(d.appDir, folderName, keep);
     const installerUrl = `https://github.com/steph-ben/nucleon-sync/releases/download/v${latest}/install.sh`;
     const installer = await downloadText(d.fetch, installerUrl);
     if (installer === undefined) return `update failed: could not download ${installerUrl}`;
@@ -156,26 +169,23 @@ export async function runUpdate(d: UpdateDeps): Promise<string> {
         rmSync(folder, { recursive: true, force: true });
     }
 
-    const previousLink = readlinkSync(path.join(d.appDir, 'current'));
-    const previous = path.basename(previousLink);
-    const keep = [previous, runningVersion(d.codeDir) ?? previous];
-    const command = path.join(d.appDir, 'versions', latest, 'bin', 'nucleon-sync');
-    const result = switchVersion(d.appDir, latest, () => d.output([command, 'version']).trim() === releaseAppVersion(latest));
+    const command = path.join(d.appDir, 'versions', folderName, 'bin', 'nucleon-sync');
+    const result = switchVersion(d.appDir, folderName, () => d.output([command, 'version']).trim() === releaseAppVersion(latest));
     if (result === 'rolled-back') {
-        removeVersion(d.appDir, latest, keep);
+        removeVersion(d.appDir, folderName, keep);
         return `update failed: ${latest} does not start, rolled back to ${previous}.`;
     }
     if (!d.serviceInstalled()) {
-        pruneVersions(d.appDir, [latest, previous]);
+        pruneVersions(d.appDir, [folderName, previous]);
         return `updated to ${latest}. No service is installed, so nothing was restarted.`;
     }
     if (!d.restart() || (await d.wait(), !d.serviceIsActive())) {
         pointCurrentTo(d.appDir, previousLink);
-        removeVersion(d.appDir, latest, keep);
+        removeVersion(d.appDir, folderName, keep);
         if (!d.restart()) return `update failed: the service did not stay up with ${latest}. The link is back on ${previous}, but the service could not be restarted: run the restart command by hand (systemctl --user restart nucleon-sync.service, or launchctl kickstart -k gui/$(id -u)/org.nucleonsync.daemon).`;
         return `update failed: the service did not stay up with ${latest}, rolled back to ${previous}.`;
     }
-    pruneVersions(d.appDir, [latest, previous]);
+    pruneVersions(d.appDir, [folderName, previous]);
     return `updated to ${latest}`;
 }
 
