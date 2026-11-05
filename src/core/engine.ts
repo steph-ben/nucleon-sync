@@ -350,17 +350,22 @@ export class Engine {
                 progressed = true;
             }
             if (progressed) continue;
-            const a = pending[0]!;
-            const p = this.resolve(a.parent);
-            const blocker = occupied(a, p);
-            if (!blocker) throw new PathBusy(`déplacement impossible pour l'instant : ${a.name}`);
-            const blockerRec = a.t === 'remoteMove' ? this.recByRemote(blocker.id) : this.recByLocal(blocker.id);
-            const blockerMoves = !!blockerRec && this.canVacate(blockerRec.key);
-            // Occupée par un élément qui ne bouge pas : souvent une suppression à venir, à reprendre ensuite.
-            if (!blockerMoves) throw new PathBusy(`destination occupée : ${a.name}`);
-            // Le temporaire reste dans le dossier actuel : la cible peut être sous l'élément lui-même.
-            if (a.t === 'remoteMove') await this.vacateRemote(p.remoteId, a.name);
-            else await this.vacateLocal(p.localId, a.name);
+            // Rien ne passe : libérer le premier nom tenu par un élément qui doit partir.
+            let freed = false;
+            for (const a of pending) {
+                const p = this.resolve(a.parent);
+                const blocker = occupied(a, p);
+                if (!blocker) continue;
+                const blockerRec = a.t === 'remoteMove' ? this.recByRemote(blocker.id) : this.recByLocal(blocker.id);
+                if (!blockerRec || !this.canVacate(blockerRec.key)) continue;
+                // Le temporaire reste dans le dossier actuel : la cible peut être sous l'élément lui-même.
+                if (a.t === 'remoteMove') await this.vacateRemote(p.remoteId, a.name);
+                else await this.vacateLocal(p.localId, a.name);
+                freed = true;
+                break;
+            }
+            // Occupée par un élément qui ne bouge pas : souvent une suppression, à reprendre ensuite.
+            if (!freed) throw new PathBusy(`déplacement impossible pour l'instant : ${pending[0]!.name}`);
         }
     }
 

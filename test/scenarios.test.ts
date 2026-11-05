@@ -337,3 +337,20 @@ describe('connexion instable', () => {
         expect(m.local.quarantined).toEqual(['v1']);
     });
 });
+
+describe('inversion avec échange de noms', () => {
+    test('l’enfant prend le nom du parent, et le parent passe dedans sous le nom de l’enfant', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        const ra = hub.add(ROOT, 'a', 'dir', '');
+        const rc = hub.add(ra.id, 'c', 'dir', '');
+        hub.add(rc.id, 'f', 'file', 'F');
+        await settle(m);
+        hub.rename(ra.id, ROOT, 'tmp');
+        hub.rename(rc.id, ROOT, 'a');
+        hub.rename(ra.id, rc.id, 'c');
+        await settle(m);
+        expect(m.local.tree()).toEqual(hub.tree());
+        expect(hub.tree()['a/f']).toBe('F');
+    });
+});

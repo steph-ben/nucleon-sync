@@ -1,0 +1,62 @@
+# proton-sync
+
+**Statut : non testé sur le vrai Drive.**
+
+Démon de synchronisation bidirectionnelle entre `~/Proton` et Proton Drive, pour macOS 12 Intel et Linux.
+Il remplace `rclone bisync`. Conception détaillée : `docs/design.md`.
+
+Client personnel et non officiel, basé sur le SDK Proton Drive. Sans lien avec Proton.
+Il s'identifie auprès de Proton comme `external-drive-protonsync`.
+
+## Installation
+
+Prérequis : bun et npm. Le dépôt est attendu dans `~/proton-sync`.
+
+    cd ~/proton-sync
+    scripts/install.sh
+
+Le script installe les dépendances, applique `scripts/patch-crypto.sh`, crée le lien
+`~/.local/bin/proton-sync` et copie le fichier de service (launchd sur macOS, systemd sur Linux).
+Il ne démarre rien : il affiche la commande à lancer. Il peut être relancé sans risque.
+
+Ensuite :
+
+    proton-sync login
+    proton-sync init <dossier> <device:nom|root>
+    proton-sync plan
+
+Pour passer de rclone à proton-sync, suivre `docs/migration.md`.
+
+## Commandes
+
+- `init <dossier> <device:nom|root>` : écrit la configuration.
+- `login` / `logout` : connexion et déconnexion à Proton.
+- `plan` : affiche ce qui serait fait, sans rien modifier.
+- `once` : une seule passe de synchronisation.
+- `run` : démon, synchronisation continue.
+- `approve` : approuve les grosses suppressions mises en attente.
+- `status` : état de la dernière passe.
+- `version` : version.
+
+## Où sont les fichiers
+
+- Données : `~/.local/share/proton-sync` (changer avec `PROTON_SYNC_HOME`). Contient `config.json`, la base SQLite et `proton-sync.log`.
+- Quarantaine : `~/.local/share/proton-sync/quarantine`.
+- Journal du service sur macOS : `~/Library/Logs/proton-sync.log`. Sur Linux : `journalctl --user -u proton-sync`.
+
+## Récupérer un fichier
+
+Quarantaine : toute suppression ou tout écrasement local y passe d'abord. Parcourir
+`~/.local/share/proton-sync/quarantine`, puis copier le fichier voulu à sa place dans `~/Proton`.
+
+Corbeille Proton : ouvrir Proton Drive sur le web, section Corbeille, sélectionner l'élément et le restaurer.
+Proton Drive ne l'efface définitivement qu'après son délai de rétention. proton-sync ne vide jamais la corbeille.
+
+## Limites
+
+- Une suppression voulue par l'utilisateur est propagée : elle reste récupérable via corbeille et quarantaine.
+- La synchro n'est pas une sauvegarde indépendante.
+- Le SDK n'est pas encore garanti pour un usage tiers en production.
+
+Autre limite : les miniatures ne sont pas générées pour les images envoyées.
+Les Docs et tableurs Proton natifs ne sont jamais synchronisés.
