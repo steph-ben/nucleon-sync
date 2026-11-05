@@ -18,6 +18,13 @@ describe('docs', () => {
         expect(readme.split('\n').length).toBeLessThan(120);
     });
 
+    test('README says where deleted files can be recovered', () => {
+        const readme = read('README.md');
+        expect(readme).toContain('A file you delete on your computer goes to the Proton trash');
+        expect(readme).toContain('A file deleted or replaced on the Drive is kept in `~/.local/share/nucleon-sync/quarantine`');
+        expect(readme).toContain('--purge-data`, which also deletes the quarantine');
+    });
+
     test('LICENSE is MIT with the copyright line', () => {
         const license = read('LICENSE');
         expect(license).toContain('MIT License');

@@ -38,7 +38,7 @@ Other commands: `login`, `logout`, `update` (installs the latest release, and go
 
 ## Safety
 
-Nothing is deleted permanently. The code cannot empty the Proton trash. A file deleted or overwritten on your computer goes to the quarantine folder first, in `~/.local/share/nucleon-sync/quarantine`. A file deleted on the Drive goes to the Proton trash, which you can restore from the web.
+Nothing is deleted permanently. The code cannot empty the Proton trash. A file you delete on your computer goes to the Proton trash, which you can restore from the web. A file deleted or replaced on the Drive is kept in `~/.local/share/nucleon-sync/quarantine` before it is removed or overwritten on your computer.
 
 If the synced folder looks empty or unreadable, the sync stops instead of deleting. A batch of many deletions waits for your `approve`. When both sides change the same file, both versions are kept.
 
@@ -54,11 +54,11 @@ Tray helpers for Linux and macOS are experimental. They live in `desktop/` and a
 
     nucleon-sync uninstall
 
-This stops the service and removes the program. It keeps your data folder (`~/.local/share/nucleon-sync`) unless you add `--purge-data`. It never touches the synced folder.
+This stops the service and removes the program. It keeps your data folder (`~/.local/share/nucleon-sync`) unless you add `--purge-data`, which also deletes the quarantine. It never touches the synced folder.
 
 ## Troubleshooting
 
-The log is `~/.local/share/nucleon-sync/nucleon-sync.log`, one line per event, and a quiet log means all is well. The service output is in `journalctl --user -u nucleon-sync` on Linux and `~/Library/Logs/nucleon-sync.log` on macOS.
+The log is `~/.local/share/nucleon-sync/nucleon-sync.log`, one line per event, and no warnings or errors in the log means all is well. The service output is in `journalctl --user -u nucleon-sync` on Linux and `~/Library/Logs/nucleon-sync.log` on macOS.
 
 ## Development
 
