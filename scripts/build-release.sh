@@ -1,10 +1,14 @@
 #!/bin/bash
-# Builds dist/nucleon-sync-<version>.tar.gz and dist/SHA256SUMS. Usage: scripts/build-release.sh <version>
+# Builds dist/nucleon-sync-<version>.tar.gz, dist/SHA256SUMS and dist/install.sh. Usage: scripts/build-release.sh <version>
 # The archive holds one bundled program file, not node_modules. Set SKIP_BUNDLE_TESTS=1 to skip the tests run against the bundle.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 VERSION="${1:?usage: scripts/build-release.sh <version>}"
 ARCHIVE="nucleon-sync-$VERSION.tar.gz"
+
+# The version in src/names.ts is what the program reports, so the release must carry the same one.
+SOURCE_VERSION="$(sed -n "s/^export const VERSION = '\(.*\)';/\1/p" src/names.ts)"
+[ "$VERSION" = "$SOURCE_VERSION" ] || { echo "version $VERSION differs from VERSION $SOURCE_VERSION in src/names.ts" >&2; exit 1; }
 
 rm -rf dist
 mkdir -p dist
@@ -26,4 +30,7 @@ echo "$VERSION" > "$STAGE/VERSION"
 
 tar -czf "dist/$ARCHIVE" -C "$STAGE" nucleon-sync.js bin deploy LICENSE VERSION
 (cd dist && sha256sum "$ARCHIVE" > SHA256SUMS)
+# The installer carries the version and the archive checksum, so it installs exactly this release.
+ARCHIVE_SHA256="$(cut -d ' ' -f 1 "dist/SHA256SUMS")"
+sed -e "s/@VERSION@/$VERSION/" -e "s/@ARCHIVE_SHA256@/$ARCHIVE_SHA256/" install/install.sh > dist/install.sh
 echo "built dist/$ARCHIVE ($(du -h "dist/$ARCHIVE" | cut -f1))"

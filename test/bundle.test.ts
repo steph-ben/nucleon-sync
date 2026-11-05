@@ -36,4 +36,18 @@ describe('release bundle', () => {
         const sums = await Bun.file(path.join(dist, 'SHA256SUMS')).text();
         expect(sums).toContain(`nucleon-sync-${VERSION}.tar.gz`);
     });
+
+    test('install.sh is stamped with this version and the archive checksum', async () => {
+        const script = await Bun.file(path.join(dist, 'install.sh')).text();
+        const archiveSha = (await Bun.file(path.join(dist, 'SHA256SUMS')).text()).split(' ')[0];
+        expect(script).toContain(`VERSION="${VERSION}"`);
+        expect(script).toContain(`ARCHIVE_SHA256="${archiveSha}"`);
+        expect(script).not.toMatch(/@[A-Z_0-9]+@/);
+    });
+
+    test('building a version that differs from src/names.ts fails', () => {
+        const build = Bun.spawnSync(['bash', 'scripts/build-release.sh', '9.9.9'], { cwd: repo, env: { ...process.env, SKIP_BUNDLE_TESTS: '1' }, stderr: 'pipe' });
+        expect(build.exitCode).toBe(1);
+        expect(build.stderr.toString()).toContain('src/names.ts');
+    });
 });
