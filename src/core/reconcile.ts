@@ -394,7 +394,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         else if (s.lMod) contentOps.push({ t: 'uploadRevision', key: s.rec.key });
         else if (s.rMod && s.r!.hash && s.r!.hash === s.rec.hash) refreshes.push({ t: 'refresh', key: s.rec.key, content: true });
         else if (s.rMod) contentOps.push({ t: 'downloadRevision', key: s.rec.key });
-        else if (s.l!.mtime !== s.rec.localMtime) refreshes.push({ t: 'refresh', key: s.rec.key, content: true });
+        else if (s.l!.mtime !== s.rec.localMtime || (s.l!.ctime !== undefined && s.l!.ctime !== s.rec.localCtime)) refreshes.push({ t: 'refresh', key: s.rec.key, content: true });
     }
 
     // 8. New local items.

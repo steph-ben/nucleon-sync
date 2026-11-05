@@ -19,6 +19,8 @@ export class FakeDrive implements RemoteFs {
     private faults: { op: DriveOp; error: () => Error; times: number }[] = [];
     /** Called before each operation: crash points use this. */
     before: (op: DriveOp) => void = () => {};
+    /** Called between reading a file and storing it: the user may edit it right then. */
+    afterRead: () => void = () => {};
     /** Next downloads receive wrong content. */
     corruptDownloads = 0;
     /** The Drive no longer reports hashes, as for files written by old clients. */
@@ -64,11 +66,15 @@ export class FakeDrive implements RemoteFs {
     }
     async upload(parent: string, name: string, p: string, _s: Source) {
         this.gate('upload');
-        return this.entry(this.hub.add(parent, name, 'file', readFileSync(path.join(this.root, p), 'utf8')).id);
+        const content = readFileSync(path.join(this.root, p), 'utf8');
+        this.afterRead();
+        return this.entry(this.hub.add(parent, name, 'file', content).id);
     }
     async uploadRevision(id: string, p: string) {
         this.gate('uploadRevision');
-        this.hub.edit(id, readFileSync(path.join(this.root, p), 'utf8'));
+        const content = readFileSync(path.join(this.root, p), 'utf8');
+        this.afterRead();
+        this.hub.edit(id, content);
         return this.entry(id);
     }
     async download(id: string, tmp: string) {
@@ -255,7 +261,7 @@ export function world(o: MachineOptions = {}) {
         settle: (...ms: Machine[]) => settle(...(ms.length ? ms : [a, b])),
         /** The end state of every scenario: everything converged, nothing lost. */
         assertConverged() {
-            const t = hub.tree();
+            const t = Object.fromEntries(Object.entries(hub.tree()).map(([k, v]) => [k.normalize('NFC'), v]));
             const ta = fullTree(a.root);
             const tb = fullTree(b.root);
             if (JSON.stringify(sorted(ta)) !== JSON.stringify(sorted(t))) throw new Error(`A differs from the Drive\nA: ${JSON.stringify(sorted(ta))}\nDrive: ${JSON.stringify(sorted(t))}`);

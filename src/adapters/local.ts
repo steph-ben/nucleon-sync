@@ -134,6 +134,7 @@ export class RealLocalFs implements LocalFs {
             let id = `${st.dev}:${st.ino}`;
             if (snap.has(id)) id = `${id}#${childRel}`;
             const mtime = Math.floor(st.mtimeMs);
+            const ctime = Math.floor(st.ctimeMs);
             if (isDir) {
                 snap.set(id, { id, parent: parentId, name, kind: 'dir', size: 0, mtime });
                 await this.walk(childRel, id, snap, known);
@@ -141,7 +142,7 @@ export class RealLocalFs implements LocalFs {
             }
             const k = known.get(id);
             let hash: string | undefined;
-            if (k?.hash && k.size === st.size && k.localMtime === mtime) hash = k.hash;
+            if (k?.hash && k.size === st.size && k.localMtime === mtime && (k.localCtime === undefined || k.localCtime === ctime)) hash = k.hash;
             else {
                 try {
                     hash = await sha1File(path.join(abs, name));
@@ -150,7 +151,7 @@ export class RealLocalFs implements LocalFs {
                     continue;
                 }
             }
-            snap.set(id, { id, parent: parentId, name, kind: 'file', size: st.size, mtime, hash });
+            snap.set(id, { id, parent: parentId, name, kind: 'file', size: st.size, mtime, ctime, hash });
         }
     }
 
@@ -188,7 +189,7 @@ export class RealLocalFs implements LocalFs {
             const st = await fsp.lstat(this.absolutePath(rel));
             if (`${st.dev}:${st.ino}` !== entry.id && !entry.id.startsWith(`${st.dev}:${st.ino}#`)) return false;
             if (entry.kind === 'dir') return st.isDirectory();
-            return st.isFile() && st.size === entry.size && Math.floor(st.mtimeMs) === entry.mtime;
+            return st.isFile() && st.size === entry.size && Math.floor(st.mtimeMs) === entry.mtime && (entry.ctime === undefined || Math.floor(st.ctimeMs) === entry.ctime);
         } catch {
             return false;
         }
@@ -256,8 +257,10 @@ export class RealLocalFs implements LocalFs {
                 }
                 await fsp.rename(tmp, dest);
             }
+            // Removing the temporary hard link changes the inode's ctime: read it afterwards.
+            await fsp.unlink(tmp).catch(() => {});
             const st = await fsp.lstat(dest);
-            return { id: `${st.dev}:${st.ino}`, parent: ROOT, name: path.basename(rel), kind: 'file', size: st.size, mtime: Math.floor(st.mtimeMs), hash };
+            return { id: `${st.dev}:${st.ino}`, parent: ROOT, name: path.basename(rel), kind: 'file', size: st.size, mtime: Math.floor(st.mtimeMs), ctime: Math.floor(st.ctimeMs), hash };
         } finally {
             await fsp.unlink(tmp).catch(() => {});
         }

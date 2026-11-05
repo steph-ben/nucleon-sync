@@ -1,3 +1,4 @@
+import { Database } from 'bun:sqlite';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -213,4 +214,18 @@ describe('SqliteStore', () => {
         expect(s2.getKv('none')).toBeUndefined();
         s2.close();
     });
+});
+
+test('a base from an earlier version opens, and keeps its records', () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'proton-sync-old-')), 'state.sqlite');
+    const old = new Database(file);
+    old.exec(`CREATE TABLE base (key TEXT PRIMARY KEY, parent TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL,
+        localId TEXT NOT NULL, remoteId TEXT NOT NULL, hash TEXT, size INTEGER NOT NULL, localMtime INTEGER NOT NULL, rev TEXT)`);
+    old.exec(`INSERT INTO base VALUES ('k', '__root__', 'f', 'file', 'l', 'r', 'h', 1, 2, 'v')`);
+    old.close();
+    const store = new SqliteStore(file);
+    expect(store.all()).toEqual([{ key: 'k', parent: '__root__', name: 'f', kind: 'file', localId: 'l', remoteId: 'r', hash: 'h', size: 1, localMtime: 2, rev: 'v' }]);
+    store.put({ ...store.all()[0]!, localCtime: 3 });
+    expect(store.all()[0]!.localCtime).toBe(3);
+    store.close();
 });

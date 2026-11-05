@@ -13,6 +13,8 @@ export class SqliteStore implements Store {
             key TEXT PRIMARY KEY, parent TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL,
             localId TEXT NOT NULL, remoteId TEXT NOT NULL, hash TEXT, size INTEGER NOT NULL,
             localMtime INTEGER NOT NULL, rev TEXT)`);
+        const columns = this.db.query('PRAGMA table_info(base)').all() as { name: string }[];
+        if (!columns.some((c) => c.name === 'localCtime')) this.db.exec('ALTER TABLE base ADD COLUMN localCtime INTEGER');
         this.db.exec('CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
     }
 
@@ -31,14 +33,15 @@ export class SqliteStore implements Store {
             };
             if (r.hash !== null) rec.hash = r.hash as string;
             if (r.rev !== null) rec.rev = r.rev as string;
+            if (r.localCtime !== null) rec.localCtime = r.localCtime as number;
             return rec;
         });
     }
 
     put(rec: BaseRec): void {
         this.db
-            .query('INSERT OR REPLACE INTO base (key,parent,name,kind,localId,remoteId,hash,size,localMtime,rev) VALUES (?,?,?,?,?,?,?,?,?,?)')
-            .run(rec.key, rec.parent, rec.name, rec.kind, rec.localId, rec.remoteId, rec.hash ?? null, rec.size, rec.localMtime, rec.rev ?? null);
+            .query('INSERT OR REPLACE INTO base (key,parent,name,kind,localId,remoteId,hash,size,localMtime,rev,localCtime) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+            .run(rec.key, rec.parent, rec.name, rec.kind, rec.localId, rec.remoteId, rec.hash ?? null, rec.size, rec.localMtime, rec.rev ?? null, rec.localCtime ?? null);
     }
 
     remove(key: string): void {

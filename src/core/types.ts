@@ -16,6 +16,8 @@ export interface Entry {
     kind: Kind;
     size: number;
     mtime: number;
+    /** Local side: inode change time. Catches edits that keep size and modification date. */
+    ctime?: number;
     /** SHA-1 hex of the content. Remote side: may be missing if Proton does not report it. */
     hash?: string;
     /** Remote side: revision id. */
@@ -40,6 +42,8 @@ export interface BaseRec {
     hash?: string;
     size: number;
     localMtime: number;
+    /** Missing in records written before this field existed. */
+    localCtime?: number;
     rev?: string;
 }
 

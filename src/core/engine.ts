@@ -224,7 +224,7 @@ export class Engine {
     }
 
     private makeRec(l: Entry, r: Entry, parentKey: string, name: string): BaseRec {
-        return { key: this.options.newKey(), parent: parentKey, name, kind: l.kind, localId: l.id, remoteId: r.id, hash: l.hash, size: l.size, localMtime: l.mtime, rev: r.rev };
+        return { key: this.options.newKey(), parent: parentKey, name, kind: l.kind, localId: l.id, remoteId: r.id, hash: l.hash, size: l.size, localMtime: l.mtime, localCtime: l.ctime, rev: r.rev };
     }
 
     private async apply(a: Action): Promise<boolean> {
@@ -284,7 +284,7 @@ export class Engine {
                 const src = await this.local.openSource(path);
                 const r = await this.remote.uploadRevision(rec.remoteId, path, src, l.hash);
                 this.R.set(r.id, r);
-                this.save({ ...rec, localId: l.id, hash: l.hash, size: l.size, localMtime: l.mtime, rev: r.rev });
+                this.save({ ...rec, localId: l.id, hash: l.hash, size: l.size, localMtime: l.mtime, localCtime: l.ctime, rev: r.rev });
                 return true;
             }
             case 'download': {
@@ -317,7 +317,7 @@ export class Engine {
                 l.parent = old.parent;
                 this.L.delete(old.id);
                 this.L.set(l.id, l);
-                this.save({ ...rec, localId: l.id, remoteId: r.id, hash: l.hash, size: l.size, localMtime: l.mtime, rev: r.rev });
+                this.save({ ...rec, localId: l.id, remoteId: r.id, hash: l.hash, size: l.size, localMtime: l.mtime, localCtime: l.ctime, rev: r.rev });
                 return true;
             }
             case 'refresh': {
@@ -327,7 +327,7 @@ export class Engine {
                 // A temporary name must never enter the base.
                 const name = r.name.startsWith(SWAP_PREFIX) || l.name.startsWith(SWAP_PREFIX) ? rec.name : r.name;
                 const position = { ...rec, parent: this.parentKey(l.parent), name, localId: l.id, remoteId: r.id };
-                this.save(a.content ? { ...position, hash: l.hash, size: l.size, localMtime: l.mtime, rev: r.rev } : position);
+                this.save(a.content ? { ...position, hash: l.hash, size: l.size, localMtime: l.mtime, localCtime: l.ctime, rev: r.rev } : position);
                 return true;
             }
             case 'remoteTrash': {
