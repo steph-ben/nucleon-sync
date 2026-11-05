@@ -7,7 +7,6 @@ import { type DesktopState, notificationsFor, render, writeState } from '../src/
 import { makeIgnore } from '../src/desktop/exclude';
 import { DesktopTracker } from '../src/desktop/tracker';
 import { signIn } from '../src/desktop/signin';
-import { THIRD_PARTY_NOTICE } from '../src/names';
 import { recentActivity } from '../src/desktop/activity';
 import { noteCommand } from '../src/desktop/notify';
 import { buildConfig } from '../src/desktop/setup';
@@ -339,6 +338,6 @@ print(json.dumps(m.read_activity(sys.argv[2]),ensure_ascii=False));print(m.read_
 test('the notice is printed before the sign-in address', async () => {
     const lines: string[] = [];
     await signIn({ authViaWeb: async (show) => show('https://x.test/y') }, (l) => lines.push(l));
-    expect(lines[0]).toBe(THIRD_PARTY_NOTICE);
+    expect(lines[0]).toBe('This is a third-party application not officially supported by Proton.');
     expect(lines.some((l) => l.includes('https://x.test/y'))).toBe(true);
 });
