@@ -315,3 +315,25 @@ describe('échange de noms', () => {
         void rb;
     });
 });
+
+describe('connexion instable', () => {
+    test('téléchargement coupé : l’ancienne version reste en place', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        m.local.add(ROOT, 'doc', 'file', 'v1');
+        await settle(m);
+        hub.edit([...hub.nodes.values()][0]!.id, 'v2');
+        m.remote.chaos = {
+            before(op) {
+                if (op === 'remote.download') throw new Crash('réseau coupé');
+            },
+        };
+        await m.engine.cycle().catch(() => {});
+        expect(m.local.tree()).toEqual({ doc: 'v1' });
+        expect(m.local.quarantined).toEqual([]);
+        m.remote.chaos = { before() {} };
+        await settle(m);
+        expect(m.local.tree()).toEqual({ doc: 'v2' });
+        expect(m.local.quarantined).toEqual(['v1']);
+    });
+});

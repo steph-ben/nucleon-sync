@@ -1,2 +1,6 @@
 61830dd6894cbf54f863667fb186f063d8548ac97b946a6dcfc5e0c289c90e75  sdk.tgz
 ProtonDriveApps/sdk main, fetched 2026-11-05, MIT
+
+Modifications locales :
+- cli/src/credentials/constants.ts : trousseau propre à proton-sync, pour ne pas partager la session du CLI officiel.
+- cli/bun.lock : URL pkg.protontech.ch remplacées par registry.npmjs.org (dépôt injoignable, empreintes identiques).

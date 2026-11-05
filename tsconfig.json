@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "noEmit": true,
+        "skipLibCheck": true,
+        "types": ["bun-types", "node"],
+        "baseUrl": ".",
+        "paths": {
+            "@protontech/drive-sdk": ["vendor/proton-sdk/client/js/src/index.ts"],
+            "@protontech/drive-sdk/*": ["vendor/proton-sdk/client/js/src/*"]
+        }
+    },
+    "include": ["src", "test"]
+}

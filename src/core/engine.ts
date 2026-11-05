@@ -208,8 +208,17 @@ export class Engine {
                 const r = this.currentRemote(rec);
                 const path = this.path(old.id);
                 if (!(await this.local.isUnchanged(path, old))) return false;
-                await this.local.quarantine(path);
-                const l = await this.local.writeFile(path, r.hash, r.mtime, (tmp) => this.remote.download(r.id, tmp));
+                // L'ancienne version ne bouge qu'une fois la nouvelle complète : une coupure ne coûte rien.
+                const l = await this.local.writeFile(
+                    path,
+                    r.hash,
+                    r.mtime,
+                    (tmp) => this.remote.download(r.id, tmp),
+                    async () => {
+                        if (!(await this.local.isUnchanged(path, old))) throw new PathBusy(`modifié pendant le téléchargement : ${path}`);
+                        await this.local.quarantine(path);
+                    },
+                );
                 l.parent = old.parent;
                 this.L.delete(old.id);
                 this.L.set(l.id, l);

@@ -24,7 +24,14 @@ export interface LocalFs {
     /** Prépare l'envoi d'un fichier. */
     openSource(path: string): Promise<Source>;
     /** Écrit via un temporaire puis renomme ; échoue si la destination existe. */
-    writeFile(path: string, expectedHash: string | undefined, mtime: number, fill: (tmpPath: string) => Promise<void>): Promise<Entry>;
+    writeFile(
+        path: string,
+        expectedHash: string | undefined,
+        mtime: number,
+        fill: (tmpPath: string) => Promise<void>,
+        /** Appelé une fois le contenu complet et vérifié, juste avant de le mettre en place. */
+        beforeInstall?: () => Promise<void>,
+    ): Promise<Entry>;
 }
 
 /** Volontairement sans suppression définitive ni vidage de corbeille. */

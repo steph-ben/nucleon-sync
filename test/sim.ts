@@ -132,12 +132,13 @@ export class SimLocal implements LocalFs {
         if (!n) throw new Error(`absent ${path}`);
         return { size: n.content.length, mtime: n.mtime };
     }
-    async writeFile(path: string, expected: string | undefined, _mtime: number, fill: (tmp: string) => Promise<void>) {
+    async writeFile(path: string, expected: string | undefined, _mtime: number, fill: (tmp: string) => Promise<void>, beforeInstall?: () => Promise<void>) {
         const tmp = `tmp${++this.seq}`;
         await fill(tmp);
         const content = this.tmp.get(tmp)!;
         this.tmp.delete(tmp);
         if (expected !== undefined && content !== expected) throw new Error('empreinte invalide');
+        await beforeInstall?.();
         this.chaos.before('local.write');
         if (this.find(path)) throw new PathBusy(`destination occupée ${path}`);
         const { parent, name } = this.parentOf(path);
