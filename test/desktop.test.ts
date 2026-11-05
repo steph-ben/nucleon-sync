@@ -20,12 +20,12 @@ describe('render', () => {
     test('all good says when it last synced', () => {
         const v = render(idle, 1000 + 120000);
         expect(v.level).toBe('ok');
-        expect(v.title).toBe('À jour');
+        expect(v.title).toBe('Up to date');
     });
     test('a transfer shows its progress', () => {
         const v = render({ ...idle, syncing: true, transfer: { done: 2, total: 5, current: 'Notes/a.md' } }, 1000);
         expect(v.level).toBe('syncing');
-        expect(v.title).toBe('Synchronisation 2/5');
+        expect(v.title).toBe('Syncing 2/5');
         expect(v.lines).toContain('Notes/a.md');
     });
     test('pause wins over everything but problems', () => {
@@ -35,8 +35,8 @@ describe('render', () => {
     test('held deletions and new deletions are visible', () => {
         const v = render({ ...idle, held: 25, unseenDeletes: ['a.txt', 'b.txt'] }, 1000);
         expect(v.level).toBe('attention');
-        expect(v.lines.join('\n')).toContain('25 suppressions');
-        expect(v.lines.join('\n')).toContain('2 fichiers');
+        expect(v.lines.join('\n')).toContain('25 deletions');
+        expect(v.lines.join('\n')).toContain('2 files');
     });
 });
 
@@ -45,13 +45,13 @@ describe('notifications come from transitions only', () => {
         expect(notificationsFor(idle, idle)).toEqual([]);
     });
     test('a new problem notifies once', () => {
-        const next = { ...idle, problems: [{ kind: 'session' as const, message: 'Reconnecte-toi' }] };
+        const next = { ...idle, problems: [{ kind: 'session' as const, message: 'Log in again' }] };
         expect(notificationsFor(idle, next)).toHaveLength(1);
         expect(notificationsFor(next, next)).toEqual([]);
     });
     test('new held deletions, conflicts and deletions notify', () => {
         expect(notificationsFor(idle, { ...idle, held: 25 })[0]!.title).toContain('25');
-        expect(notificationsFor(idle, { ...idle, conflicts: 1 })[0]!.title).toContain('onflit');
+        expect(notificationsFor(idle, { ...idle, conflicts: 1 })[0]!.title).toContain('onflict');
         expect(notificationsFor(idle, { ...idle, unseenDeletes: ['a'] })[0]!.body).toContain('a');
     });
     test('the first state after a start does not replay old problems', () => {
@@ -59,7 +59,7 @@ describe('notifications come from transitions only', () => {
     });
     test('the end of a problem is said too', () => {
         const bad = { ...idle, problems: [{ kind: 'failing' as const, message: 'x' }] };
-        expect(notificationsFor(bad, idle)[0]!.title).toContain('rétablie');
+        expect(notificationsFor(bad, idle)[0]!.title).toContain('restored');
     });
 });
 
@@ -68,7 +68,7 @@ test('the state file is complete JSON with the rendered view', () => {
     writeState(file, idle, 2000);
     const saved = JSON.parse(readFileSync(file, 'utf8'));
     expect(saved.heartbeatAt).toBe(1000);
-    expect(saved.view.title).toBe('À jour');
+    expect(saved.view.title).toBe('Up to date');
 });
 
 describe('exclusions', () => {
@@ -134,7 +134,7 @@ describe('DesktopTracker', () => {
         t.passFailed(new Error('network unreachable'), false);
         expect(notes).toHaveLength(1);
         t.passDone(done);
-        expect(notes[1]!.title).toContain('rétablie');
+        expect(notes[1]!.title).toContain('restored');
     });
     test('an expired session is a problem at once, and says what to do', () => {
         const { t, notes } = tracker();
@@ -206,16 +206,16 @@ describe('commands', () => {
         const h = home();
         writeState(path.join(h, 'desktop.json'), { ...idle, heartbeatAt: Date.now(), held: 25 }, Date.now());
         const out = await cli(h, 'status');
-        expect(out).toContain('Action requise');
-        expect(out).toContain('25 suppressions');
+        expect(out).toContain('Action needed');
+        expect(out).toContain('25 deletions');
     });
     test('status says when the daemon is gone', async () => {
         const h = home();
         writeState(path.join(h, 'desktop.json'), { ...idle, heartbeatAt: Date.now() - 600000 }, Date.now());
-        expect(await cli(h, 'status')).toContain('arrêtée');
+        expect(await cli(h, 'status')).toContain('stopped');
     });
     test('status with no daemon ever run', async () => {
-        expect(await cli(home(), 'status')).toContain('arrêtée');
+        expect(await cli(home(), 'status')).toContain('stopped');
     });
     test('exclude add, list, remove', async () => {
         const h = home();
@@ -290,12 +290,12 @@ describe('activity comes from the journal', () => {
     test('plain words, newest first, without bookkeeping or retries', () => {
         const rows = recentActivity(logFile(), 10);
         expect(rows.map((r) => [r.label, r.path])).toEqual([
-            ['Mis en quarantaine', 'vieux.txt'],
-            ['Erreur : Envoyé', 'b.txt'],
-            ['Conflit : copie créée', 'a -> b'],
-            ['Déplacé sur le Drive', 'A -> B'],
-            ['Reçu (nouvelle version)', 'z.txt'],
-            ['Envoyé', 'Notes/été.md'],
+            ['Moved to quarantine', 'vieux.txt'],
+            ['Error: Uploaded', 'b.txt'],
+            ['Conflict: copy created', 'a -> b'],
+            ['Moved on Drive', 'A -> B'],
+            ['Downloaded (new version)', 'z.txt'],
+            ['Uploaded', 'Notes/été.md'],
         ]);
         expect(rows[1]!.error).toBe('quota exceeded: try later');
     });

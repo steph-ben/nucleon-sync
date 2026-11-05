@@ -56,7 +56,7 @@ export class DesktopTracker {
         if (r.deleted.length) this.kv.setKv(UNSEEN_KEY, JSON.stringify([...this.unseen(), ...r.deleted].slice(-MAX_UNSEEN)));
         const unreadable = r.plan.warnings.filter((w) => w.startsWith('cannot read')).map((message): Problem => ({ kind: 'unreadable', message }));
         this.failures = r.errors.length ? this.failures + 1 : 0;
-        const failing: Problem[] = this.failures >= FAILURES_BEFORE_ALERT ? [{ kind: 'failing', message: `Erreurs répétées : ${r.errors[0]}` }] : [];
+        const failing: Problem[] = this.failures >= FAILURES_BEFORE_ALERT ? [{ kind: 'failing', message: `Repeated errors: ${r.errors[0]}` }] : [];
         this.state = { ...this.state, syncing: false, transfer: undefined, lastSyncAt: r.errors.length ? this.state.lastSyncAt : this.now(), held: r.plan.held.length, conflicts: this.state.conflicts + r.conflicts, problems: [...unreadable, ...failing] };
         this.flush();
     }
@@ -65,9 +65,9 @@ export class DesktopTracker {
         const message = e instanceof Error ? e.message : String(e);
         this.failures++;
         let problems: Problem[] = [];
-        if (safety) problems = [{ kind: 'safety', message: `Arrêt de sécurité : ${message}` }];
-        else if (isSession(message)) problems = [{ kind: 'session', message: 'Session Proton expirée : lance proton-sync login' }];
-        else if (this.failures >= FAILURES_BEFORE_ALERT) problems = [{ kind: 'failing', message: `Synchro impossible : ${message}` }];
+        if (safety) problems = [{ kind: 'safety', message: `Safety stop: ${message}` }];
+        else if (isSession(message)) problems = [{ kind: 'session', message: 'Proton session expired: run proton-sync login' }];
+        else if (this.failures >= FAILURES_BEFORE_ALERT) problems = [{ kind: 'failing', message: `Sync failed: ${message}` }];
         this.state = { ...this.state, syncing: false, transfer: undefined, problems };
         this.flush();
     }

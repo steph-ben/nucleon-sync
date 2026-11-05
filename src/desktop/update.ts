@@ -30,15 +30,15 @@ export function checkForUpdate(repo: string, notify: (n: Note) => void, restart:
     const decision = decideUpdate({ branch, behind, clean, ci: ciOf(repo, sha) });
     if (decision === 'none') return 'up to date';
     if (decision === 'signal') {
-        notify({ title: 'proton-sync : mise à jour disponible', body: `${behind} commit(s) sur main. À installer à la main.` });
+        notify({ title: 'proton-sync: update available', body: `${behind} commit(s) on main. Install them by hand.` });
         return 'update available, not installed';
     }
     if (!run(repo, 'git', 'merge', '--ff-only', 'origin/main').ok) return 'update failed: not a fast-forward';
     if (!run(repo, 'bash', 'scripts/install.sh').ok) {
-        notify({ title: 'proton-sync : mise à jour incomplète', body: 'Lance scripts/install.sh.' });
+        notify({ title: 'proton-sync: update incomplete', body: 'Run scripts/install.sh.' });
         return 'update merged, install failed';
     }
     restart();
-    notify({ title: 'proton-sync mis à jour', body: `${behind} commit(s) installé(s).` });
+    notify({ title: 'proton-sync updated', body: `${behind} commit(s) installed.` });
     return 'updated';
 }

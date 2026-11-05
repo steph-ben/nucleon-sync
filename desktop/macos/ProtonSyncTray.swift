@@ -6,8 +6,8 @@ let daemonGoneSeconds = 180.0
 
 struct State {
     var level = "stopped"
-    var title = "Synchro arrêtée"
-    var lines: [String] = ["Le démon ne tourne pas."]
+    var title = "Sync stopped"
+    var lines: [String] = ["The daemon is not running."]
     var paused = false
     var held = 0
     var unseen = 0
@@ -20,13 +20,13 @@ struct Activity {
 }
 
 let tailBytes = 256 * 1024
-let labels = ["upload": "Envoyé", "upload new version": "Envoyé (nouvelle version)", "download": "Reçu",
-              "download new version": "Reçu (nouvelle version)", "trash": "Mis à la corbeille",
-              "quarantine": "Mis en quarantaine", "conflict copy": "Conflit : copie créée"]
+let labels = ["upload": "Uploaded", "upload new version": "Uploaded (new version)", "download": "Downloaded",
+              "download new version": "Downloaded (new version)", "trash": "Moved to trash",
+              "quarantine": "Moved to quarantine", "conflict copy": "Conflict: copy created"]
 
 func describe(_ op: String, toDrive: Bool) -> String {
-    if op == "move" { return toDrive ? "Déplacé sur le Drive" : "Déplacé ici" }
-    if op == "mkdir" { return toDrive ? "Dossier créé sur le Drive" : "Dossier créé ici" }
+    if op == "move" { return toDrive ? "Moved on Drive" : "Moved here" }
+    if op == "mkdir" { return toDrive ? "Folder created on Drive" : "Folder created here" }
     return labels[op] ?? op
 }
 
@@ -53,7 +53,7 @@ func readActivity(home: String, limit: Int = 200) -> [Activity] {
         var file = parts[2...].joined(separator: "  ")
         var what = describe(parts[1], toDrive: parts[0] == "local→drive")
         if isError {
-            what = "Erreur : " + what
+            what = "Error: " + what
             if let colon = file.range(of: ": ") { file = "\(file[..<colon.lowerBound])  (\(file[colon.upperBound...]))" }
         }
         let at = parse.date(from: String(line.prefix(24))).map(show.string(from:)) ?? ""
@@ -73,10 +73,10 @@ final class ActivityWindow: NSObject, NSTableViewDataSource, NSTableViewDelegate
     init(home: String) {
         self.home = home
         super.init()
-        window.title = "proton-sync : activité récente"
+        window.title = "proton-sync: recent activity"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        for (id, title, width) in [("when", "Quand", 120.0), ("what", "Action", 200.0), ("file", "Fichier", 420.0)] {
+        for (id, title, width) in [("when", "When", 120.0), ("what", "Action", 200.0), ("file", "File", 420.0)] {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
             column.title = title
             column.width = CGFloat(width)
@@ -163,7 +163,7 @@ final class Tray: NSObject, NSApplicationDelegate {
     func refresh() {
         state = read()
         if state.level == "stopped" && lastLevel != "stopped" && !lastLevel.isEmpty {
-            notify("proton-sync : synchro arrêtée", "Le démon ne répond plus.")
+            notify("proton-sync: sync stopped", "The daemon stopped responding.")
         }
         lastLevel = state.level
         let symbols = ["ok": "checkmark.icloud", "syncing": "arrow.triangle.2.circlepath.icloud", "paused": "pause.circle",
@@ -182,21 +182,21 @@ final class Tray: NSObject, NSApplicationDelegate {
     func menu() -> NSMenu {
         let m = NSMenu()
         m.autoenablesItems = false
-        m.addItem(entry("proton-sync : synchro Proton Drive", nil))
+        m.addItem(entry("proton-sync: Proton Drive sync", nil))
         m.addItem(.separator())
         m.addItem(entry(state.title, nil))
         for l in state.lines { m.addItem(entry(l, nil)) }
         m.addItem(.separator())
         if state.level != "stopped" {
-            m.addItem(entry(state.paused ? "Reprendre" : "Mettre en pause", #selector(togglePause)))
+            m.addItem(entry(state.paused ? "Resume" : "Pause", #selector(togglePause)))
         }
-        if state.held > 0 { m.addItem(entry("Valider \(state.held) suppressions", #selector(approve))) }
-        if state.unseen > 0 { m.addItem(entry("Marquer les suppressions comme vues", #selector(seen))) }
-        m.addItem(entry("Activité récente…", #selector(showActivity)))
-        m.addItem(entry("Ouvrir le dossier", #selector(openFolder)))
-        m.addItem(entry("Ouvrir le journal technique", #selector(openLog)))
+        if state.held > 0 { m.addItem(entry("Approve \(state.held) deletions", #selector(approve))) }
+        if state.unseen > 0 { m.addItem(entry("Mark deletions as seen", #selector(seen))) }
+        m.addItem(entry("Recent activity…", #selector(showActivity)))
+        m.addItem(entry("Open folder", #selector(openFolder)))
+        m.addItem(entry("Open technical log", #selector(openLog)))
         m.addItem(.separator())
-        m.addItem(entry("Quitter l'icône", #selector(quit)))
+        m.addItem(entry("Quit icon", #selector(quit)))
         return m
     }
 

@@ -388,7 +388,7 @@ async function main() {
                 /* no daemon ever ran */
             }
             if (!saved || Date.now() - saved.heartbeatAt > DAEMON_GONE_MS) {
-                console.log('Synchro arrêtée : le démon ne tourne pas.');
+                console.log('Sync stopped: the daemon is not running.');
                 return;
             }
             console.log(saved.view.title);
@@ -397,24 +397,24 @@ async function main() {
         }
         case 'setup': {
             if (existsSync(configPath())) throw new Error(`already configured: ${configPath()}`);
-            console.log('Configuration de proton-sync. Rien ne sera synchronisé pendant cet assistant.');
-            const folder = path.resolve((prompt('Dossier à synchroniser', path.join(homedir(), 'Proton')) ?? '').replace(/^~(?=\/)/, homedir()));
-            const choice = prompt('Cible : 1 = espace de test, 2 = Mes fichiers', '1');
+            console.log('proton-sync setup. Nothing is synced during this assistant.');
+            const folder = path.resolve((prompt('Folder to sync', path.join(homedir(), 'Proton')) ?? '').replace(/^~(?=\/)/, homedir()));
+            const choice = prompt('Target: 1 = test space, 2 = My files', '1');
             const target = choice === '2' ? 'myfiles' : 'test';
-            const confirmed = target === 'myfiles' && prompt('Mes fichiers contient tes vraies données. Tape oui pour confirmer') === 'oui';
+            const confirmed = target === 'myfiles' && prompt('My files holds your real data. Type yes to confirm') === 'yes';
             const cfg = buildConfig({ folder, target, confirmed, deviceName: hostname().split('.')[0]!.replace(/[^\w-]/g, '') });
             mkdirSync(folder, { recursive: true });
             mkdirSync(path.dirname(configPath()), { recursive: true });
             createRootMarker(folder);
             saveConfig(cfg);
             const ctx = await sdkContext();
-            if (!ctx.auth.isLoggedIn()) await ctx.auth.authViaWeb((url: string) => console.log(`Ouvre cette adresse pour te connecter :\n${url}`));
+            if (!ctx.auth.isLoggedIn()) await ctx.auth.authViaWeb((url: string) => console.log(`Open this address to log in:\n${url}`));
             const log = logger(false);
             const { engine } = await buildEngine(cfg, ctx, log);
             const plan = await engine.planOnly();
-            console.log(`Ce que ferait la première synchro : ${summarize(plan)}`);
-            for (const w of plan.warnings) console.log(`Attention : ${w}`);
-            console.log('Rien n a été modifié. Vérifie, puis lance proton-sync once.');
+            console.log(`What the first sync would do: ${summarize(plan)}`);
+            for (const w of plan.warnings) console.log(`Warning: ${w}`);
+            console.log('Nothing was changed. Review it, then run proton-sync once.');
             await ctx.dispose();
             return;
         }
@@ -430,12 +430,12 @@ async function main() {
             mkdirSync(DATA, { recursive: true });
             writeFileSync(PAUSE_FILE, '');
             signalDaemon('SIGUSR1');
-            console.log('en pause');
+            console.log('paused');
             return;
         case 'resume':
             if (existsSync(PAUSE_FILE)) unlinkSync(PAUSE_FILE);
             signalDaemon('SIGUSR1');
-            console.log('reprise');
+            console.log('resumed');
             return;
         case 'seen': {
             const store = new SqliteStore(path.join(DATA, 'state.sqlite'));

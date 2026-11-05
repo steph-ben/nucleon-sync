@@ -10,13 +10,13 @@ export interface Activity {
 const TAIL_BYTES = 256 * 1024;
 const LINE = /^(\S+) (INFO |ERROR) (local→drive|drive→local|local) {2}(.+?) {2}(.+)$/;
 const LABELS: Record<string, string> = {
-    upload: 'Envoyé',
-    'upload new version': 'Envoyé (nouvelle version)',
-    download: 'Reçu',
-    'download new version': 'Reçu (nouvelle version)',
-    trash: 'Mis à la corbeille',
-    quarantine: 'Mis en quarantaine',
-    'conflict copy': 'Conflit : copie créée',
+    upload: 'Uploaded',
+    'upload new version': 'Uploaded (new version)',
+    download: 'Downloaded',
+    'download new version': 'Downloaded (new version)',
+    trash: 'Moved to trash',
+    quarantine: 'Moved to quarantine',
+    'conflict copy': 'Conflict: copy created',
 };
 
 function tail(file: string): string {
@@ -38,8 +38,8 @@ function tail(file: string): string {
 }
 
 function describe(op: string, toDrive: boolean): string {
-    if (op === 'move') return toDrive ? 'Déplacé sur le Drive' : 'Déplacé ici';
-    if (op === 'mkdir') return toDrive ? 'Dossier créé sur le Drive' : 'Dossier créé ici';
+    if (op === 'move') return toDrive ? 'Moved on Drive' : 'Moved here';
+    if (op === 'mkdir') return toDrive ? 'Folder created on Drive' : 'Folder created here';
     return LABELS[op] ?? op;
 }
 
@@ -53,7 +53,7 @@ export function recentActivity(file: string, limit: number): Activity[] {
         const label = describe(op, direction === 'local→drive');
         if (level === 'ERROR') {
             const cut = rest.indexOf(': ');
-            rows.push({ at, label: `Erreur : ${label}`, path: cut < 0 ? rest : rest.slice(0, cut), error: cut < 0 ? '' : rest.slice(cut + 2) });
+            rows.push({ at, label: `Error: ${label}`, path: cut < 0 ? rest : rest.slice(0, cut), error: cut < 0 ? '' : rest.slice(cut + 2) });
         } else rows.push({ at, label, path: rest });
         if (rows.length === limit) break;
     }

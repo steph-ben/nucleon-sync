@@ -16,6 +16,7 @@ The daemon writes `desktop.json` atomically in its data folder: a rendered view 
 counters. It sends notifications on transitions only. The icons are thin: they read that file, run `proton-sync`
 commands from their menu, and treat a heartbeat older than 3 minutes as "sync stopped", which a dead daemon cannot
 report itself.
+- All text shown to the user is in English.
 
 - macOS: one Swift file, built locally with `swiftc`.
 - Linux: one Python file with Ayatana AppIndicator. GNOME needs the AppIndicator extension to show any tray icon.

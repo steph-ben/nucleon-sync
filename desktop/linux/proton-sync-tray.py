@@ -17,13 +17,13 @@ DAEMON_GONE_SECONDS = 180
 TAIL_BYTES = 256 * 1024
 LINE = re.compile(r"^(\S+) (INFO |ERROR) (local→drive|drive→local|local)  (.+?)  (.+)$")
 LABELS = {
-    "upload": "Envoyé",
-    "upload new version": "Envoyé (nouvelle version)",
-    "download": "Reçu",
-    "download new version": "Reçu (nouvelle version)",
-    "trash": "Mis à la corbeille",
-    "quarantine": "Mis en quarantaine",
-    "conflict copy": "Conflit : copie créée",
+    "upload": "Uploaded",
+    "upload new version": "Uploaded (new version)",
+    "download": "Downloaded",
+    "download new version": "Downloaded (new version)",
+    "trash": "Moved to trash",
+    "quarantine": "Moved to quarantine",
+    "conflict copy": "Conflict: copy created",
 }
 ICONS = {
     "ok": "emblem-ok-symbolic",
@@ -32,7 +32,7 @@ ICONS = {
     "attention": "dialog-warning-symbolic",
     "stopped": "process-stop-symbolic",
 }
-STOPPED = {"level": "stopped", "title": "Synchro arrêtée", "lines": ["Le démon ne tourne pas."], "paused": False, "held": 0, "unseen": 0}
+STOPPED = {"level": "stopped", "title": "Sync stopped", "lines": ["The daemon is not running."], "paused": False, "held": 0, "unseen": 0}
 
 
 def read_state(home, now):
@@ -61,9 +61,9 @@ def iso_seconds(at):
 
 def describe(op, to_drive):
     if op == "move":
-        return "Déplacé sur le Drive" if to_drive else "Déplacé ici"
+        return "Moved on Drive" if to_drive else "Moved here"
     if op == "mkdir":
-        return "Dossier créé sur le Drive" if to_drive else "Dossier créé ici"
+        return "Folder created on Drive" if to_drive else "Folder created here"
     return LABELS.get(op, op)
 
 
@@ -86,7 +86,7 @@ def read_activity(home, limit=200):
         error = ""
         if level == "ERROR":
             rest, _, error = rest.partition(": ")
-            label = "Erreur : " + label
+            label = "Error: " + label
         rows.append([at, label, rest, error])
         if len(rows) == limit:
             break
@@ -118,11 +118,11 @@ def main(binary, home):
         if window["open"]:
             window["open"].present()
             return
-        win = Gtk.Window(title="proton-sync : activité récente")
+        win = Gtk.Window(title="proton-sync: recent activity")
         win.set_default_size(760, 460)
         store = Gtk.ListStore(str, str, str)
         view = Gtk.TreeView(model=store)
-        for i, name in enumerate(["Quand", "Action", "Fichier"]):
+        for i, name in enumerate(["When", "Action", "File"]):
             column = Gtk.TreeViewColumn(name, Gtk.CellRendererText(), text=i)
             column.set_resizable(True)
             view.append_column(column)
@@ -159,23 +159,23 @@ def main(binary, home):
                 item.connect("activate", callback)
             menu.append(item)
 
-        add("proton-sync : synchro Proton Drive")
+        add("proton-sync: Proton Drive sync")
         menu.append(Gtk.SeparatorMenuItem())
         add(state["title"])
         for line in state["lines"]:
             add(line)
         menu.append(Gtk.SeparatorMenuItem())
         if state["level"] != "stopped":
-            add("Reprendre" if state["paused"] else "Mettre en pause", lambda _: run(binary, "resume" if state["paused"] else "pause"))
+            add("Resume" if state["paused"] else "Pause", lambda _: run(binary, "resume" if state["paused"] else "pause"))
         if state["held"]:
-            add(f"Valider {state['held']} suppressions", lambda _: run(binary, "approve"))
+            add(f"Approve {state['held']} deletions", lambda _: run(binary, "approve"))
         if state["unseen"]:
-            add("Marquer les suppressions comme vues", lambda _: run(binary, "seen"))
-        add("Activité récente…", show_activity)
-        add("Ouvrir le dossier", open_folder)
-        add("Ouvrir le journal technique", lambda _: run("xdg-open", os.path.join(home, "proton-sync.log")))
+            add("Mark deletions as seen", lambda _: run(binary, "seen"))
+        add("Recent activity…", show_activity)
+        add("Open folder", open_folder)
+        add("Open technical log", lambda _: run("xdg-open", os.path.join(home, "proton-sync.log")))
         menu.append(Gtk.SeparatorMenuItem())
-        add("Quitter l'icône", lambda _: Gtk.main_quit())
+        add("Quit icon", lambda _: Gtk.main_quit())
         menu.show_all()
         return menu
 
@@ -185,7 +185,7 @@ def main(binary, home):
             indicator.set_icon_full(ICONS[state["level"]], state["title"])
             indicator.set_menu(build(state))
             if state["level"] == "stopped" and last["level"] not in ("", "stopped"):
-                run("notify-send", "--app-name=proton-sync", "--", "proton-sync : synchro arrêtée", "Le démon ne répond plus.")
+                run("notify-send", "--app-name=proton-sync", "--", "proton-sync: sync stopped", "The daemon stopped responding.")
         last.update(level=state["level"], state=state)
         return True
 
