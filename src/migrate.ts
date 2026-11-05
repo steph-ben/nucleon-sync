@@ -33,7 +33,7 @@ export interface PlanOptions {
     otherDirs?: string[];
     /** Returns a description when a legacy service is active or enabled. */
     activeService?: () => string | undefined;
-    /** The exact commands to print when blocked; default: those of every known legacy service. */
+    /** The exact commands to print when blocked; default: those of the known legacy service of this platform. */
     commands?: string[];
 }
 
@@ -159,7 +159,7 @@ export function planMigration(legacyDir: string, newDir: string, isRunning: (dir
         const commands = options.commands?.length ? options.commands : knownStopCommands();
         // No loaded unit: stopping a unit would do nothing, the process itself must be stopped.
         const pid = running && !service ? lockPid(running) : undefined;
-        const todo = pid ? [`kill ${pid}`] : commands;
+        const todo = pid ? [`if \`ps -p ${pid}\` shows proton-sync: kill ${pid}`] : commands;
         return block(`stop the old daemon first (${what}). Run by hand: ${todo.join(' ; ')}`);
     }
     const problem = markerProblem(localRoot);

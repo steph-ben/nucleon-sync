@@ -156,9 +156,11 @@ describe('review fixes', () => {
         fs.writeFileSync(path.join(home, '.config/systemd/user/proton-sync.service'), '');
         const run = (active: number, enabled: string) => (c: string, a: string[]) =>
             a.includes('is-active') ? { status: active, stdout: '' } : { status: 0, stdout: enabled };
-        expect(activeLegacyService(home, 1000, run(0, 'disabled'))).toContain('active');
-        expect(activeLegacyService(home, 1000, run(3, 'enabled\n'))).toContain('enabled');
-        expect(activeLegacyService(home, 1000, run(3, 'disabled\n'))).toBeUndefined();
+        expect(activeLegacyService(home, 1000, run(0, 'disabled'), 'linux')).toContain('active');
+        expect(activeLegacyService(home, 1000, run(3, 'enabled\n'), 'linux')).toContain('enabled');
+        expect(activeLegacyService(home, 1000, run(3, 'disabled\n'), 'linux')).toBeUndefined();
+        // macOS: the same fake answers "loaded" for print, whatever the host OS.
+        expect(activeLegacyService(home, 1000, () => ({ status: 0, stdout: '' }), 'darwin')).toContain('loaded');
     });
 
     test('2. the new daemon sees a live legacy daemon with the same localRoot only', () => {
@@ -272,6 +274,6 @@ describe('round 2', () => {
     test('2. a live lock with no loaded unit says kill <pid>', () => {
         fs.writeFileSync(path.join(legacy, 'daemon.lock'), '4242');
         const blocked = planMigration(legacy, fresh, (d) => d === legacy, { commands: [] }).blocked!;
-        expect(blocked).toContain('kill 4242');
+        expect(blocked).toContain('if `ps -p 4242` shows proton-sync: kill 4242');
     });
 });

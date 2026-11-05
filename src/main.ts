@@ -15,7 +15,7 @@ import { buildConfig } from './desktop/setup';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
 import { checkForUpdate } from './desktop/update';
-import { activeLegacyService, applyMigration, findLegacy, isDaemonRunning, legacyDaemonFor, planMigration, stopCommands } from './migrate';
+import { activeLegacyService, applyMigration, findLegacy, isDaemonRunning, knownStopCommands, legacyDaemonFor, planMigration, stopCommands } from './migrate';
 import { APP_VERSION, configFile, dataDir } from './names';
 import { ChangeTracker } from './watch';
 
@@ -358,8 +358,9 @@ async function migrate(args: string[]) {
     });
     console.log('Done.');
     for (const warning of warnings) console.log(`warning: ${warning}`);
-    if (found.services.length) console.log('Stop and disable the old service by hand, then start this one:');
-    for (const service of found.services) for (const command of stopCommands(service)) console.log(`  ${command}`);
+    console.log('Stop and disable the old service by hand, then start this one:');
+    const commands = new Set([...found.services.flatMap(stopCommands), ...knownStopCommands()]);
+    for (const command of commands) console.log(`  ${command}`);
 }
 
 async function main() {
