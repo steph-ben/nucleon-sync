@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=nucleon-sync
+Comment=Proton Drive sync icon
+Exec=python3 __ROOT__/desktop/linux/nucleon-sync-tray.py __HOME__/.local/bin/nucleon-sync __DATA__
+Terminal=false
+X-GNOME-Autostart-enabled=true

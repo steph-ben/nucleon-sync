@@ -14,7 +14,7 @@ export interface DesktopState {
     transfer?: { done: number; total: number; current: string };
     lastSyncAt?: number;
     problems: Problem[];
-    /** Deletions waiting for `proton-sync approve`. */
+    /** Deletions waiting for `nucleon-sync approve`. */
     held: number;
     /** Items sent to the trash or quarantine since the user last acknowledged them. */
     unseenDeletes: string[];
@@ -62,8 +62,8 @@ export function notificationsFor(prev: DesktopState | undefined, next: DesktopSt
     if (!prev) return [];
     const notes: Note[] = [];
     const known = new Set(prev.problems.map((p) => p.message));
-    for (const p of next.problems) if (!known.has(p.message)) notes.push({ title: 'proton-sync: action needed', body: p.message });
-    if (prev.problems.length && !next.problems.length) notes.push({ title: 'proton-sync: sync restored', body: 'Everything works again.' });
+    for (const p of next.problems) if (!known.has(p.message)) notes.push({ title: 'nucleon-sync: action needed', body: p.message });
+    if (prev.problems.length && !next.problems.length) notes.push({ title: 'nucleon-sync: sync restored', body: 'Everything works again.' });
     if (next.held > prev.held) notes.push({ title: `${plural(next.held, 'deletion')} to approve`, body: 'Review, then approve from the menu.' });
     if (next.conflicts > prev.conflicts) notes.push({ title: `Conflict: ${next.conflicts - prev.conflicts} ${next.conflicts - prev.conflicts > 1 ? 'copies' : 'copy'} created`, body: 'Both versions are kept.' });
     const fresh = next.unseenDeletes.filter((d) => !prev.unseenDeletes.includes(d));

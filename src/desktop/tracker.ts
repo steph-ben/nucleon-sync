@@ -66,7 +66,7 @@ export class DesktopTracker {
         this.failures++;
         let problems: Problem[] = [];
         if (safety) problems = [{ kind: 'safety', message: `Safety stop: ${message}` }];
-        else if (isSession(message)) problems = [{ kind: 'session', message: 'Proton session expired: run proton-sync login' }];
+        else if (isSession(message)) problems = [{ kind: 'session', message: 'Proton session expired: run nucleon-sync login' }];
         else if (this.failures >= FAILURES_BEFORE_ALERT) problems = [{ kind: 'failing', message: `Sync failed: ${message}` }];
         this.state = { ...this.state, syncing: false, transfer: undefined, problems };
         this.flush();

@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>org.protonsync.tray</string>
+    <string>org.nucleonsync.tray</string>
     <key>ProgramArguments</key>
     <array>
-        <string>__HOME__/.local/bin/proton-sync-tray</string>
-        <string>__HOME__/.local/bin/proton-sync</string>
+        <string>__HOME__/.local/bin/nucleon-sync-tray</string>
+        <string>__HOME__/.local/bin/nucleon-sync</string>
         <string>__DATA__</string>
     </array>
     <key>RunAtLoad</key>

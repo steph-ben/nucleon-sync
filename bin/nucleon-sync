@@ -16,7 +16,7 @@ elif [ -x "$HOME/.local/bin/bun" ]; then
 elif [ -x "$HOME/.bun/bin/bun" ]; then
     BUN="$HOME/.bun/bin/bun"
 else
-    echo "proton-sync: bun not found (PATH, ~/.local/bin/bun or ~/.bun/bin/bun)" >&2
+    echo "nucleon-sync: bun not found (PATH, ~/.local/bin/bun or ~/.bun/bin/bun)" >&2
     exit 1
 fi
 

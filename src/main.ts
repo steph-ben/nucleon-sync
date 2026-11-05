@@ -15,11 +15,10 @@ import { buildConfig } from './desktop/setup';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
 import { checkForUpdate } from './desktop/update';
+import { APP_VERSION, dataDir } from './names';
 import { ChangeTracker } from './watch';
 
-const VERSION = '0.1.0';
-const APP_VERSION = `external-drive-protonsync@${VERSION}-stable`;
-const DATA = process.env.PROTON_SYNC_HOME ?? path.join(homedir(), '.local/share/proton-sync');
+const DATA = dataDir(process.env, homedir());
 const POLL_SECONDS = 60;
 const DEBOUNCE_MS = 3000;
 const HEARTBEAT_MS = 60 * 60 * 1000;
@@ -49,12 +48,12 @@ interface Config {
 }
 
 function configPath() {
-    return process.env.PROTON_SYNC_CONFIG ?? path.join(DATA, 'config.json');
+    return process.env.NUCLEON_SYNC_CONFIG ?? path.join(DATA, 'config.json');
 }
 
 function loadConfig(): Config {
     const file = configPath();
-    if (!existsSync(file)) throw new Error(`configuration missing: ${file}. Run: proton-sync init <folder> <device:name/folder|root>`);
+    if (!existsSync(file)) throw new Error(`configuration missing: ${file}. Run: nucleon-sync init <folder> <device:name/folder|root>`);
     return JSON.parse(readFileSync(file, 'utf8')) as Config;
 }
 
@@ -86,7 +85,7 @@ function signalDaemon(signal: 'SIGUSR1' | 'SIGTERM') {
 
 function logger(verbose = false): Logger {
     mkdirSync(DATA, { recursive: true });
-    const file = path.join(DATA, 'proton-sync.log');
+    const file = path.join(DATA, 'nucleon-sync.log');
     return (level, message) => {
         if (level === 'DEBUG' && !verbose) return;
         const line = `${new Date().toISOString()} ${level.padEnd(5)} ${message}`;
@@ -99,7 +98,7 @@ async function sdkContext() {
     process.env.PROTON_DRIVE_CACHE_DIR ??= path.join(DATA, 'sdk');
     process.env.PROTON_DRIVE_LOG_LEVEL ??= 'WARNING';
     const { init } = await import('../vendor/proton-sdk/cli/src/init');
-    return init({ appVersion: APP_VERSION, clientUidPrefix: 'external-drive-protonsync', enablePersistedEvents: false, enableMetrics: false, flags: {} });
+    return init({ appVersion: APP_VERSION, clientUidPrefix: 'external-drive-nucleon_sync', enablePersistedEvents: false, enableMetrics: false, flags: {} });
 }
 
 type Ctx = Awaited<ReturnType<typeof sdkContext>>;
@@ -190,7 +189,7 @@ async function daemon(cfg: Config) {
         });
     }
     const ctx = await sdkContext();
-    if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run proton-sync login');
+    if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run nucleon-sync login');
     const tracker = new ChangeTracker(makeIgnore(cfg.exclude ?? []));
     let desktop: DesktopTracker | undefined;
     const { engine, store } = await buildEngine(cfg, ctx, log, (paths) => tracker.own(paths, Date.now()), (done, total, line) => desktop?.progress(done, total, line));
@@ -271,7 +270,7 @@ async function daemon(cfg: Config) {
             lastWarnings = new Set(r.plan.warnings);
             if (r.plan.held.length !== lastHeld) {
                 if (r.plan.heldReason === 'incomplete-scan') log('WARN', `${r.plan.held.length} deletions postponed until every file can be read again`);
-                else if (r.plan.held.length) log('WARN', `${r.plan.held.length} deletions held (limit ${cfg.maxDeletes}): review with 'proton-sync plan', then run 'proton-sync approve'`);
+                else if (r.plan.held.length) log('WARN', `${r.plan.held.length} deletions held (limit ${cfg.maxDeletes}): review with 'nucleon-sync plan', then run 'nucleon-sync approve'`);
                 lastHeld = r.plan.held.length;
             }
             if (r.errors.length) beat.withErrors++;
@@ -328,7 +327,7 @@ async function main() {
     switch (cmd) {
         case 'init': {
             const [dir, remote] = args;
-            if (!dir || !remote) throw new Error('usage: proton-sync init <folder> <device:name/folder|root>');
+            if (!dir || !remote) throw new Error('usage: nucleon-sync init <folder> <device:name/folder|root>');
             const localRoot = path.resolve(dir);
             mkdirSync(path.dirname(configPath()), { recursive: true });
             createRootMarker(localRoot);
@@ -356,7 +355,7 @@ async function main() {
             const cfg = loadConfig();
             const log = logger(cfg.verbose ?? false);
             const ctx = await sdkContext();
-            if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run proton-sync login');
+            if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run nucleon-sync login');
             const { engine, store } = await buildEngine(cfg, ctx, log);
             if (cmd === 'plan') printPlan(await engine.planOnly());
             else {
@@ -397,7 +396,7 @@ async function main() {
         }
         case 'setup': {
             if (existsSync(configPath())) throw new Error(`already configured: ${configPath()}`);
-            console.log('proton-sync setup. Nothing is synced during this assistant.');
+            console.log('nucleon-sync setup. Nothing is synced during this assistant.');
             const folder = path.resolve((prompt('Folder to sync', path.join(homedir(), 'Proton')) ?? '').replace(/^~(?=\/)/, homedir()));
             const choice = prompt('Target: 1 = test space, 2 = My files', '1');
             const target = choice === '2' ? 'myfiles' : 'test';
@@ -414,7 +413,7 @@ async function main() {
             const plan = await engine.planOnly();
             console.log(`What the first sync would do: ${summarize(plan)}`);
             for (const w of plan.warnings) console.log(`Warning: ${w}`);
-            console.log('Nothing was changed. Review it, then run proton-sync once.');
+            console.log('Nothing was changed. Review it, then run nucleon-sync once.');
             await ctx.dispose();
             return;
         }
@@ -422,7 +421,7 @@ async function main() {
             console.log(checkForUpdate(path.join(import.meta.dir, '..'), sendNote, () => signalDaemon('SIGTERM')));
             return;
         case 'activity':
-            for (const a of recentActivity(path.join(DATA, 'proton-sync.log'), Number(args[0]) || 30).reverse()) {
+            for (const a of recentActivity(path.join(DATA, 'nucleon-sync.log'), Number(args[0]) || 30).reverse()) {
                 console.log(`${a.at}  ${a.label}  ${a.path}${a.error ? `  (${a.error})` : ''}`);
             }
             return;
@@ -451,7 +450,7 @@ async function main() {
                 for (const p of list) console.log(p);
                 return;
             }
-            if ((action !== 'add' && action !== 'remove') || !pattern) throw new Error('usage: proton-sync exclude list|add <pattern>|remove <pattern>');
+            if ((action !== 'add' && action !== 'remove') || !pattern) throw new Error('usage: nucleon-sync exclude list|add <pattern>|remove <pattern>');
             cfg.exclude = action === 'add' ? [...new Set([...list, pattern])] : list.filter((p) => p !== pattern);
             saveConfig(cfg);
             // The patterns are read at start: the service restarts the daemon.
@@ -463,7 +462,7 @@ async function main() {
             console.log(APP_VERSION);
             return;
         default:
-            console.log('usage: proton-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|version');
+            console.log('usage: nucleon-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|version');
     }
 }
 

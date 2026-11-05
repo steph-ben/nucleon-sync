@@ -29,11 +29,11 @@ say 'session storage'
 if ldconfig -p 2>/dev/null | grep -q libsecret; then
     echo 'libsecret found.'
 else
-    echo 'libsecret not found: sudo dnf install libsecret gnome-keyring, before proton-sync login.'
+    echo 'libsecret not found: sudo dnf install libsecret gnome-keyring, before nucleon-sync login.'
 fi
 
 say 'tests (temporary folders only, no account needed, a few minutes)'
 bash scripts/test-all.sh
 
 say 'next'
-echo 'proton-sync setup   (or proton-sync login, then docs/linux-install.md from step 3)'
+echo 'nucleon-sync setup   (or nucleon-sync login, then docs/linux-install.md from step 3)'

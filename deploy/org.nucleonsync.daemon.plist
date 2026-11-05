@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>org.protonsync.daemon</string>
+    <string>org.nucleonsync.daemon</string>
     <key>ProgramArguments</key>
     <array>
-        <string>__HOME__/dev/proton-sync/bin/proton-sync</string>
+        <string>__HOME__/.local/bin/nucleon-sync</string>
         <string>run</string>
     </array>
     <key>RunAtLoad</key>
@@ -18,15 +18,15 @@
     <key>ProcessType</key>
     <string>Background</string>
     <key>StandardOutPath</key>
-    <string>__HOME__/Library/Logs/proton-sync.log</string>
+    <string>__HOME__/Library/Logs/nucleon-sync.log</string>
     <key>StandardErrorPath</key>
-    <string>__HOME__/Library/Logs/proton-sync.log</string>
+    <string>__HOME__/Library/Logs/nucleon-sync.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
         <string>__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-        <key>PROTON_SYNC_HOME</key>
-        <string>__HOME__/.local/share/proton-sync-main</string>
+        <key>NUCLEON_SYNC_HOME</key>
+        <string>__HOME__/.local/share/nucleon-sync</string>
     </dict>
 </dict>
 </plist>

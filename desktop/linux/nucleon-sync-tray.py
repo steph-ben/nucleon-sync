@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tray icon for GNOME and others. Reads the daemon's desktop.json and runs proton-sync commands.
+"""Tray icon for GNOME and others. Reads the daemon's desktop.json and runs nucleon-sync commands.
 
 GNOME shows no tray icon without the AppIndicator extension. Fedora:
     sudo dnf install gnome-shell-extension-appindicator libayatana-appindicator-gtk3 python3-gobject
@@ -70,7 +70,7 @@ def describe(op, to_drive):
 def read_activity(home, limit=200):
     """Newest first, as [time, what, file, error], from the end of the daemon's journal."""
     try:
-        with open(os.path.join(home, "proton-sync.log"), "rb") as f:
+        with open(os.path.join(home, "nucleon-sync.log"), "rb") as f:
             f.seek(0, os.SEEK_END)
             f.seek(max(0, f.tell() - TAIL_BYTES))
             text = f.read().decode("utf-8", "replace")
@@ -101,8 +101,8 @@ def main(binary, home):
     from gi.repository import AyatanaAppIndicator3 as Indicator
     from gi.repository import GLib, Gtk
 
-    env = dict(os.environ, PROTON_SYNC_HOME=home)
-    indicator = Indicator.Indicator.new("proton-sync", ICONS["stopped"], Indicator.IndicatorCategory.APPLICATION_STATUS)
+    env = dict(os.environ, NUCLEON_SYNC_HOME=home)
+    indicator = Indicator.Indicator.new("nucleon-sync", ICONS["stopped"], Indicator.IndicatorCategory.APPLICATION_STATUS)
     indicator.set_status(Indicator.IndicatorStatus.ACTIVE)
     last = {"level": ""}
     window = {"open": None}
@@ -118,7 +118,7 @@ def main(binary, home):
         if window["open"]:
             window["open"].present()
             return
-        win = Gtk.Window(title="proton-sync: recent activity")
+        win = Gtk.Window(title="nucleon-sync: recent activity")
         win.set_default_size(760, 460)
         store = Gtk.ListStore(str, str, str)
         view = Gtk.TreeView(model=store)
@@ -159,7 +159,7 @@ def main(binary, home):
                 item.connect("activate", callback)
             menu.append(item)
 
-        add("proton-sync: Proton Drive sync")
+        add("nucleon-sync: Proton Drive sync")
         menu.append(Gtk.SeparatorMenuItem())
         add(state["title"])
         for line in state["lines"]:
@@ -173,7 +173,7 @@ def main(binary, home):
             add("Mark deletions as seen", lambda _: run(binary, "seen"))
         add("Recent activity…", show_activity)
         add("Open folder", open_folder)
-        add("Open technical log", lambda _: run("xdg-open", os.path.join(home, "proton-sync.log")))
+        add("Open technical log", lambda _: run("xdg-open", os.path.join(home, "nucleon-sync.log")))
         menu.append(Gtk.SeparatorMenuItem())
         add("Quit icon", lambda _: Gtk.main_quit())
         menu.show_all()
@@ -185,7 +185,7 @@ def main(binary, home):
             indicator.set_icon_full(ICONS[state["level"]], state["title"])
             indicator.set_menu(build(state))
             if state["level"] == "stopped" and last["level"] not in ("", "stopped"):
-                run("notify-send", "--app-name=proton-sync", "--", "proton-sync: sync stopped", "The daemon stopped responding.")
+                run("notify-send", "--app-name=nucleon-sync", "--", "nucleon-sync: sync stopped", "The daemon stopped responding.")
         last.update(level=state["level"], state=state)
         return True
 
@@ -196,5 +196,5 @@ def main(binary, home):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        sys.exit("usage: proton-sync-tray.py <path to proton-sync> <data folder>")
+        sys.exit("usage: nucleon-sync-tray.py <path to nucleon-sync> <data folder>")
     main(sys.argv[1], sys.argv[2])

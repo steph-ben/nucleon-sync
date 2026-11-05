@@ -1,5 +1,4 @@
-import { ROOT_MARKER, TMP_DIR } from './adapters/local';
-import { SWAP_PREFIX } from './core/types';
+import { LEGACY_ROOT_MARKER, LEGACY_TMP_DIR, ROOT_MARKER, SWAP_PREFIX, TMP_DIR } from './names';
 
 /** The daemon's own writes raise file system events a few milliseconds later. */
 const OWN_TTL_MS = 3000;
@@ -28,7 +27,7 @@ export class ChangeTracker {
     classify(name: string, now: number): ChangeOrigin {
         const rel = name.normalize('NFC');
         const parts = rel.split('/');
-        if (parts.some((c, i) => c === TMP_DIR || c === ROOT_MARKER || c.startsWith(SWAP_PREFIX) || this.ignore(c, i < parts.length - 1))) return 'ignored';
+        if (parts.some((c, i) => c === TMP_DIR || c === LEGACY_TMP_DIR || c === ROOT_MARKER || c === LEGACY_ROOT_MARKER || c.startsWith(SWAP_PREFIX) || this.ignore(c, i < parts.length - 1))) return 'ignored';
         const at = this.own_.get(rel);
         if (at !== undefined && now - at <= OWN_TTL_MS) return 'own';
         this.pending.add(rel);

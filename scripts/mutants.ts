@@ -49,7 +49,7 @@ const MUTANTS: Mutant[] = [
 ];
 
 const repo = path.join(import.meta.dir, '..');
-const copy = mkdtempSync(path.join(tmpdir(), 'proton-sync-mutants-'));
+const copy = mkdtempSync(path.join(tmpdir(), 'nucleon-sync-mutants-'));
 for (const p of ['src', 'test', 'package.json', 'tsconfig.json']) cpSync(path.join(repo, p), path.join(copy, p), { recursive: true });
 symlinkSync(path.join(repo, 'node_modules'), path.join(copy, 'node_modules'));
 symlinkSync(path.join(repo, 'vendor'), path.join(copy, 'vendor'));

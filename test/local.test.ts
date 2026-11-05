@@ -32,9 +32,30 @@ afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 describe('RealLocalFs', () => {
     test('assertRootSafe: marker missing, root missing', async () => {
         await L.assertRootSafe();
-        fs.rmSync(path.join(root, '.proton-sync-root'));
+        fs.rmSync(path.join(root, '.nucleon-sync-root'));
         await expect(L.assertRootSafe()).rejects.toThrow();
         await expect(new RealLocalFs(path.join(tmp, 'nope'), quar).assertRootSafe()).rejects.toThrow();
+    });
+
+    test('a folder that has the legacy marker is still trusted', async () => {
+        fs.rmSync(path.join(root, '.nucleon-sync-root'));
+        fs.writeFileSync(path.join(root, '.proton-sync-root'), '');
+        await L.assertRootSafe();
+    });
+
+    test('createRootMarker writes the new marker name', async () => {
+        expect(fs.existsSync(path.join(root, '.nucleon-sync-root'))).toBe(true);
+        expect(fs.existsSync(path.join(root, '.proton-sync-root'))).toBe(false);
+    });
+
+    test('both marker and tmp folder names, new and legacy, are invisible to scans', async () => {
+        fs.writeFileSync(path.join(root, '.proton-sync-root'), '');
+        for (const d of ['.nucleon-sync-tmp', '.proton-sync-tmp']) {
+            fs.mkdirSync(path.join(root, d));
+            w(`${d}/z`);
+        }
+        w('ok');
+        expect(await names()).toEqual(['ok']);
     });
 
     test('stable id after rename, correct parents', async () => {
@@ -52,12 +73,12 @@ describe('RealLocalFs', () => {
     });
 
     test('ignore rules, marker and tmp invisible, swap visible', async () => {
-        for (const f of ['.DS_Store', '._x', '.nfs1', '.rclone-a', '~$doc', '.~lock.f#', 'a.swp', '.Trash-1000', '.proton-sync-swap-1', 'ok']) w(f);
+        for (const f of ['.DS_Store', '._x', '.nfs1', '.rclone-a', '~$doc', '.~lock.f#', 'a.swp', '.Trash-1000', '.nucleon-sync-swap-1', 'ok']) w(f);
         w('.venv/x');
         w('sub/__pycache__/y');
-        fs.mkdirSync(path.join(root, '.proton-sync-tmp'));
-        w('.proton-sync-tmp/z');
-        expect(await names()).toEqual(['.proton-sync-swap-1', 'ok', 'sub']);
+        fs.mkdirSync(path.join(root, '.nucleon-sync-tmp'));
+        w('.nucleon-sync-tmp/z');
+        expect(await names()).toEqual(['.nucleon-sync-swap-1', 'ok', 'sub']);
         expect(defaultIgnore('.venv', false)).toBe(false);
     });
 
@@ -170,20 +191,20 @@ describe('RealLocalFs', () => {
         const e = await L.writeFile('n.txt', 'aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d', 1_700_000_000_000, async (t) => void fs.writeFileSync(t, 'hello'));
         expect(e.hash).toBe('aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d');
         expect(e.mtime).toBe(1_700_000_000_000);
-        expect(fs.readdirSync(path.join(root, '.proton-sync-tmp'))).toEqual([]);
+        expect(fs.readdirSync(path.join(root, '.nucleon-sync-tmp'))).toEqual([]);
     });
 
     test('writeFile: wrong hash, nothing left behind', async () => {
         await expect(L.writeFile('n.txt', 'deadbeef', 1000, async (t) => void fs.writeFileSync(t, 'hello'))).rejects.toThrow();
         expect(fs.existsSync(path.join(root, 'n.txt'))).toBe(false);
-        expect(fs.readdirSync(path.join(root, '.proton-sync-tmp'))).toEqual([]);
+        expect(fs.readdirSync(path.join(root, '.nucleon-sync-tmp'))).toEqual([]);
     });
 
     test('writeFile refuses an existing destination', async () => {
         w('n.txt', 'old');
         await expect(L.writeFile('n.txt', undefined, 1000, async (t) => void fs.writeFileSync(t, 'new'))).rejects.toBeInstanceOf(PathBusy);
         expect(fs.readFileSync(path.join(root, 'n.txt'), 'utf8')).toBe('old');
-        expect(fs.readdirSync(path.join(root, '.proton-sync-tmp'))).toEqual([]);
+        expect(fs.readdirSync(path.join(root, '.nucleon-sync-tmp'))).toEqual([]);
     });
 
     test('mkdir: EEXIST gives PathBusy', async () => {

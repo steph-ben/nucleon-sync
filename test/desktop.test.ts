@@ -64,7 +64,7 @@ describe('notifications come from transitions only', () => {
 });
 
 test('the state file is complete JSON with the rendered view', () => {
-    const file = path.join(mkdtempSync(path.join(tmpdir(), 'proton-sync-state-')), 'desktop.json');
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'nucleon-sync-state-')), 'desktop.json');
     writeState(file, idle, 2000);
     const saved = JSON.parse(readFileSync(file, 'utf8'));
     expect(saved.heartbeatAt).toBe(1000);
@@ -116,7 +116,7 @@ test('excluding an already synced folder deletes nothing, on either side', async
 function tracker() {
     const kv = new Map<string, string>();
     const notes: { title: string; body: string }[] = [];
-    const file = path.join(mkdtempSync(path.join(tmpdir(), 'proton-sync-track-')), 'desktop.json');
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'nucleon-sync-track-')), 'desktop.json');
     let now = 1000;
     const t = new DesktopTracker(file, 1, { getKv: (k) => kv.get(k), setKv: (k, v) => void kv.set(k, v) }, (n) => notes.push(n), () => now, () => false);
     return { t, kv, notes, file, tick: (ms: number) => (now += ms) };
@@ -140,7 +140,7 @@ describe('DesktopTracker', () => {
         const { t, notes } = tracker();
         t.passDone(done);
         t.passFailed(new Error('session expired: 401'), false);
-        expect(notes[0]!.body).toContain('proton-sync login');
+        expect(notes[0]!.body).toContain('nucleon-sync login');
     });
     test('a safety stop is a problem at once', () => {
         const { t, notes } = tracker();
@@ -181,19 +181,19 @@ describe('notification command', () => {
         expect(c.at(-1)).toBe(evil);
     });
     test('Linux: a name is not an option', () => {
-        expect(noteCommand('linux', { title: '-x', body: 'b' })).toEqual(['notify-send', '--app-name=proton-sync', '--', '-x', 'b']);
+        expect(noteCommand('linux', { title: '-x', body: 'b' })).toEqual(['notify-send', '--app-name=nucleon-sync', '--', '-x', 'b']);
     });
 });
 
 describe('commands', () => {
     const main = path.join(import.meta.dir, '../src/main.ts');
     async function cli(home: string, ...args: string[]) {
-        const p = Bun.spawn([process.execPath, main, ...args], { env: { ...process.env, PROTON_SYNC_HOME: home }, stdout: 'pipe', stderr: 'pipe' });
+        const p = Bun.spawn([process.execPath, main, ...args], { env: { ...process.env, NUCLEON_SYNC_HOME: home }, stdout: 'pipe', stderr: 'pipe' });
         const out = await new Response(p.stdout).text();
         await p.exited;
         return out;
     }
-    const home = () => mkdtempSync(path.join(tmpdir(), 'proton-sync-cli-'));
+    const home = () => mkdtempSync(path.join(tmpdir(), 'nucleon-sync-cli-'));
 
     test('pause and resume', async () => {
         const h = home();
@@ -230,7 +230,7 @@ describe('commands', () => {
 describe('setup assistant', () => {
     test('a test space needs no confirmation', () => {
         const c = buildConfig({ folder: '/home/s/Proton', target: 'test', confirmed: false, deviceName: 'fedora' });
-        expect(c.remote).toBe('device:proton-sync-test/sandbox-fedora');
+        expect(c.remote).toBe('device:nucleon-sync-test/sandbox-fedora');
         expect(c.allowDriveRoot).toBeUndefined();
     });
     test('My files only with an explicit confirmation', () => {
@@ -258,8 +258,8 @@ describe('update decision', () => {
 });
 
 test.skipIf(!hasPython)('Linux icon: a stale, broken or missing state means stopped', async () => {
-    const h = mkdtempSync(path.join(tmpdir(), 'proton-sync-py-'));
-    const script = path.join(import.meta.dir, '../desktop/linux/proton-sync-tray.py');
+    const h = mkdtempSync(path.join(tmpdir(), 'nucleon-sync-py-'));
+    const script = path.join(import.meta.dir, '../desktop/linux/nucleon-sync-tray.py');
     const code = `import importlib.util,sys
 s=importlib.util.spec_from_file_location("t",sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
 print(m.read_state(sys.argv[2],1000)["level"]);print(m.read_state(sys.argv[2],99999)["level"]);print(m.read_state("/nonexistent",1000)["level"])`;
@@ -282,7 +282,7 @@ describe('activity comes from the journal', () => {
         '2026-11-05T10:00:08.000Z INFO  drive→local  quarantine  vieux.txt',
     ].join('\n');
     const logFile = () => {
-        const f = path.join(mkdtempSync(path.join(tmpdir(), 'proton-sync-log-')), 'proton-sync.log');
+        const f = path.join(mkdtempSync(path.join(tmpdir(), 'nucleon-sync-log-')), 'nucleon-sync.log');
         writeFileSync(f, `${LOG}\n`);
         return f;
     };
@@ -309,12 +309,12 @@ describe('activity comes from the journal', () => {
     });
 
     test('no journal yet', () => {
-        expect(recentActivity('/nonexistent/proton-sync.log', 10)).toEqual([]);
+        expect(recentActivity('/nonexistent/nucleon-sync.log', 10)).toEqual([]);
     });
 
     test.skipIf(!hasPython)('the Linux window reads the same thing as the command', async () => {
         const f = logFile();
-        const script = path.join(import.meta.dir, '../desktop/linux/proton-sync-tray.py');
+        const script = path.join(import.meta.dir, '../desktop/linux/nucleon-sync-tray.py');
         const code = `import importlib.util,sys,json
 s=importlib.util.spec_from_file_location("t",sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
 print(json.dumps(m.read_activity(sys.argv[2]),ensure_ascii=False));print(m.read_activity("/nonexistent"))`;

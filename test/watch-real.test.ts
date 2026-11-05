@@ -20,14 +20,14 @@ async function seen(root: string, act: () => void, wanted: string) {
 }
 
 test('recursive watch reports a change in an existing subfolder', async () => {
-    const root = mkdtempSync(path.join(tmpdir(), 'proton-sync-watch-'));
+    const root = mkdtempSync(path.join(tmpdir(), 'nucleon-sync-watch-'));
     dirs.push(root);
     mkdirSync(path.join(root, 'Notes/sous'), { recursive: true });
     expect(await seen(root, () => writeFileSync(path.join(root, 'Notes/sous/n.md'), 'x'), 'n.md')).toBe(true);
 });
 
 test('recursive watch reports a change in a folder created after it started', async () => {
-    const root = mkdtempSync(path.join(tmpdir(), 'proton-sync-watch-'));
+    const root = mkdtempSync(path.join(tmpdir(), 'nucleon-sync-watch-'));
     dirs.push(root);
     const act = async () => {
         mkdirSync(path.join(root, 'Nouveau'));
