@@ -182,6 +182,35 @@ describe('machine life', () => {
         expect(w.a.store.all().find((r) => r.key === moved.parent)?.name).toBe('Nouveau');
     });
 
+    row({ id: 'machine.inode-reuse-pending-delete', area, gesture: 'A new synced file takes the inode of a file whose deletion is still pending (Linux)', expected: 'Two records never share one file: the deletion goes through, no content lands in the wrong file' }, async () => {
+        const w = await seeded();
+        w.web.write('fichier.txt', 'du web');
+        await w.settle();
+        const deleted = w.a.store.all().find((r) => r.name === 'n.md')!;
+        const fresh = w.a.store.all().find((r) => r.name === 'fichier.txt')!;
+        const uid = w.web.node('Notes/n.md').id;
+        rmSync(w.a.abs('Notes/n.md'));
+        w.a.store.put({ ...deleted, localId: fresh.localId });
+        await w.settle();
+        w.assertConverged();
+        expect(w.hub.nodes.get(uid)!.revisions).toEqual(['contenu Notes/n.md']);
+        expect(w.hub.alive(w.hub.nodes.get(uid)!)).toBe(false);
+    });
+
+    row({ id: 'machine.inode-reuse-crash', area, gesture: 'Same, with a crash right after the download, before it is recorded (Linux)', expected: 'The new file is paired with its own Drive file, the old one stays deleted' }, async () => {
+        const w = await seeded();
+        const deleted = w.a.store.all().find((r) => r.name === 'n.md')!;
+        const uid = w.web.node('Notes/n.md').id;
+        w.web.write('fichier.txt', 'du web');
+        rmSync(w.a.abs('Notes/n.md'));
+        w.write(w.a, 'fichier.txt', 'du web');
+        const st = statSync(w.a.abs('fichier.txt'));
+        w.a.store.put({ ...deleted, localId: `${st.dev}:${st.ino}` });
+        await w.settle();
+        w.assertConverged();
+        expect(w.hub.nodes.get(uid)!.revisions).toEqual(['contenu Notes/n.md']);
+    });
+
     row({ id: 'machine.clock-back', area, gesture: 'The clock goes back: an edited file has an older date', expected: 'The edit is still uploaded' }, async () => {
         const w = await seeded();
         writeFileSync(w.a.abs('z.txt'), 'edit du passé');

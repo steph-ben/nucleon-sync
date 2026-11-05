@@ -41,6 +41,8 @@ only advances after each successful action, and the next pass recomputes from th
 - Before any local action, the item is checked again; if it has changed, the action is abandoned.
 - Root missing, no marker, or an empty scan while the base is not: stop.
 - Large real deletions: held for approval, the rest continues.
+- A local id is trusted only if the file kept its content or its place: inodes get reused, at once on Linux. A file
+  both moved and edited between two passes is therefore a deletion plus a new file, with nothing lost.
 - Local scan incomplete (unreadable file or folder, read error): no deletion in that pass, even if approved,
   because an absent item proves nothing. The rest continues, and deletions resume after a complete scan.
 - First run (empty base): no deletion possible, matching by path and content.

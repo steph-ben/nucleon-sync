@@ -41,6 +41,7 @@ const MUTANTS: Mutant[] = [
     { name: 'symlinks followed as files', file: L, from: 'if (!isDir && !st.isFile()) continue; // symlink or special file: never followed', to: '' },
     { name: 'conflict keeps one version', file: R, from: 'if (s.lMod && s.rMod && !(s.l!.hash && s.l!.hash === s.r!.hash)) {', to: 'if (false) {' },
     { name: 'same-size edits unseen', file: L, from: '(k.localCtime === undefined || k.localCtime === ctime)', to: 'true' },
+    { name: 'reused inode trusted as the same file', file: R, from: "r.kind === 'dir' || r.hash === undefined || e.hash === r.hash || (e.parent === parentId && nameKey(e.name) === nameKey(r.name));", to: 'true;' },
     { name: 'stale file record taken as parent', file: E, from: "if (r.kind !== 'dir') continue;", to: '' },
     { name: 'partial Drive walk replaces the view', file: P, from: 'this.entries = previous;\n            throw e;', to: 'throw e;' },
     { name: 'case-only names not seen as busy', file: E, from: "return this.options.caseInsensitive ? n.toLowerCase() : n;", to: 'return n;', needsCaseInsensitiveDisk: true },

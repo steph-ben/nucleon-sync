@@ -38,12 +38,13 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
     const sorted = [...base].sort((a, b) => depth(a) - depth(b));
 
     // 1. Bind each record to its item on each side.
-    const bindSide = (snap: Snapshot, idOf: (r: BaseRec) => string) => {
+    const bindSide = (snap: Snapshot, idOf: (r: BaseRec) => string, trust: (r: BaseRec, e: Entry, parentId: string | undefined) => boolean) => {
         const bound = new Map<string, Entry>();
         const claimed = new Set<string>();
         for (const r of sorted) {
             const e = snap.get(idOf(r));
-            if (e && e.kind === r.kind && !e.protected) {
+            const parentId = r.parent === ROOT ? ROOT : bound.get(r.parent)?.id;
+            if (e && e.kind === r.kind && !e.protected && trust(r, e, parentId)) {
                 bound.set(r.key, e);
                 claimed.add(e.id);
             }
@@ -63,8 +64,11 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         }
         return bound;
     };
-    const boundL = bindSide(L, (r) => r.localId);
-    const boundR = bindSide(R, (r) => r.remoteId);
+    // An inode can be reused by an unrelated file (at once on Linux). A file found elsewhere with
+    // other content is not the same file: a real move keeps its content, an edit keeps its place.
+    const sameLocalFile = (r: BaseRec, e: Entry, parentId: string | undefined) => r.kind === 'dir' || r.hash === undefined || e.hash === r.hash || (e.parent === parentId && nameKey(e.name) === nameKey(r.name));
+    const boundL = bindSide(L, (r) => r.localId, sameLocalFile);
+    const boundR = bindSide(R, (r) => r.remoteId, () => true);
 
     const recOfL = new Map<string, string>();
     const recOfR = new Map<string, string>();
