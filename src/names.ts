@@ -2,10 +2,23 @@ import * as path from 'node:path';
 
 export const APP_NAME = 'nucleon-sync';
 export const VERSION = '0.2.0';
-export const CHANNEL = 'beta';
+export const CHANNEL: string = 'beta';
 
 /** Sent to Proton in the x-pm-appversion header, in the shape the SDK asks for. */
-export const APP_VERSION = `external-drive-nucleon_sync@${VERSION}-${CHANNEL}`;
+export const APP_VERSION = appVersionFor(VERSION, CHANNEL);
+
+/** Release version as tagged on GitHub: 0.2.0-beta, or 0.2.0 for a stable release. */
+export const RELEASE_VERSION = CHANNEL === 'stable' ? VERSION : `${VERSION}-${CHANNEL}`;
+
+/** What `nucleon-sync version` prints for a release version such as 0.3.0-beta or 0.3.0. */
+export function releaseAppVersion(release: string): string {
+    const [numbers = '', channel = 'stable'] = release.split(/-(.*)/s);
+    return appVersionFor(numbers, channel);
+}
+
+function appVersionFor(version: string, channel: string): string {
+    return `external-drive-nucleon_sync@${version}-${channel}`;
+}
 
 export const THIRD_PARTY_NOTICE = 'This is a third-party application not officially supported by Proton.';
 

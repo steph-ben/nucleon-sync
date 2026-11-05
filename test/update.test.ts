@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { releaseAppVersion } from '../src/names';
 import { planUninstall, runUninstall } from '../src/uninstall';
 import { checkForUpdate, compareVersions, decideUpdate, fetchLatest, isInstalledLayout, runUpdate, switchVersion } from '../src/desktop/update';
 
@@ -108,8 +109,12 @@ describe('runUpdate', () => {
                 if (cmd[0] === 'sh') mkdirSync(path.join(app, 'versions/0.3.0/bin'), { recursive: true });
                 return 0;
             },
-            output: (cmd: string[]) => (cmd[0]?.includes('versions/0.3.0') ? '0.3.0' : ''),
-            restart: () => calls.push('restart'),
+            // What the real command prints, built by the same function as APP_VERSION.
+            output: (cmd: string[]) => (cmd[0]?.includes('versions/0.3.0') ? releaseAppVersion('0.3.0') : ''),
+            serviceInstalled: () => true,
+            restart: () => (calls.push('restart'), true),
+            serviceIsActive: () => true,
+            wait: async () => {},
         };
         return { app, calls, deps };
     }
@@ -129,6 +134,44 @@ describe('runUpdate', () => {
         expect(message).toContain('rolled back');
         expect(readlinkSync(path.join(app, 'current'))).toBe('versions/0.2.0');
         expect(calls).not.toContain('restart');
+        expect(existsSync(path.join(app, 'versions/0.3.0'))).toBe(false);
+    });
+    test('the version output must match exactly', async () => {
+        expect(releaseAppVersion('0.3.0-beta')).toBe('external-drive-nucleon_sync@0.3.0-beta');
+        const { app, deps } = setup();
+        const message = await runUpdate({ ...deps, output: () => releaseAppVersion('0.3.01') });
+        expect(message).toContain('rolled back');
+        expect(readlinkSync(path.join(app, 'current'))).toBe('versions/0.2.0');
+    });
+    test('a restart that fails puts the link back, restarts again and prunes nothing', async () => {
+        const { app, calls, deps } = setup(['0.1.0', '0.2.0'], '0.2.0');
+        let restarts = 0;
+        const message = await runUpdate({ ...deps, restart: () => (restarts++, calls.push('restart'), restarts > 1) });
+        expect(message).toContain('did not stay up');
+        expect(restarts).toBe(2);
+        expect(readlinkSync(path.join(app, 'current'))).toBe('versions/0.2.0');
+        expect(existsSync(path.join(app, 'versions/0.1.0'))).toBe(true);
+        expect(existsSync(path.join(app, 'versions/0.3.0'))).toBe(false);
+    });
+    test('a service that dies after the restart puts the link back', async () => {
+        const { app, deps } = setup(['0.1.0', '0.2.0'], '0.2.0');
+        const message = await runUpdate({ ...deps, serviceIsActive: () => false });
+        expect(message).toContain('did not stay up');
+        expect(readlinkSync(path.join(app, 'current'))).toBe('versions/0.2.0');
+        expect(existsSync(path.join(app, 'versions/0.1.0'))).toBe(true);
+    });
+    test('without a service nothing is restarted, and it says so', async () => {
+        const { calls, deps } = setup();
+        const message = await runUpdate({ ...deps, serviceInstalled: () => false });
+        expect(message).toContain('No service is installed');
+        expect(calls).not.toContain('restart');
+    });
+    test('a current that is not a link is treated as not installed', async () => {
+        const { app, calls, deps } = setup();
+        rmSync(path.join(app, 'current'));
+        mkdirSync(path.join(app, 'current'));
+        expect(await runUpdate(deps)).toContain('not installed');
+        expect(calls).toEqual([]);
     });
     test('up to date or no network changes nothing', async () => {
         const { calls, deps } = setup();
@@ -211,7 +254,7 @@ describe('runUninstall', () => {
     test('removes service, link and app, keeps data and the synced folder', async () => {
         const { home, app, data, out, cmds, base } = setup();
         await runUninstall({ ...base, purgeData: false, ask: async () => true });
-        expect(cmds[0]).toBe('systemctl --user disable --now nucleon-sync.service');
+        expect(cmds).toContain('systemctl --user disable --now nucleon-sync.service');
         expect(existsSync(app)).toBe(false);
         expect(existsSync(path.join(home, '.config/systemd/user/nucleon-sync.service'))).toBe(false);
         expect(() => lstatSync(path.join(home, '.local/bin/nucleon-sync'))).toThrow();
@@ -228,6 +271,40 @@ describe('runUninstall', () => {
         expect(existsSync(data)).toBe(false);
         expect(existsSync(path.join(base.syncedFolder, 'a.txt'))).toBe(true);
         expect(out.length).toBeGreaterThan(0);
+    });
+    test('a service that cannot be stopped aborts before any removal', async () => {
+        const { app, out, base } = setup();
+        const run = (c: string[]) => (c.includes('disable') ? 1 : 0);
+        await runUninstall({ ...base, run, purgeData: false, ask: async () => true });
+        expect(existsSync(app)).toBe(true);
+        expect(out.join('\n')).toContain('systemctl --user disable --now nucleon-sync.service');
+    });
+    test('an absent service is not a failure', async () => {
+        const { app, base } = setup();
+        const run = (c: string[]) => (c.includes('cat') ? 1 : 0);
+        await runUninstall({ ...base, run, purgeData: false, ask: async () => true });
+        expect(existsSync(app)).toBe(false);
+    });
+    test('a command link to a sibling folder app-old is not ours', async () => {
+        const { home, data, base } = setup();
+        const link = path.join(home, '.local/bin/nucleon-sync');
+        rmSync(link);
+        symlinkSync(path.join(data, 'app-old/bin/nucleon-sync'), link);
+        await runUninstall({ ...base, purgeData: false, ask: async () => true });
+        expect(lstatSync(link).isSymbolicLink()).toBe(true);
+    });
+    test('purge is refused when the synced folder is inside the data folder', async () => {
+        const { data, out, cmds, base } = setup();
+        const inside = path.join(data, 'synced');
+        mkdirSync(inside);
+        const viaLink = path.join(base.home, 'Link');
+        symlinkSync(inside, viaLink);
+        for (const folder of [inside, viaLink]) {
+            await runUninstall({ ...base, syncedFolder: folder, purgeData: true, ask: async () => true });
+            expect(existsSync(inside)).toBe(true);
+        }
+        expect(cmds).toEqual([]);
+        expect(out.join('\n')).toContain('Refusing --purge-data');
     });
     test('refusing the second confirmation keeps the data', async () => {
         const { data, base } = setup();

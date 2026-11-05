@@ -1,12 +1,18 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { releaseAppVersion } from '../names';
 import type { Note } from './state';
 
 const REPO_API = 'https://api.github.com/repos/steph-ben/nucleon-sync/releases';
+const NETWORK_TIMEOUT_MS = 15_000;
 const VERSION_FORMAT = /^\d+\.\d+\.\d+(-[a-z0-9.]+)?$/;
 
 type Fetch = (url: string) => Promise<{ ok: boolean; json(): Promise<unknown>; text?(): Promise<string> }>;
+
+function withTimeout<T>(work: Promise<T>): Promise<T> {
+    return Promise.race([work, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), NETWORK_TIMEOUT_MS).unref())]);
+}
 
 /** Positive when a is newer than b. "0.2.0-beta" is older than "0.2.0", numbers compare as numbers. */
 export function compareVersions(a: string, b: string): number {
@@ -34,9 +40,9 @@ export async function fetchLatest(current: string, fetchUrl: Fetch): Promise<str
     // GitHub's "latest" skips prereleases, and the first releases are betas.
     const url = current.includes('-beta') ? `${REPO_API}?per_page=1` : `${REPO_API}/latest`;
     try {
-        const response = await fetchUrl(url);
+        const response = await withTimeout(fetchUrl(url));
         if (!response.ok) return undefined;
-        const body = await response.json();
+        const body = await withTimeout(response.json());
         const release = Array.isArray(body) ? body[0] : body;
         const tag = (release as { tag_name?: unknown } | undefined)?.tag_name;
         if (typeof tag !== 'string') return undefined;
@@ -95,11 +101,33 @@ export type UpdateDeps = {
     run: (cmd: string[], env?: Record<string, string>) => number;
     /** Standard output of a command, empty if it failed. */
     output: (cmd: string[]) => string;
-    restart: () => void;
+    /** False when no systemd unit or launchd agent is installed: there is nothing to restart. */
+    serviceInstalled: () => boolean;
+    /** Restarts the service. True when the restart command succeeded. */
+    restart: () => boolean;
+    /** True when the service is running. */
+    serviceIsActive: () => boolean;
+    /** Lets the new version run a few seconds before checking the service. */
+    wait: () => Promise<void>;
 };
 
+function isSymlink(file: string): boolean {
+    try {
+        return lstatSync(file).isSymbolicLink();
+    } catch {
+        return false;
+    }
+}
+
+/** A broken leftover would make install.sh skip this version next time. Never the running or previous one. */
+function removeVersion(appDir: string, version: string, protectedVersions: string[]) {
+    if (!protectedVersions.includes(version)) rmSync(path.join(appDir, 'versions', version), { recursive: true, force: true });
+}
+
 export async function runUpdate(d: UpdateDeps): Promise<string> {
-    if (!isInstalledLayout(d.codeDir, d.appDir)) return 'nucleon-sync is not installed with install.sh (developer checkout): update with git.';
+    if (!isInstalledLayout(d.codeDir, d.appDir) || !isSymlink(path.join(d.appDir, 'current'))) {
+        return 'nucleon-sync is not installed with install.sh (developer checkout): update with git.';
+    }
     const latest = await fetchLatest(d.current, d.fetch);
     if (!latest) return 'no update check';
     if (decideUpdate({ current: d.current, latest }) === 'none') return 'up to date';
@@ -117,19 +145,33 @@ export async function runUpdate(d: UpdateDeps): Promise<string> {
         rmSync(folder, { recursive: true, force: true });
     }
 
-    const previous = path.basename(readlinkSync(path.join(d.appDir, 'current')));
+    const previousLink = readlinkSync(path.join(d.appDir, 'current'));
+    const previous = path.basename(previousLink);
+    const keep = [previous, path.basename(d.codeDir)];
     const command = path.join(d.appDir, 'versions', latest, 'bin', 'nucleon-sync');
-    const result = switchVersion(d.appDir, latest, () => d.output([command, 'version']).trim().startsWith(latest));
-    if (result === 'rolled-back') return `update failed: ${latest} does not start, rolled back to ${previous}.`;
+    const result = switchVersion(d.appDir, latest, () => d.output([command, 'version']).trim() === releaseAppVersion(latest));
+    if (result === 'rolled-back') {
+        removeVersion(d.appDir, latest, keep);
+        return `update failed: ${latest} does not start, rolled back to ${previous}.`;
+    }
+    if (!d.serviceInstalled()) {
+        pruneVersions(d.appDir, [latest, previous]);
+        return `updated to ${latest}. No service is installed, so nothing was restarted.`;
+    }
+    if (!d.restart() || (await d.wait(), !d.serviceIsActive())) {
+        pointCurrentTo(d.appDir, previousLink);
+        removeVersion(d.appDir, latest, keep);
+        d.restart();
+        return `update failed: the service did not stay up with ${latest}, rolled back to ${previous}.`;
+    }
     pruneVersions(d.appDir, [latest, previous]);
-    d.restart();
     return `updated to ${latest}`;
 }
 
 async function downloadText(fetchUrl: Fetch, url: string): Promise<string | undefined> {
     try {
-        const response = await fetchUrl(url);
-        return response.ok && response.text ? await response.text() : undefined;
+        const response = await withTimeout(fetchUrl(url));
+        return response.ok && response.text ? await withTimeout(response.text()) : undefined;
     } catch {
         return undefined;
     }
