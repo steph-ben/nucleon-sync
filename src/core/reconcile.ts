@@ -18,6 +18,8 @@ interface State {
     rMoved: boolean;
     lMod: boolean;
     rMod: boolean;
+    /** Nom temporaire laissé sur le Drive par cet appareil lors d'une coupure : à réparer. */
+    ownSwap: boolean;
 }
 
 /** Fonction pure : aucune entrée/sortie. La seule décision sur le contenu vient de hash et rev. */
@@ -83,6 +85,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
             lMoved: !!l && movedFrom(l, rec, recOfL),
             // Un nom transitoire laissé par une coupure n'est pas un choix de l'utilisateur.
             rMoved: !!r && movedFrom(r, rec, recOfR) && !r.name.startsWith(SWAP_PREFIX),
+            ownSwap: !!r && r.name.startsWith(`${SWAP_PREFIX}${o.deviceName}-`),
             lMod: !!l && rec.kind === 'file' && l.hash !== rec.hash,
             rMod: !!r && rec.kind === 'file' && (r.rev !== rec.rev || r.id !== rec.remoteId),
         });
@@ -256,7 +259,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
     }
     const targets = new Map<string, Target>();
     for (const s of states.values()) {
-        const lWins = s.lMoved && !s.rMoved;
+        const lWins = (s.lMoved && !s.rMoved) || s.ownSwap;
         const e = lWins ? s.l! : s.rMoved ? s.r! : undefined;
         targets.set(s.rec.key, {
             s,
@@ -326,11 +329,29 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         return fromLocal ? refL(source.parent) : refR(source.parent);
     };
 
+    const wouldCycle = (key: string, parent: string) => {
+        const seen = new Set<string>();
+        for (let p = parent; p.startsWith('rec:') && !seen.has(p); p = targets.get(p.slice(4))?.parent ?? ROOT) {
+            if (p.slice(4) === key) return true;
+            seen.add(p);
+        }
+        return false;
+    };
+
     for (const t of targets.values()) {
         const s = t.s;
         if (t.lWins) {
             let name = t.name;
             if (occ.has(slot(t.parent, name))) {
+                // Nom déjà pris : ce n'est qu'un nom, l'élément reprend sa place sur le Drive.
+                const home = canonR(s.r!.parent);
+                if (!s.ownSwap && !occ.has(slot(home, s.r!.name)) && !wouldCycle(s.rec.key, home)) {
+                    occ.add(slot(home, s.r!.name));
+                    t.parent = home;
+                    t.name = s.r!.name;
+                    moves.push({ t: 'localMove', key: s.rec.key, parent: refR(s.r!.parent), name: s.r!.name });
+                    continue;
+                }
                 name = freeName(t.parent, name);
                 conflicts.push({ t: 'conflictRename', localId: s.l!.id, newName: name });
             }

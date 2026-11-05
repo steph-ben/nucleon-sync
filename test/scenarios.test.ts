@@ -298,3 +298,20 @@ describe('reprise et noms', () => {
         expect(m.local.tree()).toEqual({ d: 'v2' });
     });
 });
+
+describe('échange de noms', () => {
+    test('deux éléments échangent leur nom d’un côté et pas de l’autre : pas de boucle', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        const ra = hub.add(ROOT, 'x', 'file', 'A');
+        const rb = hub.add(ROOT, 'y', 'file', 'B');
+        await settle(m);
+        const lb = m.local.find('y')!;
+        lb.name = 'z';
+        hub.rename(ra.id, ROOT, 'z');
+        await settle(m);
+        expect(m.local.tree()).toEqual(hub.tree());
+        expect(Object.values(hub.tree()).sort()).toEqual(['A', 'B']);
+        void rb;
+    });
+});

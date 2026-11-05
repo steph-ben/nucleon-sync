@@ -268,12 +268,16 @@ export class Engine {
         return undefined;
     }
 
+    private canVacate(key: string) {
+        return this.pendingMoves.has(key) || this.doomed.has(key);
+    }
+
     /** Le nom est tenu par un élément sur le point d'aller ailleurs : il cède la place. */
     private async vacateRemote(parentId: string, name: string) {
         for (const e of this.R.values()) {
             const rec = e.parent === parentId && e.name.normalize('NFC') === name.normalize('NFC') ? this.recByRemote(e.id) : undefined;
-            if (!rec || !this.pendingMoves.has(rec.key)) continue;
-            const moved = await this.remote.move(e.id, e.parent, `${SWAP_PREFIX}${++this.seq}`);
+            if (!rec || !this.canVacate(rec.key)) continue;
+            const moved = await this.remote.move(e.id, e.parent, `${SWAP_PREFIX}${this.options.deviceName}-${++this.seq}`);
             this.R.set(moved.id, moved);
         }
     }
@@ -281,9 +285,9 @@ export class Engine {
     private async vacateLocal(parentId: string, name: string) {
         for (const e of this.L.values()) {
             const rec = e.parent === parentId && e.name.normalize('NFC') === name.normalize('NFC') ? this.recByLocal(e.id) : undefined;
-            if (!rec || !this.pendingMoves.has(rec.key)) continue;
+            if (!rec || !this.canVacate(rec.key)) continue;
             const from = this.path(e.id);
-            const tmp = `${SWAP_PREFIX}${++this.seq}`;
+            const tmp = `${SWAP_PREFIX}${this.options.deviceName}-${++this.seq}`;
             await this.local.move(from, parentId === ROOT ? tmp : `${this.path(parentId)}/${tmp}`);
             e.name = tmp;
         }
@@ -339,7 +343,8 @@ export class Engine {
             const p = this.resolve(a.parent);
             const blocker = occupied(a, p);
             if (!blocker) throw new PathBusy(`déplacement impossible pour l'instant : ${a.name}`);
-            const blockerMoves = pending.some((x) => (x.t === 'remoteMove' ? this.recs.get(x.key)!.remoteId : this.recs.get(x.key)!.localId) === blocker.id);
+            const blockerRec = a.t === 'remoteMove' ? this.recByRemote(blocker.id) : this.recByLocal(blocker.id);
+            const blockerMoves = !!blockerRec && this.canVacate(blockerRec.key);
             // Occupée par un élément qui ne bouge pas : souvent une suppression à venir, à reprendre ensuite.
             if (!blockerMoves) throw new PathBusy(`destination occupée : ${a.name}`);
             // Le temporaire reste dans le dossier actuel : la cible peut être sous l'élément lui-même.
