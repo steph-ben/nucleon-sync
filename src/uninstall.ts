@@ -69,12 +69,12 @@ function stopServices(d: UninstallDeps, services: string[]): string[] {
     };
     if (d.platform === 'linux') {
         for (const name of services.filter((s) => s.endsWith('.service'))) {
-            // "Unit file does not exist" (exit 1 on disable) means there is nothing to stop.
-            const known = d.run(['systemctl', '--user', 'cat', name]) === 0;
-            if (known) stop(['systemctl', '--user', 'disable', '--now', name], () => false);
+            // No unit file means nothing was installed. If it exists, any failure to stop it is a real failure.
+            if (!exists(path.join(d.home, '.config/systemd/user', name))) continue;
+            stop(['systemctl', '--user', 'disable', '--now', name], () => false);
         }
-        // The tray is not a service on Linux: it starts from the autostart file.
-        d.run(['pkill', '-f', 'nucleon-sync-tray.py']);
+        // The tray is not a service on Linux: it starts from the autostart file. Only our own python tray process.
+        d.run(['pkill', '-u', String(process.getuid?.() ?? ''), '-f', 'python3 .*nucleon-sync-tray\\.py']);
         return failed;
     }
     const uid = process.getuid?.() ?? 0;

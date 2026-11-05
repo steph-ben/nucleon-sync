@@ -111,6 +111,17 @@ export type UpdateDeps = {
     wait: () => Promise<void>;
 };
 
+/** Name of the version folder the code runs from: the segment after "versions" in its real path. */
+export function runningVersion(codeDir: string): string | undefined {
+    try {
+        const parts = realpathSync(codeDir).split(path.sep);
+        const at = parts.lastIndexOf('versions');
+        return at >= 0 ? parts[at + 1] : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
 function isSymlink(file: string): boolean {
     try {
         return lstatSync(file).isSymbolicLink();
@@ -147,7 +158,7 @@ export async function runUpdate(d: UpdateDeps): Promise<string> {
 
     const previousLink = readlinkSync(path.join(d.appDir, 'current'));
     const previous = path.basename(previousLink);
-    const keep = [previous, path.basename(d.codeDir)];
+    const keep = [previous, runningVersion(d.codeDir) ?? previous];
     const command = path.join(d.appDir, 'versions', latest, 'bin', 'nucleon-sync');
     const result = switchVersion(d.appDir, latest, () => d.output([command, 'version']).trim() === releaseAppVersion(latest));
     if (result === 'rolled-back') {
@@ -161,7 +172,7 @@ export async function runUpdate(d: UpdateDeps): Promise<string> {
     if (!d.restart() || (await d.wait(), !d.serviceIsActive())) {
         pointCurrentTo(d.appDir, previousLink);
         removeVersion(d.appDir, latest, keep);
-        d.restart();
+        if (!d.restart()) return `update failed: the service did not stay up with ${latest}. The link is back on ${previous}, but the service could not be restarted: run the restart command by hand (systemctl --user restart nucleon-sync.service, or launchctl kickstart -k gui/$(id -u)/org.nucleonsync.daemon).`;
         return `update failed: the service did not stay up with ${latest}, rolled back to ${previous}.`;
     }
     pruneVersions(d.appDir, [latest, previous]);

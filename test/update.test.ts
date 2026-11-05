@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { releaseAppVersion } from '../src/names';
 import { planUninstall, runUninstall } from '../src/uninstall';
-import { checkForUpdate, compareVersions, decideUpdate, fetchLatest, isInstalledLayout, runUpdate, switchVersion } from '../src/desktop/update';
+import { checkForUpdate, compareVersions, decideUpdate, fetchLatest, isInstalledLayout, runningVersion, runUpdate, switchVersion } from '../src/desktop/update';
 
 const tempHome = () => mkdtempSync(path.join(tmpdir(), 'nucleon-update-'));
 
@@ -153,6 +153,27 @@ describe('runUpdate', () => {
         expect(existsSync(path.join(app, 'versions/0.1.0'))).toBe(true);
         expect(existsSync(path.join(app, 'versions/0.3.0'))).toBe(false);
     });
+    test('the running version is the folder after versions, at any depth', () => {
+        const app = installed(tempHome(), ['0.2.0'], '0.2.0');
+        mkdirSync(path.join(app, 'versions/0.2.0/src'), { recursive: true });
+        expect(runningVersion(path.join(app, 'versions/0.2.0'))).toBe('0.2.0');
+        expect(runningVersion(path.join(app, 'versions/0.2.0/src'))).toBe('0.2.0');
+        expect(runningVersion('/home/dev/nucleon-sync/src')).toBeUndefined();
+    });
+    test('the running version is never removed when it differs from the previous one', async () => {
+        const { app, deps } = setup(['0.1.0', '0.2.0'], '0.2.0');
+        mkdirSync(path.join(app, 'versions/0.2.0/src'), { recursive: true });
+        // Running from 0.1.0 while current points to 0.2.0.
+        const message = await runUpdate({ ...deps, codeDir: path.join(app, 'versions/0.1.0/bin'), serviceIsActive: () => false });
+        expect(message).toContain('rolled back');
+        expect(existsSync(path.join(app, 'versions/0.1.0'))).toBe(true);
+    });
+    test('a second restart that fails is reported plainly', async () => {
+        const { deps } = setup();
+        const message = await runUpdate({ ...deps, restart: () => false });
+        expect(message).toContain('could not be restarted');
+        expect(message).toContain('systemctl --user restart');
+    });
     test('a service that dies after the restart puts the link back', async () => {
         const { app, deps } = setup(['0.1.0', '0.2.0'], '0.2.0');
         const message = await runUpdate({ ...deps, serviceIsActive: () => false });
@@ -279,11 +300,24 @@ describe('runUninstall', () => {
         expect(existsSync(app)).toBe(true);
         expect(out.join('\n')).toContain('systemctl --user disable --now nucleon-sync.service');
     });
-    test('an absent service is not a failure', async () => {
+    test('an absent service (no unit file) is not a failure', async () => {
         const { app, base } = setup();
-        const run = (c: string[]) => (c.includes('cat') ? 1 : 0);
+        rmSync(path.join(base.home, '.config/systemd/user/nucleon-sync.service'));
+        const run = (c: string[]) => (c.includes('disable') ? 1 : 0);
         await runUninstall({ ...base, run, purgeData: false, ask: async () => true });
         expect(existsSync(app)).toBe(false);
+    });
+    test('the tray is stopped by a narrow pattern', async () => {
+        const { cmds, base } = setup();
+        await runUninstall({ ...base, purgeData: false, ask: async () => true });
+        expect(cmds.find((c) => c.startsWith('pkill'))).toContain("python3 .*nucleon-sync-tray\\.py");
+    });
+    test('a systemctl failure such as no user bus aborts before removal', async () => {
+        const { app, out, base } = setup();
+        const run = (c: string[]) => (c[0] === 'systemctl' ? 1 : 0);
+        await runUninstall({ ...base, run, purgeData: false, ask: async () => true });
+        expect(existsSync(app)).toBe(true);
+        expect(out.join('\n')).toContain('systemctl --user disable --now');
     });
     test('a command link to a sibling folder app-old is not ours', async () => {
         const { home, data, base } = setup();
