@@ -1,53 +1,53 @@
-# proton-sync : conception
+# proton-sync: design
 
-Démon de synchronisation bidirectionnelle `~/Proton` <-> Proton Drive, pour macOS 12 Intel et Linux.
-Remplace `rclone bisync`. Client tiers à usage personnel, identifié `external-drive-protonsync`.
+Two-way sync daemon between `~/Proton` <-> Proton Drive, for macOS 12 Intel and Linux.
+Replaces `rclone bisync`. Third-party client for personal use, identified as `external-drive-protonsync`.
 
-## Priorités
+## Priorities
 
-1. Rien ne se perd.
-2. Renommer ou déplacer un répertoire est une seule opération, quelle que soit sa taille.
-3. Quasi temps réel, sobre en bande passante (connexion mobile).
+1. Nothing is lost.
+2. Renaming or moving a directory is a single operation, whatever its size.
+3. Near real time, frugal with bandwidth (mobile connection).
 
-## Principe : fusion à trois états
+## Principle: three-way merge
 
-- **Base** : le dernier état commun connu (SQLite), un enregistrement par élément synchronisé.
-- **Local** : scan du disque. Identité = inode.
-- **Distant** : miroir tenu à jour par les événements Drive. Identité = UID de nœud.
+- **Base**: the last known common state (SQLite), one record per synced item.
+- **Local**: disk scan. Identity = inode.
+- **Remote**: mirror kept up to date by Drive events. Identity = node UID.
 
-Chaque élément est suivi par (parent, nom), pas par chemin complet : renommer un dossier change
-un seul enregistrement, ses descendants ne bougent pas. `reconcile(base, local, distant)` est une
-fonction pure qui retourne un plan. La reprise après coupure ne demande rien de spécial : la base
-n'avance qu'après chaque action réussie, et la prochaine passe recalcule depuis l'état réel.
+Each item is tracked by (parent, name), not by full path: renaming a folder changes
+a single record, its descendants do not move. `reconcile(base, local, distant)` is a
+pure function that returns a plan. Recovering after an interruption needs nothing special: the base
+only advances after each successful action, and the next pass recomputes from the real state.
 
-## Règles de conflit (aucune ne détruit de contenu)
+## Conflict rules (none destroys content)
 
-| Local | Distant | Résultat |
+| Local | Remote | Result |
 |---|---|---|
-| modifié | modifié, contenu identique | rien à faire |
-| modifié | modifié, contenu différent | les deux gardés : copie de conflit locale envoyée |
-| supprimé | modifié | le fichier distant revient en local |
-| modifié | supprimé | le fichier local est renvoyé |
-| déplacé | déplacé ailleurs | le distant gagne, c'est seulement un nom |
-| déplacé | supprimé | le déplacement gagne |
-| dossier supprimé | contenu ajouté ou modifié dedans | le dossier reste avec ce contenu |
-| créé | créé au même endroit, contenu différent | les deux gardés |
+| modified | modified, identical content | nothing to do |
+| modified | modified, different content | both kept: local conflict copy uploaded |
+| deleted | modified | the remote file comes back locally |
+| modified | deleted | the local file is uploaded again |
+| moved | moved elsewhere | remote wins, it is only a name |
+| moved | deleted | the move wins |
+| folder deleted | content added or modified inside | the folder stays with that content |
+| created | created at the same place, different content | both kept |
 
-## Garanties structurelles
+## Structural guarantees
 
-- `RemoteFs` n'expose ni suppression définitive ni vidage de corbeille : le code ne peut pas les appeler.
-- Toute suppression ou tout écrasement local passe d'abord par la quarantaine.
-- Écriture locale atomique : fichier temporaire, vérification, puis renommage.
-- Avant toute action locale, l'élément est revérifié ; s'il a changé, l'action est abandonnée.
-- Racine absente, sans marqueur, ou scan vide alors que la base ne l'est pas : arrêt.
-- Grosses suppressions réelles : mises en attente d'une approbation, le reste continue.
-- Premier lancement (base vide) : aucune suppression possible, appariement par chemin et contenu.
-- Docs et tableurs Proton, et noms indéchiffrables : jamais synchronisés ni touchés. Un dossier qui en
-  contient n'est jamais mis à la corbeille.
-- Liens symboliques : ignorés, jamais suivis.
+- `RemoteFs` exposes neither permanent deletion nor emptying the trash: the code cannot call them.
+- Every local deletion or overwrite goes through quarantine first.
+- Atomic local write: temporary file, verification, then rename.
+- Before any local action, the item is checked again; if it has changed, the action is abandoned.
+- Root missing, no marker, or an empty scan while the base is not: stop.
+- Large real deletions: held for approval, the rest continues.
+- First run (empty base): no deletion possible, matching by path and content.
+- Proton Docs and spreadsheets, and undecryptable names: never synced or touched. A folder that
+  contains any is never moved to the trash.
+- Symbolic links: ignored, never followed.
 
-## Limites
+## Limits
 
-- Une suppression voulue par l'utilisateur est propagée : elle reste récupérable via corbeille et quarantaine.
-- La synchro n'est pas une sauvegarde indépendante.
-- Le SDK n'est pas encore garanti pour un usage tiers en production.
+- A deletion made on purpose by the user is propagated: it remains recoverable through the trash and the quarantine.
+- Sync is not an independent backup.
+- The SDK is not yet guaranteed for third-party use in production.

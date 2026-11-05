@@ -1,64 +1,64 @@
 # proton-sync
 
-**Statut : testé sur le vrai service dans un espace isolé, entre deux dossiers d'un même Mac. Pas encore testé sur Linux ni sur « Mes fichiers ».**
+**Status: tested against the real service in an isolated space, between two folders on the same Mac. Not yet tested on Linux or on "My files".**
 
-Démon de synchronisation bidirectionnelle entre `~/Proton` et Proton Drive, pour macOS 12 Intel et Linux.
-Il remplace `rclone bisync`. Conception détaillée : `docs/design.md`.
+Two-way sync daemon between `~/Proton` and Proton Drive, for macOS 12 Intel and Linux.
+It replaces `rclone bisync`. Detailed design: `docs/design.md`.
 
-Client personnel et non officiel, basé sur le SDK Proton Drive. Sans lien avec Proton.
-Il s'identifie auprès de Proton comme `external-drive-protonsync`.
+Personal, unofficial client built on the Proton Drive SDK. Not affiliated with Proton.
+It identifies itself to Proton as `external-drive-protonsync`.
 
-Limites de Proton pour les espaces device, d'où le sous-dossier obligatoire en test : pas de fichier à la racine, et pas de renommage ou déplacement des dossiers de premier niveau par un client autre que l'appli de bureau.
+Proton limits for device spaces, hence the mandatory subfolder when testing: no files at the root, and no renaming or moving of top-level folders by any client other than the desktop app.
 
 ## Installation
 
-Prérequis : bun et npm. Le dépôt est attendu dans `~/dev/proton-sync`.
+Prerequisites: bun and npm. The repository is expected in `~/dev/proton-sync`.
 
     cd ~/dev/proton-sync
     scripts/install.sh
 
-Le script installe les dépendances, applique `scripts/patch-crypto.sh`, crée le lien
-`~/.local/bin/proton-sync` et copie le fichier de service (launchd sur macOS, systemd sur Linux).
-Il ne démarre rien : il affiche la commande à lancer. Il peut être relancé sans risque.
+The script installs the dependencies, applies `scripts/patch-crypto.sh`, creates the
+`~/.local/bin/proton-sync` link and copies the service file (launchd on macOS, systemd on Linux).
+It does not start anything: it prints the command to run. It is safe to run again.
 
-Ensuite :
+Then:
 
     proton-sync login
-    proton-sync init <dossier> <device:nom/dossier|root>
+    proton-sync init <folder> <device:name/folder|root>
     proton-sync plan
 
-Pour passer de rclone à proton-sync, suivre `docs/migration.md`.
+To switch from rclone to proton-sync, follow `docs/migration.md`.
 
-## Intégration continue
+## Continuous integration
 
-GitHub Actions (`.github/workflows/ci.yml`, ubuntu seul, bun 1.4.2) lance sur chaque push vers `main` et chaque pull request : les tests (`local`, `scenarios`, `integration`, `proton-adapter`), le fuzz, puis `tsc --noEmit` qui échoue sur toute erreur dans `src/` ou `test/`.
-Aucun accès à Proton, au trousseau ni au réseau n'est nécessaire. Pour reproduire en local, lancer les commandes de `CLAUDE.md` (section Commandes).
+GitHub Actions (`.github/workflows/ci.yml`, ubuntu only, bun 1.4.2) runs on every push to `main` and every pull request: the tests (`local`, `scenarios`, `integration`, `proton-adapter`), the fuzz test, then `tsc --noEmit`, which fails on any error in `src/` or `test/`.
+No access to Proton, the keychain or the network is needed. To reproduce locally, run the commands in `CLAUDE.md` (Commands section).
 
-## Commandes
+## Commands
 
-- `init <dossier> <device:nom/dossier|root>` : écrit la configuration.
-- `login` / `logout` : connexion et déconnexion à Proton.
-- `plan` : affiche ce qui serait fait, sans rien modifier.
-- `once` : une seule passe de synchronisation.
-- `run` : démon, synchronisation continue.
-- `approve` : approuve les grosses suppressions mises en attente.
-- `status` : état de la dernière passe.
-- `version` : version.
+- `init <folder> <device:name/folder|root>`: writes the configuration.
+- `login` / `logout`: sign in to and out of Proton.
+- `plan`: shows what would be done, without changing anything.
+- `once`: a single sync pass.
+- `run`: daemon, continuous sync.
+- `approve`: approves the large deletions that were held back.
+- `status`: state of the last pass.
+- `version`: version.
 
 ## Configuration
 
-Fichier `config.json`, dans `~/.local/share/proton-sync` par défaut. `proton-sync init` l'écrit, sauf `allowDriveRoot`, à ajouter à la main.
+`config.json` file, in `~/.local/share/proton-sync` by default. `proton-sync init` writes it, except `allowDriveRoot`, which must be added by hand.
 
-| Option | Obligatoire | Rôle |
+| Option | Required | Purpose |
 | --- | --- | --- |
-| `localRoot` | oui | Dossier local synchronisé. Il doit contenir le marqueur `.proton-sync-root`, créé par `init`. |
-| `remote` | oui | Cible sur le Drive : `device:<nom>/<dossier>` pour un espace isolé, `root` pour Mes fichiers. |
-| `deviceName` | oui | Nom de la machine, repris dans le nom des copies de conflit et des fichiers temporaires. `init` le déduit du nom d'hôte. |
-| `maxDeletes` | oui | Au-delà de ce nombre de fichiers supprimés en une passe, les suppressions sont retenues jusqu'à `proton-sync approve`. `init` met 20. |
-| `allowDriveRoot` | seulement avec `root` | Doit valoir `true` pour accepter `remote: "root"`. Sans lui, toute commande qui vise Mes fichiers s'arrête avant d'accéder au Drive. Cette seconde confirmation évite de lancer un test sur le vrai Drive. Ignoré pour une cible `device:`. |
-| `verbose` | non | `true` pour un journal détaillé : chaque événement de surveillance, la cause de chaque passe (changement local, sondage du Drive…) et sa durée. Produit une ligne par minute même au repos. Défaut : `false`. |
+| `localRoot` | yes | Synced local folder. It must contain the `.proton-sync-root` marker, created by `init`. |
+| `remote` | yes | Target on the Drive: `device:<name>/<folder>` for an isolated space, `root` for My files. |
+| `deviceName` | yes | Name of the machine, used in the names of conflict copies and temporary files. `init` derives it from the hostname. |
+| `maxDeletes` | yes | Above this number of deleted files in one pass, the deletions are held back until `proton-sync approve`. `init` sets 20. |
+| `allowDriveRoot` | only with `root` | Must be `true` to accept `remote: "root"`. Without it, any command that targets My files stops before touching the Drive. This second confirmation prevents running a test on the real Drive by mistake. Ignored for a `device:` target. |
+| `verbose` | no | `true` for a detailed log: every watcher event, the cause of each pass (local change, Drive poll...) and its duration. Produces one line per minute even when idle. Default: `false`. |
 
-Exemple pour Mes fichiers :
+Example for My files:
 
     {
         "localRoot": "/Users/steph/ProtonSync",
@@ -68,32 +68,32 @@ Exemple pour Mes fichiers :
         "allowDriveRoot": true
     }
 
-Variables d'environnement :
+Environment variables:
 
-- `PROTON_SYNC_HOME` : dossier des données (config, base, journal, quarantaine).
-- `PROTON_SYNC_CONFIG` : chemin du fichier de configuration, si différent.
+- `PROTON_SYNC_HOME`: data folder (config, database, log, quarantine).
+- `PROTON_SYNC_CONFIG`: path of the configuration file, if different.
 
-Chaque cible a besoin de son propre `PROTON_SYNC_HOME` : la base garde en mémoire les fichiers déjà synchronisés. Avec une base d'une autre cible, ses fichiers paraîtraient supprimés.
+Each target needs its own `PROTON_SYNC_HOME`: the database remembers which files have already been synced. With the database of another target, its files would look deleted.
 
-## Où sont les fichiers
+## Where things are
 
-- Données : `~/.local/share/proton-sync` (changer avec `PROTON_SYNC_HOME`). Contient `config.json`, la base SQLite et `proton-sync.log`.
-- Quarantaine : `~/.local/share/proton-sync/quarantine`.
-- Journal du service sur macOS : `~/Library/Logs/proton-sync.log`. Sur Linux : `journalctl --user -u proton-sync`.
+- Data: `~/.local/share/proton-sync` (change with `PROTON_SYNC_HOME`). Contains `config.json`, the SQLite database and `proton-sync.log`.
+- Quarantine: `~/.local/share/proton-sync/quarantine`.
+- Service log on macOS: `~/Library/Logs/proton-sync.log`. On Linux: `journalctl --user -u proton-sync`.
 
-## Récupérer un fichier
+## Recovering a file
 
-Quarantaine : toute suppression ou tout écrasement local y passe d'abord. Parcourir
-`~/.local/share/proton-sync/quarantine`, puis copier le fichier voulu à sa place dans `~/Proton`.
+Quarantine: every local deletion or overwrite goes there first. Browse
+`~/.local/share/proton-sync/quarantine`, then copy the file you want back to its place in `~/Proton`.
 
-Corbeille Proton : ouvrir Proton Drive sur le web, section Corbeille, sélectionner l'élément et le restaurer.
-Proton Drive ne l'efface définitivement qu'après son délai de rétention. proton-sync ne vide jamais la corbeille.
+Proton trash: open Proton Drive on the web, Trash section, select the item and restore it.
+Proton Drive only deletes it permanently after its retention period. proton-sync never empties the trash.
 
-## Limites
+## Limits
 
-- Une suppression voulue par l'utilisateur est propagée : elle reste récupérable via corbeille et quarantaine.
-- La synchro n'est pas une sauvegarde indépendante.
-- Le SDK n'est pas encore garanti pour un usage tiers en production.
+- A deletion made on purpose by the user is propagated: it remains recoverable through the trash and the quarantine.
+- Sync is not an independent backup.
+- The SDK is not yet guaranteed for third-party use in production.
 
-Autre limite : les miniatures ne sont pas générées pour les images envoyées.
-Les Docs et tableurs Proton natifs ne sont jamais synchronisés.
+Another limit: thumbnails are not generated for uploaded images.
+Native Proton Docs and spreadsheets are never synced.

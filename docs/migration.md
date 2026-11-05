@@ -1,10 +1,10 @@
-# Migration depuis rclone bisync
+# Migrating from rclone bisync
 
-Procédure pour les deux machines (Mac et Linux). Ne passer à l'étape suivante que si la précédente est correcte.
+Procedure for both machines (Mac and Linux). Only move on to the next step if the previous one is correct.
 
-Copie de sécurité : `~/proton-safety-2026-11-05` sur le Mac. Les 5 documents Proton natifs n'y sont pas.
+Safety copy: `~/proton-safety-2026-11-05` on the Mac. The 5 native Proton documents are not in it.
 
-1. Test isolé, sans toucher à `~/Proton`, dans un espace `device:proton-sync-test/sandbox` avec un dossier temporaire :
+1. Isolated test, without touching `~/Proton`, in a `device:proton-sync-test/sandbox` space with a temporary folder:
 
         mkdir -p /tmp/ps-test
         export PROTON_SYNC_HOME=/tmp/ps-home
@@ -13,66 +13,66 @@ Copie de sécurité : `~/proton-safety-2026-11-05` sur le Mac. Les 5 documents P
         proton-sync plan
         proton-sync once
 
-   Créer, renommer et supprimer quelques fichiers dans `/tmp/ps-test`, relancer `once`, vérifier sur le web. Puis `unset PROTON_SYNC_HOME`.
+   Create, rename and delete a few files in `/tmp/ps-test`, run `once` again, check on the web. Then `unset PROTON_SYNC_HOME`.
 
-2. Arrêter rclone sur les DEUX machines avant toute autre chose.
+2. Stop rclone on BOTH machines before anything else.
 
-   Mac :
+   Mac:
 
         launchctl bootout gui/$(id -u)/org.rclone.protondrive-bisync
 
-   Linux :
+   Linux:
 
         systemctl --user disable --now rclone-bisync.timer
 
-3. Dernière vérification manuelle : les deux copies de `~/Proton` doivent être identiques entre elles et avec le Drive. Par exemple, sur chaque machine :
+3. Last manual check: the two copies of `~/Proton` must be identical to each other and to the Drive. For example, on each machine:
 
         find ~/Proton -type f -not -path '*/.sync-config/*' | sort | wc -l
 
-   Comparer les nombres, puis contrôler à l'œil les écarts éventuels sur le web.
+   Compare the numbers, then check any differences by eye on the web.
 
-4. Initialiser sur le Mac :
+4. Initialize on the Mac:
 
         export PROTON_SYNC_HOME=~/.local/share/proton-sync-main
         ~/dev/proton-sync/bin/proton-sync init ~/ProtonSync root
 
-   Puis ajouter à la main `"allowDriveRoot": true` dans `~/.local/share/proton-sync-main/config.json`.
-   Ne pas réutiliser `~/.local/share/proton-sync` : sa base contient le bac à sable.
+   Then add `"allowDriveRoot": true` by hand in `~/.local/share/proton-sync-main/config.json`.
+   Do not reuse `~/.local/share/proton-sync`: its database contains the sandbox.
 
-5. Contrôler le plan :
+5. Check the plan:
 
         proton-sync plan
 
-   Résultat attendu : uniquement des actions `link` (463 le 2026-11-05, sur un clone de `~/Proton`). `coucou`, le fichier vide, est déjà sur le Drive et ne demande pas d'envoi. Aucun téléchargement, aucune mise à la corbeille.
-   Si le plan contient autre chose : s'arrêter, ne pas lancer `once`, comprendre l'écart.
+   Expected result: only `link` actions (463 on 2026-11-05, on a clone of `~/Proton`). `coucou`, the empty file, is already on the Drive and needs no upload. No download, no move to the trash.
+   If the plan contains anything else: stop, do not run `once`, work out the discrepancy.
 
-6. Première passe :
+6. First pass:
 
         proton-sync once
 
-7. Démarrer le démon sur le Mac :
+7. Start the daemon on the Mac:
 
         launchctl bootstrap gui/$(id -u) ~/.local/share/proton-sync-main/org.protonsync.daemon.plist
 
-   Ce fichier est préparé à part : dans `~/Library/LaunchAgents`, launchd le démarrerait dès la prochaine ouverture de session.
-   Une fois la bascule validée, le copier dans `~/Library/LaunchAgents` pour un démarrage automatique.
+   This file is prepared separately: in `~/Library/LaunchAgents`, launchd would start it at the next login.
+   Once the switch is validated, copy it to `~/Library/LaunchAgents` for automatic startup.
 
-   Puis refaire les étapes 4 à 6 sur Linux, et démarrer le démon :
+   Then redo steps 4 to 6 on Linux, and start the daemon:
 
         systemctl --user daemon-reload && systemctl --user enable --now proton-sync.service
 
-8. Retour arrière : arrêter le démon, puis réactiver rclone.
+8. Rollback: stop the daemon, then re-enable rclone.
 
-   Mac :
+   Mac:
 
         launchctl bootout gui/$(id -u)/org.protonsync.daemon
         launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/org.rclone.protondrive-bisync.plist
 
-   Linux :
+   Linux:
 
         systemctl --user disable --now proton-sync.service
         systemctl --user enable --now rclone-bisync.timer
 
-   rclone bisync aura perdu son état de référence : il demandera un `--resync`. Cette opération est délicate,
-   car elle refait l'appariement sans mémoire des suppressions et peut recréer ou dupliquer des fichiers.
-   La faire sur une seule machine à la fois, après avoir vérifié l'état du Drive et de la copie de sécurité.
+   rclone bisync will have lost its reference state: it will ask for a `--resync`. This operation is delicate,
+   because it redoes the matching with no memory of deletions and can recreate or duplicate files.
+   Do it on one machine at a time, after checking the state of the Drive and of the safety copy.
