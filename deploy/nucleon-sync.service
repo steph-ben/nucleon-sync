@@ -4,11 +4,11 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=__COMMAND__ run
+ExecStart="__COMMAND__" run
 Restart=always
 RestartSec=30
-Environment=PATH=__HOME__/.local/bin:__HOME__/.bun/bin:/usr/local/bin:/usr/bin:/bin
-Environment=NUCLEON_SYNC_HOME=__DATA__
+Environment="PATH=__HOME__/.local/bin:__HOME__/.bun/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="NUCLEON_SYNC_HOME=__DATA__"
 
 [Install]
 WantedBy=default.target

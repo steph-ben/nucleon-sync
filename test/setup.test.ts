@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { buildConfig, otherSyncToolFor, sessionStoreProblem } from '../src/desktop/setup';
-import { findDeployDir, installService, renderService } from '../src/service';
+import { buildConfig, expandHome, isYes, otherSyncToolFor, sessionStoreProblem } from '../src/desktop/setup';
+import { findDeployDir, installService, renderService, serviceProblem } from '../src/service';
 
 function tempHome(): string {
     return mkdtempSync(path.join(tmpdir(), 'setup-home-'));
@@ -66,8 +66,8 @@ describe('service files', () => {
     const o = { home: '/home/u', dataDir: '/home/u/.local/share/nucleon-sync', command: '/home/u/.local/bin/nucleon-sync' };
     test('the systemd unit points at the installed command and the data dir', () => {
         const unit = renderService('linux', o);
-        expect(unit).toContain('ExecStart=/home/u/.local/bin/nucleon-sync run');
-        expect(unit).toContain('Environment=NUCLEON_SYNC_HOME=/home/u/.local/share/nucleon-sync');
+        expect(unit).toContain('ExecStart="/home/u/.local/bin/nucleon-sync" run');
+        expect(unit).toContain('Environment="NUCLEON_SYNC_HOME=/home/u/.local/share/nucleon-sync"');
         expect(unit).not.toContain('__');
     });
     test('the launchd plist is labelled org.nucleonsync.daemon and runs the command', () => {
@@ -96,7 +96,7 @@ describe('service files', () => {
         const calls: string[][] = [];
         installService('linux', { ...o, home }, (cmd) => (calls.push(cmd), 0));
         const file = path.join(home, '.config/systemd/user/nucleon-sync.service');
-        expect(readFileSync(file, 'utf8')).toContain(`Environment=PATH=${home}/.local/bin`);
+        expect(readFileSync(file, 'utf8')).toContain(`Environment="PATH=${home}/.local/bin`);
         expect(calls).toEqual([
             ['systemctl', '--user', 'daemon-reload'],
             ['systemctl', '--user', 'enable', '--now', 'nucleon-sync.service'],
@@ -124,5 +124,45 @@ describe('service files', () => {
 describe('My files', () => {
     test('still needs the explicit confirmation', () => {
         expect(() => buildConfig({ folder: '/x', target: 'myfiles', confirmed: false, deviceName: 'd' })).toThrow('confirm');
+    });
+});
+
+describe('review fixes', () => {
+    test('rclone state in the macOS cache folder is detected', () => {
+        const home = tempHome();
+        const name = home.replace(/^\//, '').replace(/\//g, '_');
+        touch(path.join(home, 'Library/Caches/rclone/bisync', `${name}_Proton..proton_.path1.lst`));
+        expect(otherSyncToolFor(path.join(home, 'Proton'), home)).toContain('rclone');
+    });
+    test('rclone state in XDG_CACHE_HOME is detected', () => {
+        const home = tempHome();
+        const xdg = tempHome();
+        const name = home.replace(/^\//, '').replace(/\//g, '_');
+        touch(path.join(xdg, 'rclone/bisync', `${name}_Proton..proton_.path1.lst`));
+        expect(otherSyncToolFor(path.join(home, 'Proton'), home)).toBeUndefined();
+        expect(otherSyncToolFor(path.join(home, 'Proton'), home, { XDG_CACHE_HOME: xdg })).toContain('rclone');
+    });
+    test('answers: y and yes only; bare ~ expands', () => {
+        expect(isYes('Y')).toBe(true);
+        expect(isYes('yes')).toBe(true);
+        expect(isYes('yep')).toBe(false);
+        expect(isYes(null)).toBe(false);
+        expect(expandHome('~', '/h')).toBe('/h');
+        expect(expandHome('~/P', '/h')).toBe('/h/P');
+        expect(expandHome('~x', '/h')).toBe('~x');
+    });
+    test('a home with a space, a percent and an ampersand is quoted and escaped', () => {
+        const o = { home: '/home/a b&c%d', dataDir: '/home/a b&c%d/data', command: '/home/a b&c%d/.local/bin/nucleon-sync' };
+        const unit = renderService('linux', o);
+        expect(unit).toContain('ExecStart="/home/a b&c%%d/.local/bin/nucleon-sync" run');
+        expect(unit).toContain('Environment="NUCLEON_SYNC_HOME=/home/a b&c%%d/data"');
+        const plist = renderService('darwin', o);
+        expect(plist).toContain('<string>/home/a b&amp;c%d/.local/bin/nucleon-sync</string>');
+        expect(plist).not.toContain('b&c');
+    });
+    test('service problems: unsupported system and missing command', () => {
+        expect(serviceProblem('win32')).toContain('Linux and macOS');
+        expect(serviceProblem('linux', '/nope', () => false)).toContain('does not exist');
+        expect(serviceProblem('linux', '/yes', () => true)).toBeUndefined();
     });
 });
