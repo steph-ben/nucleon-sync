@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import { run } from './fuzz-lib';
 
 async function check(seed: number, crashRate: number, midOps: boolean) {
-    const { hub, devs, doc, doc2, synced } = await run(seed, crashRate, midOps);
+    const { hub, devs, doc, doc2, created, userGone } = await run(seed, crashRate, midOps);
     for (const d of devs) d.local.chaos = d.remote.chaos = { before() {} };
     let stable = 0;
     for (let i = 0; i < 40 && stable < 2; i++) {
@@ -17,14 +17,14 @@ async function check(seed: number, crashRate: number, midOps: boolean) {
     expect(hub.alive(doc)).toBe(true);
     expect(hub.alive(doc2)).toBe(true);
 
-    // Rien ne se perd : tout contenu synchronisé existe encore quelque part.
+    // Rien ne se perd : seul l'utilisateur peut détruire un contenu.
     const everywhere = new Set<string>();
     for (const n of hub.nodes.values()) for (const c of n.revisions) everywhere.add(c);
     for (const d of devs) {
         for (const c of d.local.quarantined) everywhere.add(c);
         for (const n of d.local.nodes.values()) everywhere.add(n.content);
     }
-    const lost = [...synced].filter((c) => !everywhere.has(c));
+    const lost = [...created].filter((c) => !everywhere.has(c) && !userGone.has(c));
     expect(lost).toEqual([]);
 }
 

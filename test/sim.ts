@@ -109,6 +109,8 @@ export class SimLocal implements LocalFs {
         const existing = this.find(to);
         if (existing && existing !== n) throw new PathBusy(`destination occupée ${to}`);
         const { parent, name } = this.parentOf(to);
+        // Comme un vrai système de fichiers : un dossier n'entre pas dans lui-même.
+        if (this.subtree(n.id).some((x) => x.id === parent)) throw new Error(`déplacement dans soi-même ${from}`);
         n.parent = parent;
         n.name = name;
     }
@@ -224,6 +226,7 @@ export class SimRemote implements RemoteFs {
         this.chaos.before('remote.move');
         this.live(id);
         this.live(parent);
+        for (let p = parent; p !== ROOT; p = this.hub.nodes.get(p)!.parent) if (p === id) throw new Error('déplacement dans soi-même');
         this.hub.rename(id, parent, name);
         return this.hub.entry(this.hub.nodes.get(id)!);
     }

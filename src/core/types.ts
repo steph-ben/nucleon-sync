@@ -58,8 +58,11 @@ export type Action =
     | { t: 'downloadRevision'; key: string }
     /** Met la base à jour sans rien transférer. Sans `content`, seule la position change. */
     | { t: 'refresh'; key: string; content: boolean }
-    /** Oublie l'enregistrement : l'élément est parti des deux côtés, ou redevient un élément neuf. */
-    | { t: 'forget'; key: string }
+    /**
+     * Oublie l'enregistrement : l'élément est parti des deux côtés, ou redevient un élément neuf.
+     * Avec `ifGone`, seulement si cet ancêtre a bien été supprimé dans la même passe.
+     */
+    | { t: 'forget'; key: string; ifGone?: string }
     | { t: 'remoteTrash'; key: string }
     | { t: 'localQuarantine'; key: string };
 

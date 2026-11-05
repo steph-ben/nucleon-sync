@@ -20,6 +20,7 @@ export class Engine {
     private L: Snapshot = new Map();
     private R: Snapshot = new Map();
     private seq = 0;
+    private doomed = new Set<string>();
 
     constructor(
         private local: LocalFs,
@@ -37,6 +38,7 @@ export class Engine {
     async cycle(approveDeletes = false): Promise<CycleResult> {
         const plan = await this.planOnly(approveDeletes);
         for (const b of plan.rebinds) this.save({ ...this.recs.get(b.key)!, localId: b.localId, remoteId: b.remoteId });
+        this.doomed = new Set(plan.actions.flatMap((a) => (a.t === 'remoteTrash' || a.t === 'localQuarantine' || (a.t === 'forget' && a.ifGone) ? [a.key] : [])));
         let done = 0;
         let skipped = 0;
         let hardFailure = false;
@@ -107,7 +109,8 @@ export class Engine {
             const hit = ref.t === 'rec' ? r.key === ref.key : ref.t === 'newLocal' ? r.localId === ref.id : r.remoteId === ref.id;
             if (hit) return { key: r.key, localId: r.localId, remoteId: r.remoteId };
         }
-        throw new Error(`parent non résolu : ${JSON.stringify(ref)}`);
+        // Le parent dépend d'une action bloquée plus haut : à reprendre à la passe suivante.
+        throw new PathBusy(`parent non résolu : ${JSON.stringify(ref)}`);
     }
 
     private save(rec: BaseRec) {
@@ -134,6 +137,7 @@ export class Engine {
                 return true;
             }
             case 'forget':
+                if (a.ifGone && this.recs.has(a.ifGone)) return false;
                 this.drop(a.key);
                 return true;
             case 'link': {
@@ -215,6 +219,7 @@ export class Engine {
             }
             case 'remoteTrash': {
                 const rec = this.recs.get(a.key)!;
+                if (this.holdsSomethingAlive(this.R, rec.remoteId, (e) => this.recByRemote(e.id))) return false;
                 await this.remote.trash(rec.remoteId);
                 this.drop(rec.key);
                 return true;
@@ -224,6 +229,7 @@ export class Engine {
                 const l = this.currentLocal(rec);
                 const path = this.path(l.id);
                 if (l.kind === 'file' && !(await this.local.isUnchanged(path, l))) return false;
+                if (this.holdsSomethingAlive(this.L, l.id, (e) => this.recByLocal(e.id))) return false;
                 await this.local.quarantine(path);
                 this.drop(rec.key);
                 return true;
@@ -231,6 +237,28 @@ export class Engine {
             default:
                 throw new Error(`action inconnue ${(a as Action).t}`);
         }
+    }
+
+    /** Dernier filet : un dossier ne part que si tout son contenu actuel est promis à la suppression. */
+    private holdsSomethingAlive(snap: Snapshot, id: string, recOf: (e: Entry) => BaseRec | undefined): boolean {
+        for (const e of snap.values()) {
+            if (e.parent !== id) continue;
+            if (e.protected) return true;
+            const rec = recOf(e);
+            if (!rec || !this.doomed.has(rec.key)) return true;
+            if (this.holdsSomethingAlive(snap, e.id, recOf)) return true;
+        }
+        return false;
+    }
+
+    private recByRemote(id: string) {
+        for (const r of this.recs.values()) if (r.remoteId === id) return r;
+        return undefined;
+    }
+
+    private recByLocal(id: string) {
+        for (const r of this.recs.values()) if (r.localId === id) return r;
+        return undefined;
     }
 
     private parentKey(localParent: string): string {
@@ -276,7 +304,8 @@ export class Engine {
             const blocker = occupied(a, p)!;
             const tmp = `${SWAP_PREFIX}${++this.seq}`;
             const blockerAction = pending.find((m) => (m.t === 'remoteMove' ? this.recs.get(m.key)!.remoteId : this.recs.get(m.key)!.localId) === blocker.id);
-            if (!blockerAction) throw new Error(`destination occupée : ${a.name}`);
+            // Occupée par un élément qui ne bouge pas : souvent une suppression à venir, à reprendre ensuite.
+            if (!blockerAction) throw new PathBusy(`destination occupée : ${a.name}`);
             await this.applyMove({ ...blockerAction, name: tmp }, this.resolve(blockerAction.parent));
         }
     }

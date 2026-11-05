@@ -19,7 +19,14 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
     const pick = <T>(l: T[]) => l[Math.floor(rand() * l.length)]!;
     const hub = new Hub();
     let uniq = 0;
-    const fresh = () => `#${seed}.${++uniq}`;
+    const created = new Set<string>();
+    /** Contenus détruits par l'utilisateur lui-même : seule perte autorisée. */
+    const userGone = new Set<string>();
+    const fresh = () => {
+        const c = `#${seed}.${++uniq}`;
+        created.add(c);
+        return c;
+    };
 
     const mk = (tag: string) => {
         const local = new SimLocal(tag);
@@ -34,9 +41,6 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
     const protectedDir = hub.add(ROOT, 'Reloger', 'dir', '');
     const doc2 = hub.add(protectedDir.id, 'Meublingo', 'file', 'NATIVE2', true);
 
-    /** Contenus qui ont été synchronisés au moins une fois : ils ne doivent jamais disparaître. */
-    const synced = new Set<string>();
-
     const userOnLocal = (l: SimLocal) => {
         const nodes = [...l.nodes.values()];
         const dirs = nodes.filter((n) => n.kind === 'dir');
@@ -45,11 +49,15 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
         const r = rand();
         if (r < 0.3 || !nodes.length) {
             const f = free(parent);
-            if (f.length) l.add(parent, pick(f), rand() < 0.3 ? 'dir' : 'file', fresh());
+            if (f.length) {
+                if (rand() < 0.3) l.add(parent, pick(f), 'dir', '');
+                else l.add(parent, pick(f), 'file', fresh());
+            }
         } else if (r < 0.55) {
             const files = nodes.filter((n) => n.kind === 'file');
             if (files.length) {
                 const n = pick(files);
+                userGone.add(n.content);
                 n.content = fresh();
                 n.mtime = ++l.clock;
                 // Sauvegarde atomique d'éditeur : parfois un nouvel inode au même endroit.
@@ -70,7 +78,10 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
             }
         } else {
             const n = pick(nodes);
-            for (const c of l.subtree(n.id)) l.nodes.delete(c.id);
+            for (const c of l.subtree(n.id)) {
+                userGone.add(c.content);
+                l.nodes.delete(c.id);
+            }
         }
     };
 
@@ -81,7 +92,10 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
         const r = rand();
         const name = pick(NAMES);
         if (r < 0.3 || !nodes.length) {
-            if (!hub.taken(parent, name)) hub.add(parent, name, rand() < 0.3 ? 'dir' : 'file', fresh());
+            if (!hub.taken(parent, name)) {
+                if (rand() < 0.3) hub.add(parent, name, 'dir', '');
+                else hub.add(parent, name, 'file', fresh());
+            }
         } else if (r < 0.55) {
             const files = nodes.filter((n) => n.kind === 'file');
             if (files.length) hub.edit(pick(files).id, fresh());
@@ -96,7 +110,12 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
             const targets = [ROOT, ...dirs.map((d) => d.id)].filter((p) => !sub.has(p));
             const p = pick(targets);
             if (!hub.taken(p, name, n.id)) hub.rename(n.id, p, name);
-        } else hub.trash(pick(nodes).id);
+        } else {
+            // L'utilisateur web peut tout supprimer sauf ce qui contient les docs témoins du test.
+            const n = pick(nodes);
+            const hasDoc = (id: string): boolean => id === doc.id || id === doc2.id || id === protectedDir.id || [...hub.nodes.values()].some((c) => c.parent === id && hasDoc(c.id));
+            if (!hasDoc(n.id)) hub.trash(n.id);
+        }
     };
 
     const chaos = (l: SimLocal) => ({
@@ -106,10 +125,6 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
         },
     });
     for (const d of devs) d.local.chaos = d.remote.chaos = chaos(d.local);
-
-    const remember = (l: SimLocal) => {
-        for (const n of l.nodes.values()) if (n.kind === 'file' && n.content) synced.add(n.content);
-    };
 
     const rounds = 3 + Math.floor(rand() * 8);
     for (let i = 0; i < rounds; i++) {
@@ -124,13 +139,12 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
             if (rand() > 0.75) continue;
             try {
                 await d.engine.cycle();
-                remember(d.local);
             } catch (e) {
                 if (!(e instanceof Crash) && process.env.FUZZ_STRICT) throw e;
             }
         }
     }
-    return { hub, devs, doc, doc2, synced };
+    return { hub, devs, doc, doc2, created, userGone };
 }
 
 /** Pour test/debug-seed.ts : montre la passe qui lève une erreur. */

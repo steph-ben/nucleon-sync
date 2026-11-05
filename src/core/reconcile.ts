@@ -377,9 +377,9 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         const out: Action[] = [];
         // Le parent d'abord : après une coupure, les descendants orphelins sont simplement oubliés.
         for (const r of [...recs].sort((a, b) => depth(a) - depth(b))) {
-            let covered = false;
-            for (let p = byKey.get(r.parent); p; p = byKey.get(p.parent)) if (keys.has(p.key)) covered = true;
-            out.push(covered ? { t: 'forget', key: r.key } : make(r.key));
+            let top: string | undefined;
+            for (let p = byKey.get(r.parent); p; p = byKey.get(p.parent)) if (keys.has(p.key)) top = p.key;
+            out.push(top ? { t: 'forget', key: r.key, ifGone: top } : make(r.key));
         }
         return out;
     };

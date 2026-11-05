@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { Engine } from '../src/core/engine';
 import { ROOT } from '../src/core/types';
+import { PathBusy } from '../src/core/interfaces';
 import { Hub, MemStore, SimLocal, SimRemote } from './sim';
 
 function device(tag: string, hub: Hub) {
@@ -176,5 +177,54 @@ describe('garde-fous', () => {
         const m = device('M', hub);
         m.local.rootOk = false;
         await expect(m.engine.cycle()).rejects.toThrow('racine');
+    });
+});
+
+describe('déplacements croisés', () => {
+    test('A dans un dossier neuf sous B, et B dans A : aucun cycle, rien de perdu', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        const a = m.local.add(ROOT, 'A', 'dir', '');
+        const b = m.local.add(ROOT, 'B', 'dir', '');
+        m.local.add(a.id, 'fa', 'file', 'FA');
+        m.local.add(b.id, 'fb', 'file', 'FB');
+        await settle(m);
+        const n = m.local.add(b.id, 'N', 'dir', '');
+        a.parent = n.id;
+        const ra = [...hub.nodes.values()].find((x) => x.name === 'A')!;
+        const rb = [...hub.nodes.values()].find((x) => x.name === 'B')!;
+        hub.rename(rb.id, ra.id, 'B');
+        await settle(m);
+        const contents = Object.values(hub.tree());
+        expect(contents).toContain('FA');
+        expect(contents).toContain('FB');
+        expect(m.local.tree()).toEqual(hub.tree());
+    }, 5000);
+});
+
+describe('corbeille', () => {
+    test('déplacement bloqué : le dossier source ne part pas à la corbeille avec un doc Proton', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        const rx = hub.add(ROOT, 'X', 'dir', '');
+        const rr = hub.add(rx.id, 'Reloger', 'dir', '');
+        const doc = hub.add(rr.id, 'Meublingo', 'file', '', true);
+        await settle(m);
+        const x = m.local.find('X')!;
+        const r = m.local.find('X/Reloger')!;
+        r.parent = ROOT;
+        m.local.nodes.delete(x.id);
+        let blocked = true;
+        m.remote.chaos = {
+            before(op) {
+                if (op === 'remote.move' && blocked) throw new PathBusy('occupé');
+            },
+        };
+        await m.engine.cycle();
+        expect(hub.alive(doc)).toBe(true);
+        blocked = false;
+        await settle(m);
+        expect(hub.alive(doc)).toBe(true);
+        expect(hub.tree()).toEqual({ Reloger: '<dir>' });
     });
 });
