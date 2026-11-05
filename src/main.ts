@@ -17,7 +17,11 @@ const DEBOUNCE_MS = 3000;
 
 interface Config {
     localRoot: string;
-    /** `device:<nom>` pour un espace isolé, `root` pour Mes fichiers. */
+    /**
+     * `device:<nom>/<dossier>` pour un espace isolé, `root` pour Mes fichiers. Le sous-dossier est
+     * nécessaire pour tester : Proton interdit les fichiers à la racine d'un device, et le
+     * renommage de ses dossiers de premier niveau par un client autre que son appli de bureau.
+     */
     remote: string;
     deviceName: string;
     maxDeletes: number;
@@ -31,7 +35,7 @@ function configPath() {
 
 function loadConfig(): Config {
     const file = configPath();
-    if (!existsSync(file)) throw new Error(`configuration absente : ${file}. Lancer : proton-sync init <dossier> <device:nom|root>`);
+    if (!existsSync(file)) throw new Error(`configuration absente : ${file}. Lancer : proton-sync init <dossier> <device:nom/dossier|root>`);
     return JSON.parse(readFileSync(file, 'utf8')) as Config;
 }
 
@@ -60,7 +64,7 @@ async function resolveRoot(ctx: Ctx, cfg: Config) {
         const root = await ctx.sdk.getMyFilesRootFolder();
         return { rootUid: root.uid, scopeId: root.treeEventScopeId };
     }
-    const m = /^device:(.+)$/.exec(cfg.remote);
+    const m = /^device:([^/]+)(?:\/([^/]+))?$/.exec(cfg.remote);
     if (!m) throw new Error(`cible distante invalide : ${cfg.remote}`);
     let device;
     for await (const d of ctx.sdk.iterateDevices()) if (d.name.ok && d.name.value === m[1]) device = d;
@@ -68,7 +72,12 @@ async function resolveRoot(ctx: Ctx, cfg: Config) {
         const { DeviceType } = await import('@protontech/drive-sdk');
         device = await ctx.sdk.createDevice(m[1]!, platform() === 'darwin' ? DeviceType.MacOS : DeviceType.Linux);
     }
-    const root = await ctx.sdk.getNode(device.rootFolderUid);
+    let root = await ctx.sdk.getNode(device.rootFolderUid);
+    if (m[2]) {
+        let sub;
+        for await (const c of ctx.sdk.iterateFolderChildren(root.uid)) if (c.name.ok && c.name.value === m[2]) sub = c;
+        root = sub ?? (await ctx.sdk.createFolder(root.uid, m[2]));
+    }
     return { rootUid: root.uid, scopeId: root.treeEventScopeId };
 }
 
@@ -183,7 +192,7 @@ async function main() {
     switch (cmd) {
         case 'init': {
             const [dir, remote] = args;
-            if (!dir || !remote) throw new Error('usage : proton-sync init <dossier> <device:nom|root>');
+            if (!dir || !remote) throw new Error('usage : proton-sync init <dossier> <device:nom/dossier|root>');
             const localRoot = path.resolve(dir);
             mkdirSync(path.dirname(configPath()), { recursive: true });
             createRootMarker(localRoot);
@@ -212,10 +221,12 @@ async function main() {
             const log = logger();
             const ctx = await sdkContext();
             if (!ctx.auth.isLoggedIn()) throw new Error('non connecté : lancer proton-sync login');
-            const { engine } = await buildEngine(cfg, ctx, log);
+            const { engine, store } = await buildEngine(cfg, ctx, log);
             if (cmd === 'plan') printPlan(await engine.planOnly());
             else {
-                const r = await engine.cycle();
+                const approve = store.getKv('approve-deletes') === '1';
+                const r = await engine.cycle(approve);
+                if (approve) store.setKv('approve-deletes', '0');
                 printPlan(r.plan);
                 console.log(`fait=${r.done} ignorées=${r.skipped} erreurs=${r.errors.length}`);
                 for (const e of r.errors) console.log(`erreur : ${e}`);
