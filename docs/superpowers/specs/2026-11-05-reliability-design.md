@@ -1,6 +1,6 @@
 # Project A: proving proton-sync is safe for critical data
 
-Status: draft for the user's approval. Project B (desktop experience) is separate and comes after.
+Status: awaiting the user's approval. Project B (desktop experience) is separate and comes after.
 
 ## Intent
 
@@ -56,6 +56,14 @@ A first bug already came out of a short read of the code: an unreadable file was
 - Their real use: **photos, music and notes**. Largest files: **100 MB to 1 GB**. No git repositories.
 - CI on github.com, with no Proton account or session in it.
 - The real service is tested by a local command on the Mac, in `device:proton-sync-test/sandbox`.
+
+- **"Nothing lost" means**: every version the sync saw at least once stays recoverable (local, Drive, previous
+  revision, trash or quarantine). A deliberate delete goes to the trash or quarantine. In a conflict, an edit
+  beats a delete. Versions replaced before the sync ever saw them are not protected. The no-loss check
+  tracks deliberate deletes explicitly, and assumes nobody purges the trash during a test.
+- **Defects**: any risk of losing data stops the work and goes to the user at once. Everything else
+  continues, and known limits are listed for the user's agreement at the end.
+- **CI results** are read with `gh`, installed on the Mac, logged in by the user.
 
 ## The catalogue
 
@@ -125,7 +133,7 @@ Small files by default. The 100 MB to 1 GB check is opt-in, because it spends re
   suite locally before the trial.
 - The repository is private, and macOS minutes cost ten times more against the free allowance. Keep
   the macOS job short and leave the long runs on Linux at night unless a macOS-only bug justifies more.
-- `gh` is not installed on this Mac, and CI results have never been read. Reading them is part of done.
+- CI results have never been read. Reading them with `gh` is part of done.
 
 ## Definition of done
 
