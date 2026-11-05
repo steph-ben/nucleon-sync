@@ -17,7 +17,8 @@ import { installService, serviceProblem } from './service';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
 import { checkForUpdate } from './desktop/update';
-import { APP_NAME, APP_VERSION, dataDir, THIRD_PARTY_NOTICE } from './names';
+import { activeLegacyService, applyMigration, findLegacy, isDaemonRunning, knownStopCommands, legacyDaemonFor, planMigration, stopCommands } from './migrate';
+import { APP_NAME, APP_VERSION, configFile, dataDir, THIRD_PARTY_NOTICE } from './names';
 import { ChangeTracker } from './watch';
 
 const DATA = dataDir(process.env, homedir());
@@ -50,7 +51,7 @@ interface Config {
 }
 
 function configPath() {
-    return process.env.NUCLEON_SYNC_CONFIG ?? path.join(DATA, 'config.json');
+    return configFile(process.env, DATA);
 }
 
 function loadConfig(): Config {
@@ -182,7 +183,9 @@ function summarize(plan: Plan) {
     return [...counts].map(([k, v]) => `${k}=${v}`).join(' ') || 'nothing to do';
 }
 
-function acquireLock() {
+function acquireLock(localRoot: string) {
+    const legacy = legacyDaemonFor(homedir(), localRoot);
+    if (legacy) throw new Error(`the old daemon is still running (${legacy}). Stop it first, two daemons on one folder can lose files`);
     const file = path.join(DATA, 'daemon.lock');
     mkdirSync(DATA, { recursive: true });
     if (existsSync(file)) {
@@ -209,7 +212,7 @@ function acquireLock() {
 async function daemon(cfg: Config) {
     const verbose = cfg.verbose ?? false;
     const log = logger(verbose);
-    acquireLock();
+    acquireLock(cfg.localRoot);
     for (const signal of ['SIGTERM', 'SIGINT'] as const) {
         process.on(signal, () => {
             log('INFO', `daemon stopping (${signal})`);
@@ -356,6 +359,44 @@ function printPlan(plan: Plan) {
     if (plan.held.length) console.log(`held (${plan.held.length}):`);
     for (const a of plan.held) console.log(JSON.stringify(a));
     for (const w of plan.warnings) console.log(`warning: ${w}`);
+}
+
+/** Copies the config, database and login of the old project into this one. Copy only. */
+async function migrate(args: string[]) {
+    const fromIndex = args.indexOf('--from');
+    if (fromIndex >= 0 && !args[fromIndex + 1]) throw new Error('usage: nucleon-sync migrate [--from <old data folder>]');
+    const found = findLegacy(homedir());
+    let legacyDir = fromIndex >= 0 ? path.resolve(args[fromIndex + 1]!) : undefined;
+    if (!legacyDir) {
+        if (!found.dataDirs.length) throw new Error('no old data folder found. Use: nucleon-sync migrate --from <folder>');
+        console.log('Old data folders found:');
+        found.dataDirs.forEach((d, i) => console.log(`  ${i + 1}. ${d}`));
+        const answer = found.dataDirs.length === 1 ? '1' : prompt('Which one? (number)') ?? '';
+        legacyDir = found.dataDirs[Number(answer) - 1];
+        if (!legacyDir) throw new Error('no folder chosen');
+    }
+    const options = {
+        otherDirs: found.dataDirs,
+        activeService: () => activeLegacyService(homedir(), process.getuid?.() ?? 0),
+        commands: found.services.flatMap(stopCommands),
+    };
+    const plan = planMigration(legacyDir, DATA, isDaemonRunning, options);
+    if (plan.blocked) throw new Error(plan.blocked);
+    if (!plan.steps.length) return console.log('already migrated, nothing to do');
+    console.log('Nothing is removed, moved or overwritten. Planned:');
+    for (const step of plan.steps) console.log(`  - ${step}`);
+    console.log('The files "paused" and "quarantine/" stay in the old folder: they are not copied.');
+    if (prompt('No old sync command must be running. Type yes to apply') !== 'yes') return console.log('cancelled');
+    const warnings = await applyMigration(plan, {
+        readSecret: async (service, name) => (await Bun.secrets.get({ service, name })) ?? null,
+        writeSecret: (service, name, value) => Bun.secrets.set({ service, name, value }),
+        recheck: () => planMigration(legacyDir!, DATA, isDaemonRunning, options).blocked,
+    });
+    console.log('Done.');
+    for (const warning of warnings) console.log(`warning: ${warning}`);
+    console.log('Stop and disable the old service by hand, then start this one:');
+    const commands = new Set([...found.services.flatMap(stopCommands), ...knownStopCommands()]);
+    for (const command of commands) console.log(`  ${command}`);
 }
 
 async function main() {
@@ -510,11 +551,14 @@ async function main() {
             console.log(`exclusions: ${cfg.exclude.join(', ') || 'none'}`);
             return;
         }
+        case 'migrate':
+            await migrate(args);
+            return;
         case 'version':
             console.log(APP_VERSION);
             return;
         default:
-            console.log('usage: nucleon-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|version');
+            console.log('usage: nucleon-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|migrate|version');
     }
 }
 

@@ -21,3 +21,8 @@ export const SWAP_PREFIX = '.nucleon-sync-swap-';
 /** Names written by proton-sync, still accepted so existing folders keep working. */
 export const LEGACY_ROOT_MARKER = '.proton-sync-root';
 export const LEGACY_TMP_DIR = '.proton-sync-tmp';
+
+/** Config file: NUCLEON_SYNC_CONFIG, else the deprecated PROTON_SYNC_CONFIG, else config.json in the data folder. */
+export function configFile(env: Record<string, string | undefined>, dir: string): string {
+    return env.NUCLEON_SYNC_CONFIG ?? env.PROTON_SYNC_CONFIG ?? path.join(dir, 'config.json');
+}
