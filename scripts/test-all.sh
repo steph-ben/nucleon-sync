@@ -14,7 +14,7 @@ step() {
         fail=1
     fi
 }
-step 'main tests' bun test test/local.test.ts test/scenarios.test.ts test/integration.test.ts test/proton-adapter.test.ts test/journal.test.ts test/watch-real.test.ts test/desktop.test.ts test/names.test.ts test/tray-linux.test.ts test/bundle.test.ts test/install.test.ts
+step 'main tests' bun test test/local.test.ts test/scenarios.test.ts test/integration.test.ts test/proton-adapter.test.ts test/journal.test.ts test/watch-real.test.ts test/desktop.test.ts test/names.test.ts test/tray-linux.test.ts test/bundle.test.ts test/install.test.ts test/setup.test.ts
 step 'catalogue' env CATALOG_OUT="$OUT/catalog.jsonl" bun test test/catalog
 step 'catalogue report' bun scripts/catalog-report.ts "$OUT/catalog.jsonl" "$OUT/test-catalog.md"
 step 'fuzz' bun test test/fuzz.test.ts test/fuzz-real.test.ts
