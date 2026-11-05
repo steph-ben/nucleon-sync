@@ -135,6 +135,23 @@ describe('RealLocalFs', () => {
         expect(fs.readFileSync(path.join(day, slot, 'd/f.txt'), 'utf8')).toBe('precious');
     });
 
+    test('quarantine EXDEV: an incomplete copy keeps the original', async () => {
+        const l = new RealLocalFs(root, quar, {
+            clock: () => '2026-11-05T10:00:00Z',
+            rename: async () => {
+                throw Object.assign(new Error('xdev'), { code: 'EXDEV' });
+            },
+            copy: async (_from, to) => {
+                fs.mkdirSync(to, { recursive: true });
+                fs.writeFileSync(path.join(to, 'a.txt'), 'a');
+            },
+        });
+        w('d/a.txt', 'a');
+        w('d/b.txt', 'precious');
+        await expect(l.quarantine('d')).rejects.toThrow('incomplete quarantine copy');
+        expect(fs.readFileSync(path.join(root, 'd/b.txt'), 'utf8')).toBe('precious');
+    });
+
     test('writeFile: success, mtime and hash', async () => {
         const e = await L.writeFile('n.txt', 'aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d', 1_700_000_000_000, async (t) => void fs.writeFileSync(t, 'hello'));
         expect(e.hash).toBe('aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d');

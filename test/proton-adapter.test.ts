@@ -91,4 +91,7 @@ test('exclusions also apply to the Drive, descendants included', async () => {
 test('the daemon code contains no permanent deletion', async () => {
     const src = ['src/adapters/proton.ts', 'src/main.ts', 'src/core/engine.ts'].map((f) => readFileSync(f, 'utf8')).join('\n');
     for (const forbidden of ['deleteNodes', 'emptyTrash', 'deleteRevision', 'deleteDevice']) expect(src.includes(`.${forbidden}(`)).toBe(false);
+    const allowed = src.slice(src.indexOf('export type DriveApi = Pick<'), src.indexOf('>;', src.indexOf('export type DriveApi = Pick<')));
+    expect(allowed).toContain('trashNodes');
+    expect(allowed).not.toMatch(/'[^']*(delete|empty|purge)[^']*'/i);
 });

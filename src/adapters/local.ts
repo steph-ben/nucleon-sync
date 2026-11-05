@@ -62,6 +62,8 @@ export interface LocalFsOptions {
     clock?: () => string;
     /** Injectable to test the EXDEV case. */
     rename?: (from: string, to: string) => Promise<void>;
+    /** Injectable to test an incomplete copy between volumes. */
+    copy?: (from: string, to: string) => Promise<void>;
 }
 
 export class RealLocalFs implements LocalFs {
@@ -69,6 +71,7 @@ export class RealLocalFs implements LocalFs {
     private ignore: (name: string, isDir: boolean) => boolean;
     private clock: () => string;
     private rename: (from: string, to: string) => Promise<void>;
+    private copy: (from: string, to: string) => Promise<void>;
 
     constructor(
         private root: string,
@@ -78,6 +81,7 @@ export class RealLocalFs implements LocalFs {
         this.ignore = opts.ignore ?? defaultIgnore;
         this.clock = opts.clock ?? (() => new Date().toISOString());
         this.rename = opts.rename ?? fsp.rename;
+        this.copy = opts.copy ?? ((from, to) => fsp.cp(from, to, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true }));
     }
 
     /** Safe absolute path: rejects `..` and absolute paths. */
@@ -209,7 +213,7 @@ export class RealLocalFs implements LocalFs {
         } catch (e) {
             if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw e;
             // Other volume: copy, verify, and only then remove the original.
-            await fsp.cp(src, dest, { recursive: true, errorOnExist: true, force: false, preserveTimestamps: true });
+            await this.copy(src, dest);
             const [a, b] = await Promise.all([treeSize(src), treeSize(dest)]);
             if (a.size !== b.size || a.count !== b.count) throw new Error(`incomplete quarantine copy for ${rel}: original kept`);
             await fsp.rm(src, { recursive: true });
