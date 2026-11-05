@@ -15,7 +15,7 @@ import { buildConfig } from './desktop/setup';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
 import { checkForUpdate } from './desktop/update';
-import { applyMigration, findLegacy, isDaemonRunning, planMigration, stopCommands } from './migrate';
+import { activeLegacyService, applyMigration, findLegacy, isDaemonRunning, legacyDaemonFor, planMigration, stopCommands } from './migrate';
 import { APP_VERSION, configFile, dataDir } from './names';
 import { ChangeTracker } from './watch';
 
@@ -155,7 +155,9 @@ function summarize(plan: Plan) {
     return [...counts].map(([k, v]) => `${k}=${v}`).join(' ') || 'nothing to do';
 }
 
-function acquireLock() {
+function acquireLock(localRoot: string) {
+    const legacy = legacyDaemonFor(homedir(), localRoot);
+    if (legacy) throw new Error(`the old daemon is still running (${legacy}). Stop it first, two daemons on one folder can lose files`);
     const file = path.join(DATA, 'daemon.lock');
     mkdirSync(DATA, { recursive: true });
     if (existsSync(file)) {
@@ -182,7 +184,7 @@ function acquireLock() {
 async function daemon(cfg: Config) {
     const verbose = cfg.verbose ?? false;
     const log = logger(verbose);
-    acquireLock();
+    acquireLock(cfg.localRoot);
     for (const signal of ['SIGTERM', 'SIGINT'] as const) {
         process.on(signal, () => {
             log('INFO', `daemon stopping (${signal})`);
@@ -326,8 +328,9 @@ function printPlan(plan: Plan) {
 /** Copies the config, database and login of the old project into this one. Copy only. */
 async function migrate(args: string[]) {
     const fromIndex = args.indexOf('--from');
+    if (fromIndex >= 0 && !args[fromIndex + 1]) throw new Error('usage: nucleon-sync migrate [--from <old data folder>]');
     const found = findLegacy(homedir());
-    let legacyDir = fromIndex >= 0 ? path.resolve(args[fromIndex + 1] ?? '') : undefined;
+    let legacyDir = fromIndex >= 0 ? path.resolve(args[fromIndex + 1]!) : undefined;
     if (!legacyDir) {
         if (!found.dataDirs.length) throw new Error('no old data folder found. Use: nucleon-sync migrate --from <folder>');
         console.log('Old data folders found:');
@@ -336,17 +339,26 @@ async function migrate(args: string[]) {
         legacyDir = found.dataDirs[Number(answer) - 1];
         if (!legacyDir) throw new Error('no folder chosen');
     }
-    const plan = planMigration(legacyDir, DATA, isDaemonRunning);
+    const options = {
+        otherDirs: found.dataDirs,
+        activeService: () => activeLegacyService(homedir(), process.getuid?.() ?? 0),
+        commands: found.services.flatMap(stopCommands),
+    };
+    const plan = planMigration(legacyDir, DATA, isDaemonRunning, options);
     if (plan.blocked) throw new Error(plan.blocked);
     if (!plan.steps.length) return console.log('already migrated, nothing to do');
     console.log('Nothing is removed, moved or overwritten. Planned:');
     for (const step of plan.steps) console.log(`  - ${step}`);
-    if (prompt('Type yes to apply') !== 'yes') return console.log('cancelled');
-    await applyMigration(plan, {
+    console.log('The files "paused" and "quarantine/" stay in the old folder: they are not copied.');
+    if (prompt('No old sync command must be running. Type yes to apply') !== 'yes') return console.log('cancelled');
+    const warnings = await applyMigration(plan, {
         readSecret: async (service, name) => (await Bun.secrets.get({ service, name })) ?? null,
         writeSecret: (service, name, value) => Bun.secrets.set({ service, name, value }),
+        recheck: () => planMigration(legacyDir!, DATA, isDaemonRunning, options).blocked,
     });
-    console.log('Done. Stop and disable the old service by hand, then start this one:');
+    console.log('Done.');
+    for (const warning of warnings) console.log(`warning: ${warning}`);
+    if (found.services.length) console.log('Stop and disable the old service by hand, then start this one:');
     for (const service of found.services) for (const command of stopCommands(service)) console.log(`  ${command}`);
 }
 
