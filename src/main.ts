@@ -15,7 +15,8 @@ import { buildConfig } from './desktop/setup';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
 import { checkForUpdate } from './desktop/update';
-import { APP_VERSION, dataDir } from './names';
+import { applyMigration, findLegacy, isDaemonRunning, planMigration, stopCommands } from './migrate';
+import { APP_VERSION, configFile, dataDir } from './names';
 import { ChangeTracker } from './watch';
 
 const DATA = dataDir(process.env, homedir());
@@ -48,7 +49,7 @@ interface Config {
 }
 
 function configPath() {
-    return process.env.NUCLEON_SYNC_CONFIG ?? path.join(DATA, 'config.json');
+    return configFile(process.env, DATA);
 }
 
 function loadConfig(): Config {
@@ -322,6 +323,33 @@ function printPlan(plan: Plan) {
     for (const w of plan.warnings) console.log(`warning: ${w}`);
 }
 
+/** Copies the config, database and login of the old project into this one. Copy only. */
+async function migrate(args: string[]) {
+    const fromIndex = args.indexOf('--from');
+    const found = findLegacy(homedir());
+    let legacyDir = fromIndex >= 0 ? path.resolve(args[fromIndex + 1] ?? '') : undefined;
+    if (!legacyDir) {
+        if (!found.dataDirs.length) throw new Error('no old data folder found. Use: nucleon-sync migrate --from <folder>');
+        console.log('Old data folders found:');
+        found.dataDirs.forEach((d, i) => console.log(`  ${i + 1}. ${d}`));
+        const answer = found.dataDirs.length === 1 ? '1' : prompt('Which one? (number)') ?? '';
+        legacyDir = found.dataDirs[Number(answer) - 1];
+        if (!legacyDir) throw new Error('no folder chosen');
+    }
+    const plan = planMigration(legacyDir, DATA, isDaemonRunning);
+    if (plan.blocked) throw new Error(plan.blocked);
+    if (!plan.steps.length) return console.log('already migrated, nothing to do');
+    console.log('Nothing is removed, moved or overwritten. Planned:');
+    for (const step of plan.steps) console.log(`  - ${step}`);
+    if (prompt('Type yes to apply') !== 'yes') return console.log('cancelled');
+    await applyMigration(plan, {
+        readSecret: async (service, name) => (await Bun.secrets.get({ service, name })) ?? null,
+        writeSecret: (service, name, value) => Bun.secrets.set({ service, name, value }),
+    });
+    console.log('Done. Stop and disable the old service by hand, then start this one:');
+    for (const service of found.services) for (const command of stopCommands(service)) console.log(`  ${command}`);
+}
+
 async function main() {
     const [cmd, ...args] = process.argv.slice(2);
     switch (cmd) {
@@ -458,11 +486,14 @@ async function main() {
             console.log(`exclusions: ${cfg.exclude.join(', ') || 'none'}`);
             return;
         }
+        case 'migrate':
+            await migrate(args);
+            return;
         case 'version':
             console.log(APP_VERSION);
             return;
         default:
-            console.log('usage: nucleon-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|version');
+            console.log('usage: nucleon-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|migrate|version');
     }
 }
 

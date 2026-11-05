@@ -1,16 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { APP_NAME, APP_VERSION, CHANNEL, VERSION, dataDir } from '../src/names';
+import { APP_NAME, APP_VERSION, CHANNEL, VERSION, configFile, dataDir } from '../src/names';
 
 const repo = path.join(import.meta.dir, '..');
 const OLD_NAME = /proton[-_]?sync/i;
 
 // Test files that name the legacy on purpose.
-const LEGACY_ON_PURPOSE = ['test/names.test.ts', 'test/local.test.ts', 'test/journal.test.ts'];
+const LEGACY_ON_PURPOSE = ['test/names.test.ts', 'test/local.test.ts', 'test/journal.test.ts', 'test/migrate.test.ts'];
 // Folders and files that must no longer carry the old name.
 const CHECKED = ['src', 'bin', 'deploy', 'desktop', 'scripts', '.github', 'vendor/proton-sdk/cli/src/credentials', 'test'];
-const ALLOWED_FILES = ['src/names.ts', ...LEGACY_ON_PURPOSE];
+const ALLOWED_FILES = ['src/names.ts', 'src/migrate.ts', ...LEGACY_ON_PURPOSE];
 
 function listFiles(dir: string): string[] {
     const abs = path.join(repo, dir);
@@ -34,6 +34,12 @@ describe('names', () => {
         expect(dataDir({ NUCLEON_SYNC_HOME: '/n', PROTON_SYNC_HOME: '/p' }, '/h')).toBe('/n');
         expect(dataDir({ PROTON_SYNC_HOME: '/p' }, '/h')).toBe('/p');
         expect(dataDir({}, '/h')).toBe('/h/.local/share/nucleon-sync');
+    });
+
+    test('the config file: new variable, deprecated alias, default', () => {
+        expect(configFile({ NUCLEON_SYNC_CONFIG: '/n.json', PROTON_SYNC_CONFIG: '/p.json' }, '/d')).toBe('/n.json');
+        expect(configFile({ PROTON_SYNC_CONFIG: '/p.json' }, '/d')).toBe('/p.json');
+        expect(configFile({}, '/d')).toBe('/d/config.json');
     });
 
     test('no source file still uses the old name', () => {
