@@ -202,7 +202,8 @@ async function daemon(cfg: Config) {
             for (const w of r.plan.warnings) if (!lastWarnings.has(w)) log('WARN', w);
             lastWarnings = new Set(r.plan.warnings);
             if (r.plan.held.length !== lastHeld) {
-                if (r.plan.held.length) log('WARN', `${r.plan.held.length} deletions held (limit ${cfg.maxDeletes}): review with 'proton-sync plan', then run 'proton-sync approve'`);
+                if (r.plan.heldReason === 'incomplete-scan') log('WARN', `${r.plan.held.length} deletions postponed until every file can be read again`);
+                else if (r.plan.held.length) log('WARN', `${r.plan.held.length} deletions held (limit ${cfg.maxDeletes}): review with 'proton-sync plan', then run 'proton-sync approve'`);
                 lastHeld = r.plan.held.length;
             }
             if (r.errors.length) beat.withErrors++;

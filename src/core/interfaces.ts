@@ -12,6 +12,11 @@ export interface Source {
 export interface LocalFs {
     /** Fails if the root is missing or has no marker. */
     assertRootSafe(): Promise<void>;
+    /**
+     * Whatever the last scan could not read. Non-empty means the snapshot is incomplete: an item
+     * missing from it may still exist, so its absence proves nothing.
+     */
+    scanWarnings: string[];
     /** `known` allows reusing hashes of unchanged files. */
     scan(known: Map<string, BaseRec>): Promise<Snapshot>;
     mkdir(path: string): Promise<Entry>;

@@ -29,7 +29,10 @@ export class Engine {
 
     async planOnly(approveDeletes = false): Promise<Plan> {
         await this.load();
-        return reconcile([...this.recs.values()], this.L, this.R, { ...this.options, today: this.options.today(), approveDeletes });
+        const unread = [...this.local.scanWarnings];
+        const plan = reconcile([...this.recs.values()], this.L, this.R, { ...this.options, today: this.options.today(), approveDeletes, blockDeletes: unread.length > 0 });
+        plan.warnings.unshift(...unread);
+        return plan;
     }
 
     /** One pass: reloads the real state, plans, executes. Resuming after an interruption = running again. */

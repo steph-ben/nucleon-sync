@@ -433,8 +433,10 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         ...compress(quarantine, (key) => ({ t: 'localQuarantine', key })),
     ];
     const deletedFiles = [...remoteTrash, ...quarantine].filter((r) => r.kind === 'file').length;
-    const hold = deletedFiles > o.maxDeletes && !o.approveDeletes;
-    if (hold) warnings.push(`${deletedFiles} deletions awaiting approval`);
+    const overLimit = deletedFiles > o.maxDeletes && !o.approveDeletes;
+    const hold = overLimit || !!o.blockDeletes;
+    if (o.blockDeletes && deletedFiles) warnings.push(`${deletedFiles} deletions postponed: the local scan is incomplete`);
+    else if (overLimit) warnings.push(`${deletedFiles} deletions awaiting approval`);
 
     const sortByDepth = (l: { d: number; a: Action }[]) => l.sort((a, b) => a.d - b.d).map((x) => x.a);
     const rebinds = sorted
@@ -458,6 +460,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
             ...(hold ? [] : deletes),
         ],
         held: hold ? deletes : [],
+        heldReason: !deletedFiles ? undefined : o.blockDeletes ? 'incomplete-scan' : overLimit ? 'limit' : undefined,
         warnings,
     };
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -212,3 +212,94 @@ describe('two machines, real files', () => {
 });
 
 void ROOT;
+
+/**
+ * An item that cannot be read is not an item that was deleted. Losing read access (permissions,
+ * disk error, privacy settings) must never be propagated as a deletion.
+ */
+describe('unreadable items are not deletions', () => {
+    async function twoMachines() {
+        const hub = new Hub();
+        const a = machine('A', hub);
+        const b = machine('B', hub);
+        mkdirSync(path.join(a.root, 'Papiers'));
+        writeFileSync(path.join(a.root, 'Papiers/impots.pdf'), 'impots');
+        writeFileSync(path.join(a.root, 'Papiers/passeport.pdf'), 'passeport');
+        writeFileSync(path.join(a.root, 'autre.txt'), 'autre');
+        await settle(a, b);
+        return { hub, a, b };
+    }
+    const locked: string[] = [];
+    const lock = (p: string) => {
+        locked.push(p);
+        chmodSync(p, 0);
+    };
+    const unlockAll = () => {
+        for (const p of locked.splice(0)) chmodSync(p, 0o755);
+    };
+    afterEach(unlockAll);
+
+    test('unreadable folder: its files stay on the Drive and on the other machine, with a warning', async () => {
+        const { hub, a, b } = await twoMachines();
+        lock(path.join(a.root, 'Papiers'));
+        const r = await a.engine.cycle();
+        expect(r.plan.actions.filter((x) => x.t === 'remoteTrash' || x.t === 'localQuarantine')).toEqual([]);
+        expect(r.plan.warnings.join('\n')).toContain('Papiers');
+        await b.engine.cycle();
+        expect(tree(b.root)['Papiers/impots.pdf']).toBe('impots');
+        expect(allFiles(b.quarantine)).toEqual([]);
+        unlockAll();
+        await settle(a, b);
+        expect(tree(a.root)).toEqual(tree(b.root));
+        expect(hub.tree()['Papiers/impots.pdf']).toBe('impots');
+    });
+
+    test('approval does not bypass the protection', async () => {
+        const { a } = await twoMachines();
+        lock(path.join(a.root, 'Papiers'));
+        const r = await a.engine.cycle(true);
+        expect(r.plan.actions.filter((x) => x.t === 'remoteTrash')).toEqual([]);
+        expect(r.plan.heldReason).toBe('incomplete-scan');
+    });
+
+    test('file edited then unreadable: stays on the Drive, and the edit is uploaded once readable', async () => {
+        const { a, b } = await twoMachines();
+        const f = path.join(a.root, 'Papiers/impots.pdf');
+        writeFileSync(f, 'impots version 2');
+        lock(f);
+        const r = await a.engine.cycle();
+        expect(r.plan.actions.filter((x) => x.t === 'remoteTrash')).toEqual([]);
+        expect(r.plan.warnings.join('\n')).toContain('impots.pdf');
+        unlockAll();
+        await settle(a, b);
+        expect(tree(b.root)['Papiers/impots.pdf']).toBe('impots version 2');
+    });
+
+    test('unreadable file edited on the Drive: the local content is not overwritten', async () => {
+        const { a, b } = await twoMachines();
+        const f = path.join(a.root, 'Papiers/impots.pdf');
+        writeFileSync(f, 'local edit');
+        lock(f);
+        writeFileSync(path.join(b.root, 'Papiers/impots.pdf'), 'edit from the other machine');
+        await b.engine.cycle();
+        await a.engine.cycle();
+        unlockAll();
+        await settle(a, b);
+        expect(Object.values(tree(a.root)).sort()).toEqual(expect.arrayContaining(['edit from the other machine', 'local edit']));
+        expect(tree(a.root)).toEqual(tree(b.root));
+    });
+
+    test('a real deletion elsewhere waits for a complete scan, then goes through', async () => {
+        const { a, b } = await twoMachines();
+        rmSync(path.join(a.root, 'autre.txt'));
+        lock(path.join(a.root, 'Papiers'));
+        const r = await a.engine.cycle();
+        expect(r.plan.actions.filter((x) => x.t === 'remoteTrash')).toEqual([]);
+        await b.engine.cycle();
+        expect(tree(b.root)['autre.txt']).toBe('autre');
+        unlockAll();
+        await settle(a, b);
+        expect(tree(b.root)['autre.txt']).toBeUndefined();
+        expect(allFiles(b.quarantine)).toEqual(['autre']);
+    });
+});

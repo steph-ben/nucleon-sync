@@ -78,6 +78,8 @@ export interface Plan {
     actions: Action[];
     /** Deletions held back, awaiting approval. */
     held: Action[];
+    /** Why deletions are held: only 'limit' can be lifted with `approve`. */
+    heldReason?: 'limit' | 'incomplete-scan';
     warnings: string[];
 }
 
@@ -91,4 +93,6 @@ export interface ReconcileOptions {
     maxDeletes: number;
     /** Approval granted for this pass. */
     approveDeletes?: boolean;
+    /** The local scan is incomplete: no deletion in this pass, approved or not. */
+    blockDeletes?: boolean;
 }

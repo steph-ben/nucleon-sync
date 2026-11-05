@@ -36,6 +36,7 @@ export class MemStore implements Store {
 export class SimLocal implements LocalFs {
     nodes = new Map<string, Node>();
     quarantined: string[] = [];
+    scanWarnings: string[] = [];
     tmp = new Map<string, string>();
     rootOk = true;
     private seq = 0;
