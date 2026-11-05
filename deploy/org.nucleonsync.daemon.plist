@@ -6,7 +6,7 @@
     <string>org.nucleonsync.daemon</string>
     <key>ProgramArguments</key>
     <array>
-        <string>__HOME__/.local/bin/nucleon-sync</string>
+        <string>__COMMAND__</string>
         <string>run</string>
     </array>
     <key>RunAtLoad</key>
@@ -26,7 +26,7 @@
         <key>PATH</key>
         <string>__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>NUCLEON_SYNC_HOME</key>
-        <string>__HOME__/.local/share/nucleon-sync</string>
+        <string>__DATA__</string>
     </dict>
 </dict>
 </plist>

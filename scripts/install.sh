@@ -12,6 +12,8 @@ fi
 npm install --ignore-scripts --no-audit --no-fund
 bash scripts/patch-crypto.sh
 
+DATA="${NUCLEON_SYNC_HOME:-$HOME/.local/share/nucleon-sync}"
+COMMAND="$HOME/.local/bin/nucleon-sync"
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$ROOT/bin/nucleon-sync" "$HOME/.local/bin/nucleon-sync"
 echo "link: ~/.local/bin/nucleon-sync -> $ROOT/bin/nucleon-sync"
@@ -20,9 +22,8 @@ case "$(uname -s)" in
     Darwin)
         DEST="$HOME/Library/LaunchAgents/org.nucleonsync.daemon.plist"
         mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
-        sed "s#__HOME__#$HOME#g" deploy/org.nucleonsync.daemon.plist > "$DEST"
+        sed -e "s#__HOME__#$HOME#g" -e "s#__DATA__#$DATA#g" -e "s#__COMMAND__#$COMMAND#g" deploy/org.nucleonsync.daemon.plist > "$DEST"
         echo "launchd agent copied: $DEST"
-        DATA="${NUCLEON_SYNC_HOME:-$HOME/.local/share/nucleon-sync}"
         if command -v swiftc >/dev/null 2>&1; then
             swiftc -O desktop/macos/NucleonSyncTray.swift -o "$HOME/.local/bin/nucleon-sync-tray" 2>/dev/null
             TRAY="$HOME/Library/LaunchAgents/org.nucleonsync.tray.plist"
@@ -37,10 +38,9 @@ case "$(uname -s)" in
         DEST="$HOME/.config/systemd/user/nucleon-sync.service"
         mkdir -p "$HOME/.config/systemd/user"
         # The unit runs ~/.local/bin/nucleon-sync, the link made above.
-        cp deploy/nucleon-sync.service "$DEST"
+        sed -e "s#__HOME__#$HOME#g" -e "s#__DATA__#$DATA#g" -e "s#__COMMAND__#$COMMAND#g" deploy/nucleon-sync.service > "$DEST"
         echo "systemd unit copied: $DEST"
         echo "To start it: systemctl --user daemon-reload && systemctl --user enable --now nucleon-sync.service"
-        DATA="${NUCLEON_SYNC_HOME:-$HOME/.local/share/nucleon-sync}"
         mkdir -p "$HOME/.config/autostart"
         sed -e "s#__HOME__#$HOME#g" -e "s#__ROOT__#$ROOT#g" -e "s#__DATA__#$DATA#g" deploy/nucleon-sync-tray.desktop > "$HOME/.config/autostart/nucleon-sync-tray.desktop"
         echo "tray icon starts at the next login. Fedora GNOME needs, once:"

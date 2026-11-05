@@ -12,11 +12,12 @@ import { recentActivity } from './desktop/activity';
 import { makeIgnore } from './desktop/exclude';
 import { isOutdatedClient, retryDelaySeconds, signIn } from './desktop/signin';
 import { sendNote } from './desktop/notify';
-import { buildConfig } from './desktop/setup';
+import { buildConfig, otherSyncToolFor, sessionStoreProblem } from './desktop/setup';
+import { installService } from './service';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
 import { checkForUpdate } from './desktop/update';
-import { APP_VERSION, dataDir } from './names';
+import { APP_NAME, APP_VERSION, dataDir, THIRD_PARTY_NOTICE } from './names';
 import { ChangeTracker } from './watch';
 
 const DATA = dataDir(process.env, homedir());
@@ -93,6 +94,14 @@ function logger(verbose = false): Logger {
         appendFileSync(file, `${line}\n`);
         if (process.stdout.isTTY) console.log(line);
     };
+}
+
+/** Writes and deletes a test secret, unless the user chose another store (pass or file). */
+async function probeSessionStore(): Promise<void> {
+    if (process.env.PROTON_DRIVE_CREDENTIALS_STORE && process.env.PROTON_DRIVE_CREDENTIALS_STORE !== 'keychain') return;
+    const secret = { service: 'nucleon-sync-setup-test', name: 'probe' };
+    await Bun.secrets.set({ ...secret, value: 'test' });
+    await Bun.secrets.delete(secret);
 }
 
 async function sdkContext() {
@@ -405,11 +414,17 @@ async function main() {
         }
         case 'setup': {
             if (existsSync(configPath())) throw new Error(`already configured: ${configPath()}`);
-            console.log('nucleon-sync setup. Nothing is synced during this assistant.');
+            console.log(`nucleon-sync setup. ${THIRD_PARTY_NOTICE} Nothing is synced during this assistant.`);
+            const storeProblem = await sessionStoreProblem(probeSessionStore);
+            if (storeProblem) throw new Error(storeProblem);
             const folder = path.resolve((prompt('Folder to sync', path.join(homedir(), 'Proton')) ?? '').replace(/^~(?=\/)/, homedir()));
-            const choice = prompt('Target: 1 = test space, 2 = My files', '1');
-            const target = choice === '2' ? 'myfiles' : 'test';
+            if (!/^y/i.test(prompt(`Sync the folder ${folder}? [y/N]`) ?? '')) throw new Error('Folder not confirmed, nothing was done.');
+            const otherTool = otherSyncToolFor(folder, homedir());
+            if (otherTool) throw new Error(otherTool);
+            const choice = prompt('Target: 1 = My files (your real Drive), 2 = test space', '1');
+            const target = choice === '2' ? 'test' : 'myfiles';
             const confirmed = target === 'myfiles' && prompt('My files holds your real data. Type yes to confirm') === 'yes';
+            if (target === 'myfiles' && !confirmed) throw new Error('My files was not confirmed, nothing was done. Choose the test space (2) to try safely.');
             const cfg = buildConfig({ folder, target, confirmed, deviceName: hostname().split('.')[0]!.replace(/[^\w-]/g, '') });
             mkdirSync(folder, { recursive: true });
             mkdirSync(path.dirname(configPath()), { recursive: true });
@@ -422,8 +437,14 @@ async function main() {
             const plan = await engine.planOnly();
             console.log(`What the first sync would do: ${summarize(plan)}`);
             for (const w of plan.warnings) console.log(`Warning: ${w}`);
-            console.log('Nothing was changed. Review it, then run nucleon-sync once.');
             await ctx.dispose();
+            if (!/^y/i.test(prompt('Start syncing now? [y/N]') ?? '')) {
+                console.log('Nothing was changed. Review it, then run nucleon-sync once.');
+                return;
+            }
+            const command = path.join(homedir(), '.local/bin', APP_NAME);
+            installService(platform(), { home: homedir(), dataDir: DATA, command }, (cmd) => Bun.spawnSync(cmd).exitCode);
+            console.log(`Syncing started. Log: ${path.join(DATA, 'nucleon-sync.log')}`);
             return;
         }
         case 'update':
