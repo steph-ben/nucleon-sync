@@ -1,103 +1,14 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { createRootMarker, defaultIgnore, RealLocalFs } from '../src/adapters/local';
-import { SqliteStore } from '../src/adapters/sqlite-store';
+import { defaultIgnore, RealLocalFs } from '../src/adapters/local';
 import { Engine } from '../src/core/engine';
-import type { RemoteFs, Source } from '../src/core/interfaces';
-import { type Entry, ROOT } from '../src/core/types';
+import { ROOT } from '../src/core/types';
 import { Hub } from './sim';
+import { allFiles, cleanWorlds, FakeDrive, machine, settle, tree } from './lib/world';
 
-/** Shared fake Drive, reading and writing real files. The content also serves as the local hash. */
-class FileRemote implements RemoteFs {
-    constructor(
-        private hub: Hub,
-        private root: string,
-    ) {}
-    private sha(s: string) {
-        return createHash('sha1').update(s).digest('hex');
-    }
-    private entry(id: string): Entry {
-        const e = this.hub.entry(this.hub.nodes.get(id)!);
-        return e.kind === 'file' ? { ...e, hash: this.sha(this.hub.nodes.get(id)!.content) } : e;
-    }
-    async snapshot() {
-        const m = new Map<string, Entry>();
-        for (const n of this.hub.nodes.values()) if (this.hub.alive(n)) m.set(n.id, this.entry(n.id));
-        return m;
-    }
-    async mkdir(parent: string, name: string) {
-        return this.entry(this.hub.add(parent, name, 'dir', '').id);
-    }
-    async move(id: string, parent: string, name: string) {
-        this.hub.rename(id, parent, name);
-        return this.entry(id);
-    }
-    async upload(parent: string, name: string, p: string, _s: Source) {
-        return this.entry(this.hub.add(parent, name, 'file', readFileSync(path.join(this.root, p), 'utf8')).id);
-    }
-    async uploadRevision(id: string, p: string) {
-        this.hub.edit(id, readFileSync(path.join(this.root, p), 'utf8'));
-        return this.entry(id);
-    }
-    async download(id: string, tmp: string) {
-        writeFileSync(tmp, this.hub.nodes.get(id)!.content);
-    }
-    async trash(id: string) {
-        this.hub.trash(id);
-    }
-}
-
-const dirs: string[] = [];
-afterEach(() => {
-    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
-});
-
-function machine(tag: string, hub: Hub) {
-    const home = mkdtempSync(path.join(tmpdir(), `proton-sync-it-${tag}-`));
-    dirs.push(home);
-    const root = path.join(home, 'Proton');
-    mkdirSync(root);
-    createRootMarker(root);
-    const quarantine = path.join(home, 'quarantine');
-    const store = new SqliteStore(path.join(home, 'state.sqlite'));
-    const local = new RealLocalFs(root, quarantine, { ignore: defaultIgnore });
-    let k = 0;
-    const engine = new Engine(local, new FileRemote(hub, root), store, { deviceName: tag, caseInsensitive: false, maxDeletes: 20, newKey: () => `${tag}${++k}`, today: () => '2026-11-05' });
-    return { root, quarantine, engine, store };
-}
-
-async function settle(...ms: ReturnType<typeof machine>[]) {
-    for (let i = 0; i < 12; i++) {
-        let work = 0;
-        for (const m of ms) {
-            const r = await m.engine.cycle();
-            expect(r.errors).toEqual([]);
-            work += r.plan.actions.length;
-        }
-        if (!work) return;
-    }
-    throw new Error('does not converge');
-}
-
-function tree(root: string, rel = ''): Record<string, string> {
-    const out: Record<string, string> = {};
-    for (const e of readdirSync(path.join(root, rel), { withFileTypes: true })) {
-        if (e.name.startsWith('.proton-sync') || e.isSymbolicLink()) continue;
-        const p = rel ? `${rel}/${e.name}` : e.name;
-        if (e.isDirectory()) Object.assign(out, tree(root, p));
-        else out[p] = readFileSync(path.join(root, p), 'utf8');
-    }
-    return out;
-}
-
-function allFiles(dir: string): string[] {
-    if (!existsSync(dir)) return [];
-    return readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? allFiles(path.join(dir, e.name)) : [readFileSync(path.join(dir, e.name), 'utf8')]));
-}
+afterEach(cleanWorlds);
 
 describe('two machines, real files', () => {
     test('renaming a folder propagates without transfer, and the inode on side B is kept', async () => {
@@ -184,7 +95,7 @@ describe('two machines, real files', () => {
         writeFileSync(path.join(a.root, 'f'), 'x');
         await settle(a);
         const local = new RealLocalFs(a.root, a.quarantine, { ignore: defaultIgnore });
-        const again = new Engine(local, new FileRemote(hub, a.root), a.store, { deviceName: 'A', caseInsensitive: false, maxDeletes: 20, newKey: () => 'n', today: () => '2026-11-05' });
+        const again = new Engine(local, new FakeDrive(hub, a.root), a.store, { deviceName: 'A', caseInsensitive: false, maxDeletes: 20, newKey: () => 'n', today: () => '2026-11-05' });
         expect((await again.planOnly()).actions).toEqual([]);
     });
 
