@@ -1,0 +1,134 @@
+#!/usr/bin/env bun
+
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+
+const GIT_ROOT = path.resolve(import.meta.dir, '../..');
+
+// `bun run` puts every ancestor `node_modules/.bin` on PATH, so a stray `bun`
+// package (e.g. in the home directory) can silently run the build instead.
+const requiredBunVersion = (await Bun.file(path.join(import.meta.dir, '../package.json')).json()).engines.bun;
+if (!Bun.semver.satisfies(Bun.version, requiredBunVersion)) {
+    const strayPackage = process.execPath.match(/^(.*)\/node_modules\/bun\//)?.[1];
+    console.error(
+        [
+            `Bun ${requiredBunVersion} is required, but ${Bun.version} is running (${process.execPath}).`,
+            strayPackage
+                ? `It comes from a \`bun\` npm package in ${strayPackage}: \`bun run\` puts every ancestor ` +
+                  `\`node_modules/.bin\` on PATH, so it takes precedence over your installed Bun. ` +
+                  `Remove it (\`cd ${strayPackage} && bun remove bun\`) and retry.`
+                : `Install Bun ${requiredBunVersion} (https://bun.com/docs/installation) and retry.`,
+        ].join('\n'),
+    );
+    process.exit(1);
+}
+
+let target = 'bun';
+let entry = 'src/proton-drive.ts';
+
+// Bundle only mode: build without the embedded Bun.
+const bundleOnly = process.argv.includes('--bundle-only');
+const argv = process.argv.filter(arg => arg !== '--bundle-only');
+
+const arg2 = argv[2];
+const arg3 = argv[3];
+
+if (arg2?.endsWith('.ts') && arg3) {
+    entry = arg2;
+    target = arg3;
+} else if (arg2?.endsWith('.ts')) {
+    entry = arg2;
+} else if (arg2) {
+    target = arg2;
+}
+
+let outfileArchitecture = '';
+if (target.startsWith('bun-')) {
+    outfileArchitecture = '/' + target.slice(4);
+}
+
+const entryName = path.basename(entry).replace('.ts', '');
+const outputDirectory = process.env.CLI_OUTPUT_DIR || `release${outfileArchitecture}`;
+const outfile = `${outputDirectory}/${entryName}${bundleOnly ? '.js' : ''}`;
+
+const args = [
+    'build',
+    ...(bundleOnly ? [] : [
+        '--compile',
+        // Slower compile, bigger bundle size, faster execution.
+        '--bytecode',
+    ]),
+    `--target=${target}`,
+    // Use modern ESM format to allow await syntax in the entry file.
+    '--format=esm',
+    // Reduce bundle size (not much, the biggest part is the embedded Bun itself).
+    '--minify',
+    // Include source maps for readable stack traces.
+    '--sourcemap=inline',
+    '--define',
+    `APP_VERSION=${JSON.stringify(`${process.env.CLI_APP_VERSION_NAME || 'external-drive-sdkclijs'}@${getVersion('cli')}`)}`,
+    '--define',
+    `SDK_VERSION=${JSON.stringify(`js@${getVersion('js')}`)}`,
+    '--define',
+    `SENTRY_DSN=${JSON.stringify(process.env.SENTRY_DSN)}`,
+    entry,
+    `--outfile=${outfile}`,
+];
+
+// Use the checked Bun, not whichever `bun` comes first on PATH.
+const proc = Bun.spawn([process.execPath, ...args], {
+    stdio: ['inherit', 'inherit', 'inherit'],
+    env: { ...process.env, NODE_ENV: 'production' },
+});
+const code = await proc.exited;
+if (code !== 0) {
+    process.exit(code);
+}
+
+/**
+ * Returns version from environment variable if set,
+ * otherwise from local git repository.
+ */
+function getVersion(tagPrefix) {
+    const envName = { cli: 'CLI_VERSION', js: 'JS_VERSION' }[tagPrefix];
+    const envVersion = envName ? process.env[envName]?.trim() : undefined;
+    if (envVersion) {
+        return envVersion;
+    }
+    try {
+        return `${semverFromLatestTag(tagPrefix)}+${getShortHash()}`;
+    } catch (error) {
+        throw new Error(`Cannot determine ${tagPrefix} version from git; set ${envName} to build without git`, { cause: error });
+    }
+}
+
+/**
+ * Returns latest version (as x.y.z) from tags matching
+ * `{tagPrefix}/vx.y.z`, or `0.0.0` if none.
+ */
+function semverFromLatestTag(tagPrefix) {
+    const tags = git(['tag', '-l', `${tagPrefix}/v*`, '--sort=-v:refname']);
+    const tag = tags.split('\n').find(Boolean);
+    if (!tag) {
+        console.warn(`No tag found for ${tagPrefix}`);
+        return '0.0.0';
+    }
+    const prefixSlashV = `${tagPrefix}/v`;
+    if (!tag.startsWith(prefixSlashV)) {
+        console.warn(`No tag found for ${tagPrefix}`);
+        return '0.0.0';
+    }
+    return tag.slice(prefixSlashV.length);
+}
+
+function getShortHash() {
+    return git(['rev-parse', '--short', 'HEAD']);
+}
+
+function git(args) {
+    return execFileSync('git', args, {
+        encoding: 'utf8',
+        cwd: GIT_ROOT,
+        stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+}

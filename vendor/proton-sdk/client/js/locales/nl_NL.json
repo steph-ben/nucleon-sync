@@ -1,0 +1,285 @@
+{
+  "headers": {
+    "plural-forms": "nplurals=2; plural=(n != 1);",
+    "language": "nl_NL"
+  },
+  "contexts": {
+    "Error": {
+      "A message is required when reporting copyright infringement or stolen data": [
+        "Bij het melden van een inbreuk op het auteursrecht of gestolen gegevens moet een bericht worden ingevuld"
+      ],
+      "Bookmark password is not available": [
+        "Bladwijzerwachtwoord is niet beschikbaar"
+      ],
+      "Cannot add photo to album without a valid name": [
+        "Kan geen foto aan album toevoegen zonder geldige naam"
+      ],
+      "Cannot download a folder": [
+        "Kan geen map downloaden"
+      ],
+      "Cannot move item without a valid name, please rename the item first": [
+        "Kan het item niet verplaatsen zonder een geldige naam. Hernoem het item eerst"
+      ],
+      "Cannot share root folder": [
+        "Kan hoofdmap niet delen"
+      ],
+      "Cannot verify the author of this file": [
+        "Kan de auteur van dit bestand niet verifiëren"
+      ],
+      "Cannot verify who uploaded this file": [
+        "Kan niet verifiëren wie dit bestand heeft opgeladen"
+      ],
+      "Copy operation aborted": [
+        "Kopieeractie afgebroken"
+      ],
+      "Copying item to a non-folder is not allowed": [
+        "Het kopiëren van een item naar een niet-map is niet toegestaan"
+      ],
+      "Could not find an available name": [
+        "Kon geen beschikbare naam vinden"
+      ],
+      "Could not load sharing details": [
+        "Kan de deel instellingen niet laden"
+      ],
+      "Could not load the image preview: ${ message }": [
+        "Kan het afbeeldingsvoorbeeld niet laden: ${ message }"
+      ],
+      "Could not read part of this file: ${ message }": [
+        "Kon een deel van dit bestand niet lezen: ${ message }"
+      ],
+      "Could not unlock the parent folder": [
+        "Kan delen van de hoofdmap niet unlocken"
+      ],
+      "Could not unlock this item": [
+        "Kan dit item niet unlocken"
+      ],
+      "Creating documents in non-folders is not allowed": [
+        "Het aanmaken van documenten in niet-mappen is niet toegestaan"
+      ],
+      "Creating files in non-folders is not allowed": [
+        "Het aanmaken van bestanden in niet-mappen is niet toegestaan"
+      ],
+      "Creating folders in non-folders is not allowed": [
+        "Het aanmaken van mappen in niet-mappen is niet toegestaan"
+      ],
+      "Device not found": [
+        "Apparaat niet gevonden"
+      ],
+      "Expiration date cannot be in the past": [
+        "De vervaldatum kan niet in het verleden liggen"
+      ],
+      "Failed to decrypt bookmark key: ${ message }": [
+        "Fout bij het ontsleutelen van de bladwijzersleutel: ${ message }"
+      ],
+      "Failed to decrypt bookmark name: ${ message }": [
+        "Fout bij het ontsleutelen van bladwijzernaam: ${ message }"
+      ],
+      "Failed to decrypt bookmark password: ${ message }": [
+        "Fout bij het ontsleutelen van bladwijzerwachtwoord: ${ message }"
+      ],
+      "Failed to decrypt content key: ${ message }": [
+        "Fout bij het ontsleutelen van de inhoudssleutel: ${ message }"
+      ],
+      "Failed to decrypt item name: ${ message }": [
+        "Fout bij het ontsleutelen van de itemnaam: ${ message }"
+      ],
+      "Failed to decrypt node key: ${ message }": [
+        "Fout bij het ontsleutelen van de nodesleutel: ${ message }"
+      ],
+      "Failed to decrypt revision metadata": [
+        "Kan de metagegevens van de revisie niet ontsleutelen"
+      ],
+      "Failed to get inviter keys": [
+        "Ophalen van de sleutels van de uitnodiger is niet gelukt."
+      ],
+      "Failed to verify invitation": [
+        "Verificatie van de uitnodiging is mislukt"
+      ],
+      "File download failed due to empty response": [
+        "Het downloaden van het bestand is mislukt door een leeg antwoord"
+      ],
+      "File has no revision": [
+        "Bestand heeft geen revisie"
+      ],
+      "Image preview not found": [
+        "Voobeeld weergave niet gevonden"
+      ],
+      "Invalid URL": [
+        "Ongeldige URL"
+      ],
+      "Invitation not found": [
+        "Uitnodiging niet gevonden"
+      ],
+      "Item not found": [
+        "Item niet gevonden"
+      ],
+      "Legacy public link cannot be updated. Please re-create a new public link.": [
+        "De verouderde openbare koppeling kan niet worden bijgewerkt. Maak opnieuw een openbare koppeling aan."
+      ],
+      "Missing inviter email": [
+        "E-mailadres van uitnodiger ontbreekt"
+      ],
+      "Missing signature": [
+        "Handtekening ontbreekt"
+      ],
+      "Missing signature for ${ signatureType }": [
+        "Ontbrekende handtekening voor ${ signatureType }"
+      ],
+      "Move operation aborted": [
+        "Verplaatsactie afgebroken"
+      ],
+      "Moving item to a non-folder is not allowed": [
+        "Het verplaatsen van een item naar een niet-map is niet toegestaan"
+      ],
+      "Moving root item is not allowed": [
+        "Het verplaatsen van het hoofditem is niet toegelaten"
+      ],
+      "Name must be ${ MAX_NODE_NAME_LENGTH } character long at most": [
+        "Naam mag maximaal ${ MAX_NODE_NAME_LENGTH } teken lang zijn",
+        "Naam mag maximaal ${ MAX_NODE_NAME_LENGTH } tekens lang zijn"
+      ],
+      "Name must not be empty": [
+        "Naam mag niet leeg zijn"
+      ],
+      "No file data was received. Please try again.": [
+        "Er zijn geen bestandsgegevens ontvangen. Probeer het opnieuw."
+      ],
+      "Only admins can convert external invitations": [
+        "Alleen beheerders kunnen externe uitnodigingen converteren"
+      ],
+      "Operation aborted": [
+        "Handeling afgebroken"
+      ],
+      "Operation failed, try again later": [
+        "Actie mislukt, probeer het later opnieuw"
+      ],
+      "Part of the file appears to be corrupted": [
+        "Een deel van het bestand lijkt corrupt te zijn."
+      ],
+      "Photo is already in the target album": [
+        "Foto staat al in het doelalbum"
+      ],
+      "Photo not found": [
+        "Foto niet gevonden"
+      ],
+      "Renaming root item is not allowed": [
+        "Het hernoemen van het hoofditem is niet toegelaten"
+      ],
+      "Request aborted": [
+        "Verzoek afgebroken"
+      ],
+      "Signature is missing": [
+        "Handtekening ontbreekt"
+      ],
+      "Signature verification failed": [
+        "Controle van handtekening mislukt"
+      ],
+      "Signature verification failed: ${ errorMessage }": [
+        "Verificatie van handtekening is mislukt: ${ errorMessage }"
+      ],
+      "Signature verification for ${ signatureType } failed": [
+        "Verificatie van de handtekening voor ${ signatureType } is mislukt"
+      ],
+      "Signature verification for ${ signatureType } failed: ${ errorMessage }": [
+        "Verificatie van de handtekening voor ${ signatureType } is mislukt: ${ errorMessage }"
+      ],
+      "Some file data failed to upload. Please try again.": [
+        "Sommige bestandsgegevens konden niet worden opgeladen. Probeer het opnieuw."
+      ],
+      "Some file parts failed to upload. Please try again.": [
+        "Sommige bestandsdelen konden niet worden opgeladen. Probeer het opnieuw."
+      ],
+      "Some items could not be loaded": [
+        "Sommige items konden niet worden geladen"
+      ],
+      "Something went wrong": [
+        "Er is iets misgegaan"
+      ],
+      "Something went wrong. Please try again.": [
+        "Er is iets fout gegaan. Probeer later nog eens."
+      ],
+      "The uploaded file does not match the original. Please try again.": [
+        "Het geüploade bestand komt niet overeen met het origineel. Probeer het opnieuw."
+      ],
+      "This file has missing crypto material": [
+        "Dit bestand bevat ontbrekend cryptomateriaal"
+      ],
+      "This file has no version available to download": [
+        "Er is geen versie van dit bestand beschikbaar om te downloaden"
+      ],
+      "This file version could not be uploaded": [
+        "Deze bestandsversie kan niet worden opgeladen"
+      ],
+      "This item has no image preview": [
+        "Dit item heeft geen afbeeldingsvoorbeeld"
+      ],
+      "This item is no longer shared": [
+        "Dit item wordt niet langer gedeeld."
+      ],
+      "This item is not shared": [
+        "Dit item wordt niet gedeeld."
+      ],
+      "Too many server errors, please try again later": [
+        "Te veel serverfouten, probeer het later opnieuw"
+      ],
+      "Too many server requests, please try again later": [
+        "Te veel serveraanvragen, probeer het later opnieuw"
+      ],
+      "Unknown error": [
+        "Onbekende fout"
+      ],
+      "Verification keys are not available": [
+        "Verificatiesleutels zijn niet beschikbaar"
+      ],
+      "Verification keys for ${ signatureType } are not available": [
+        "Verificatiesleutels voor ${ signatureType } zijn niet beschikbaar"
+      ],
+      "You can create public links for your own files only": [
+        "U kunt alleen openbare links voor uw eigen bestanden maken"
+      ],
+      "You can only leave items that are shared with you": [
+        "U kunt alleen items achterlaten die met u zijn gedeeld"
+      ],
+      "You can only upload a new version to a file": [
+        "U kunt alleen een nieuwe versie naar een bestand uploaden"
+      ],
+      "You can update a public link for your own files only": [
+        "U kunt een openbare link alleen voor uw eigen bestanden bijwerken"
+      ],
+      "You do not have access to this item": [
+        "U heeft geen toegang tot dit item."
+      ],
+      "You do not have access to this shared item": [
+        "U heeft geen toegang tot dit gedeeld item."
+      ],
+      "Your browser does not support features required for the search.": [
+        "Uw browser ondersteunt de functies die nodig zijn om te zoeken niet."
+      ]
+    },
+    "Info": {
+      "Author is not provided on public link": [
+        "Auteur is niet opgegeven op openbare link"
+      ]
+    },
+    "Property": {
+      "attributes": [
+        "attributen"
+      ],
+      "content key": [
+        "inhoudssleutel"
+      ],
+      "hash key": [
+        "hash sleutel"
+      ],
+      "key": [
+        "sleutel"
+      ],
+      "membership": [
+        "lidmaatschap"
+      ],
+      "name": [
+        "naam"
+      ]
+    }
+  }
+}

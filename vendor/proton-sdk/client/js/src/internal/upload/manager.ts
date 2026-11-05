@@ -1,0 +1,437 @@
+import { c } from 'ttag';
+
+import { PrivateKey, SessionKey } from '../../crypto';
+import { NodeWithSameNameExistsValidationError, ValidationError } from '../../errors';
+import { Logger, ProtonDriveTelemetry, ThumbnailType, UploadMetadata } from '../../interface';
+import { reduceSizePrecision } from '../../telemetry';
+import { ErrorCode } from '../apiService';
+import { getErrorMessage } from '../errors';
+import { generateFileExtendedAttributes } from '../nodes';
+import { makeNodeUid, splitNodeUid } from '../uids';
+import { UploadAPIService } from './apiService';
+import { UploadCryptoService } from './cryptoService';
+import { NodeCrypto, NodeRevisionDraft, NodesService } from './interface';
+
+/**
+ * UploadManager is responsible for creating and deleting draft nodes
+ * on the server. It handles the creation of draft nodes, including
+ * generating the necessary cryptographic keys and metadata.
+ */
+export class UploadManager {
+    protected logger: Logger;
+
+    constructor(
+        telemetry: ProtonDriveTelemetry,
+        protected apiService: UploadAPIService,
+        protected cryptoService: UploadCryptoService,
+        protected nodesService: NodesService,
+        protected clientUid: string | undefined,
+    ) {
+        this.logger = telemetry.getLogger('upload');
+        this.apiService = apiService;
+        this.cryptoService = cryptoService;
+        this.nodesService = nodesService;
+        this.clientUid = clientUid;
+    }
+
+    async createDraftNode(parentFolderUid: string, name: string, metadata: UploadMetadata): Promise<NodeRevisionDraft> {
+        const { parentHashKey, ...generatedNodeCrypto } = await this.generateNewFileCrypto(parentFolderUid, name);
+
+        const { nodeUid, nodeRevisionUid } = await this.createDraftOnAPI(
+            parentFolderUid,
+            parentHashKey,
+            name,
+            metadata,
+            generatedNodeCrypto,
+        );
+
+        return {
+            nodeUid,
+            nodeRevisionUid,
+            nodeKeys: {
+                key: generatedNodeCrypto.nodeKeys.decrypted.key,
+                contentKeyPacketSessionKey: generatedNodeCrypto.contentKey.decrypted.contentKeyPacketSessionKey,
+                signingKeys: generatedNodeCrypto.signingKeys,
+            },
+            parentNodeKeys: {
+                hashKey: parentHashKey,
+            },
+            newNodeInfo: {
+                parentUid: parentFolderUid,
+                name,
+                encryptedName: generatedNodeCrypto.encryptedNode.encryptedName,
+                hash: generatedNodeCrypto.encryptedNode.hash,
+            },
+        };
+    }
+
+    async generateNewFileCrypto(
+        parentFolderUid: string,
+        name: string,
+    ): Promise<NodeCrypto & { parentHashKey: Uint8Array<ArrayBuffer> }> {
+        const parentKeys = await this.nodesService.getNodeKeys(parentFolderUid);
+        if (!parentKeys.hashKey) {
+            throw new ValidationError(c('Error').t`Creating files in non-folders is not allowed`);
+        }
+
+        const generatedNodeCrypto = await this.cryptoService.generateFileCrypto(
+            parentFolderUid,
+            { key: parentKeys.key, hashKey: parentKeys.hashKey },
+            name,
+        );
+
+        return {
+            ...generatedNodeCrypto,
+            parentHashKey: parentKeys.hashKey,
+        };
+    }
+
+    async getExistingFileNodeCrypto(nodeUid: string): Promise<{
+        key: PrivateKey;
+        contentKeyPacket: Uint8Array<ArrayBuffer>;
+        contentKeyPacketSessionKey: SessionKey;
+        signingKeys: NodeCrypto['signingKeys'];
+    }> {
+        const node = await this.nodesService.getNode(nodeUid);
+        const nodeKeys = await this.nodesService.getNodeKeys(nodeUid);
+
+        if (!node.activeRevision || !nodeKeys.contentKeyPacketSessionKey) {
+            throw new ValidationError(c('Error').t`You can only upload a new version to a file`);
+        }
+
+        if (!nodeKeys.contentKeyPacket) {
+            throw new ValidationError(c('Error').t`This file version could not be uploaded`);
+        }
+
+        const signingKeys = await this.cryptoService.getSigningKeysForExistingNode({
+            nodeUid,
+            parentNodeUid: node.parentUid,
+        });
+
+        return {
+            key: nodeKeys.key,
+            contentKeyPacket: nodeKeys.contentKeyPacket,
+            contentKeyPacketSessionKey: nodeKeys.contentKeyPacketSessionKey,
+            signingKeys,
+        };
+    }
+
+    private async createDraftOnAPI(
+        parentFolderUid: string,
+        parentHashKey: Uint8Array<ArrayBuffer>,
+        name: string,
+        metadata: UploadMetadata,
+        generatedNodeCrypto: NodeCrypto,
+    ): Promise<{
+        nodeUid: string;
+        nodeRevisionUid: string;
+    }> {
+        try {
+            const result = await this.apiService.createDraft(parentFolderUid, {
+                armoredEncryptedName: generatedNodeCrypto.encryptedNode.encryptedName,
+                hash: generatedNodeCrypto.encryptedNode.hash,
+                mediaType: metadata.mediaType,
+                intendedUploadSize:
+                    metadata.expectedSize !== null ? reduceSizePrecision(metadata.expectedSize) : undefined,
+                armoredNodeKey: generatedNodeCrypto.nodeKeys.encrypted.armoredKey,
+                armoredNodePassphrase: generatedNodeCrypto.nodeKeys.encrypted.armoredPassphrase,
+                armoredNodePassphraseSignature: generatedNodeCrypto.nodeKeys.encrypted.armoredPassphraseSignature,
+                base64ContentKeyPacket: generatedNodeCrypto.contentKey.encrypted.base64ContentKeyPacket,
+                armoredContentKeyPacketSignature:
+                    generatedNodeCrypto.contentKey.encrypted.armoredContentKeyPacketSignature,
+                signatureEmail: generatedNodeCrypto.signingKeys.email,
+            });
+            return result;
+        } catch (error: unknown) {
+            return this.handleConflictError(parentFolderUid, metadata, error, async () => {
+                return this.createDraftOnAPI(parentFolderUid, parentHashKey, name, metadata, generatedNodeCrypto);
+            });
+        }
+    }
+
+    async uploadFile(
+        parentFolderUid: string,
+        nodeCrypto: NodeCrypto,
+        metadata: UploadMetadata,
+        commitPayload: {
+            armoredManifestSignature: string;
+            armoredExtendedAttributes: string;
+            checksumVerified?: boolean;
+        },
+        encryptedBlock:
+            | {
+                  encryptedData: Uint8Array<ArrayBuffer>;
+                  armoredSignature: string;
+                  verificationToken: Uint8Array<ArrayBuffer>;
+              }
+            | undefined,
+        encryptedThumbnails: { type: ThumbnailType; encryptedData: Uint8Array<ArrayBuffer> }[],
+        signal?: AbortSignal,
+    ): Promise<{ nodeUid: string; nodeRevisionUid: string }> {
+        try {
+            const result = await this.apiService.uploadSmallFile(
+                parentFolderUid,
+                {
+                    armoredEncryptedName: nodeCrypto.encryptedNode.encryptedName,
+                    hash: nodeCrypto.encryptedNode.hash,
+                    mediaType: metadata.mediaType ?? 'application/octet-stream',
+                    armoredNodeKey: nodeCrypto.nodeKeys.encrypted.armoredKey,
+                    armoredNodePassphrase: nodeCrypto.nodeKeys.encrypted.armoredPassphrase,
+                    armoredNodePassphraseSignature: nodeCrypto.nodeKeys.encrypted.armoredPassphraseSignature,
+                    base64ContentKeyPacket: nodeCrypto.contentKey.encrypted.base64ContentKeyPacket,
+                    armoredContentKeyPacketSignature: nodeCrypto.contentKey.encrypted.armoredContentKeyPacketSignature,
+                    armoredExtendedAttributes: commitPayload.armoredExtendedAttributes,
+                    signatureEmail: nodeCrypto.signingKeys.email ?? null,
+                },
+                {
+                    armoredManifestSignature: commitPayload.armoredManifestSignature,
+                    checksumVerified: commitPayload.checksumVerified,
+                    block: encryptedBlock
+                        ? {
+                              encryptedData: encryptedBlock.encryptedData,
+                              armoredSignature: encryptedBlock.armoredSignature,
+                              verificationToken: encryptedBlock.verificationToken,
+                          }
+                        : undefined,
+                    thumbnails: encryptedThumbnails,
+                },
+                signal,
+            );
+            return result;
+        } catch (error: unknown) {
+            return this.handleConflictError(parentFolderUid, metadata, error, async () => {
+                return this.uploadFile(
+                    parentFolderUid,
+                    nodeCrypto,
+                    metadata,
+                    commitPayload,
+                    encryptedBlock,
+                    encryptedThumbnails,
+                    signal,
+                );
+            });
+        }
+    }
+
+    async uploadSmallRevision(
+        nodeUid: string,
+        nodeCrypto: Pick<NodeCrypto, 'signingKeys'>,
+        commitPayload: {
+            armoredManifestSignature: string;
+            armoredExtendedAttributes: string;
+        },
+        encryptedBlock:
+            | {
+                  encryptedData: Uint8Array<ArrayBuffer>;
+                  armoredSignature: string;
+                  verificationToken: Uint8Array<ArrayBuffer>;
+              }
+            | undefined,
+        encryptedThumbnails: { type: ThumbnailType; encryptedData: Uint8Array<ArrayBuffer> }[],
+        signal?: AbortSignal,
+    ): Promise<{ nodeUid: string; nodeRevisionUid: string }> {
+        const node = await this.nodesService.getNode(nodeUid);
+        if (!node.activeRevision) {
+            throw new ValidationError(c('Error').t`File has no revision`);
+        }
+        const result = await this.apiService.uploadSmallRevision(
+            nodeUid,
+            node.activeRevision.uid,
+            {
+                signatureEmail: nodeCrypto.signingKeys.email ?? null,
+                armoredExtendedAttributes: commitPayload.armoredExtendedAttributes,
+            },
+            {
+                armoredManifestSignature: commitPayload.armoredManifestSignature,
+                block: encryptedBlock,
+                thumbnails: encryptedThumbnails,
+            },
+            signal,
+        );
+        await this.nodesService.notifyNodeChanged(nodeUid);
+        return result;
+    }
+
+    private async handleConflictError(
+        parentFolderUid: string,
+        metadata: UploadMetadata,
+        error: unknown,
+        onRetryAfterDraftDeleted: () => Promise<{ nodeUid: string; nodeRevisionUid: string }>,
+    ): Promise<{ nodeUid: string; nodeRevisionUid: string }> {
+        if (error instanceof ValidationError) {
+            if (error.code === ErrorCode.ALREADY_EXISTS) {
+                this.logger.info(`Node with given name already exists`);
+
+                const typedDetails = error.details as
+                    | {
+                          ConflictLinkID: string;
+                          ConflictRevisionID?: string;
+                          ConflictDraftRevisionID?: string;
+                          ConflictDraftClientUID?: string;
+                      }
+                    | undefined;
+
+                // If the client doesn't specify the client UID, it should
+                // never be considered own draft.
+                const isOwnDraftConflict =
+                    typedDetails?.ConflictDraftRevisionID &&
+                    this.clientUid &&
+                    typedDetails?.ConflictDraftClientUID === this.clientUid;
+
+                // If there is existing draft created by this client,
+                // automatically delete it and try to create a new one
+                // with the same name again.
+                if (
+                    typedDetails?.ConflictDraftRevisionID &&
+                    (isOwnDraftConflict || metadata.overrideExistingDraftByOtherClient)
+                ) {
+                    const existingDraftNodeUid = makeNodeUid(
+                        splitNodeUid(parentFolderUid).volumeId,
+                        typedDetails.ConflictLinkID,
+                    );
+
+                    let deleteFailed = false;
+                    try {
+                        this.logger.warn(
+                            `Deleting existing draft node ${existingDraftNodeUid} by ${typedDetails.ConflictDraftClientUID}`,
+                        );
+                        await this.apiService.deleteDraft(existingDraftNodeUid);
+                    } catch (deleteDraftError: unknown) {
+                        // Do not throw, let throw the conflict error.
+                        deleteFailed = true;
+                        this.logger.error('Failed to delete existing draft node', deleteDraftError);
+                    }
+                    if (!deleteFailed) {
+                        return onRetryAfterDraftDeleted();
+                    }
+                }
+
+                if (isOwnDraftConflict) {
+                    this.logger.warn(
+                        `Existing draft conflict by another client ${typedDetails.ConflictDraftClientUID}`,
+                    );
+                }
+
+                const existingNodeUid = typedDetails
+                    ? makeNodeUid(splitNodeUid(parentFolderUid).volumeId, typedDetails.ConflictLinkID)
+                    : undefined;
+
+                throw new NodeWithSameNameExistsValidationError(
+                    error.message,
+                    error.code,
+                    existingNodeUid,
+                    !!typedDetails?.ConflictDraftRevisionID,
+                );
+            }
+        }
+        throw error;
+    }
+
+    async deleteDraftNode(nodeUid: string): Promise<void> {
+        try {
+            await this.apiService.deleteDraft(nodeUid);
+        } catch (error: unknown) {
+            // Only log the error but do not fail the operation as we are
+            // deleting draft only when somethign fails and original error
+            // will bubble up.
+            this.logger.error('Failed to delete draft node', error);
+        }
+    }
+
+    async createDraftRevision(nodeUid: string, metadata: UploadMetadata): Promise<NodeRevisionDraft> {
+        const node = await this.nodesService.getNode(nodeUid);
+        const nodeKeys = await this.nodesService.getNodeKeys(nodeUid);
+
+        if (!node.activeRevision || !nodeKeys.contentKeyPacketSessionKey) {
+            throw new ValidationError(c('Error').t`You can only upload a new version to a file`);
+        }
+
+        const signingKeys = await this.cryptoService.getSigningKeysForExistingNode({
+            nodeUid,
+            parentNodeUid: node.parentUid,
+        });
+
+        const { nodeRevisionUid } = await this.apiService.createDraftRevision(nodeUid, {
+            currentRevisionUid: node.activeRevision.uid,
+            intendedUploadSize:
+                metadata.expectedSize !== null ? reduceSizePrecision(metadata.expectedSize) : undefined,
+        });
+
+        return {
+            nodeUid,
+            nodeRevisionUid,
+            nodeKeys: {
+                key: nodeKeys.key,
+                contentKeyPacketSessionKey: nodeKeys.contentKeyPacketSessionKey,
+                signingKeys,
+            },
+        };
+    }
+
+    async deleteDraftRevision(nodeRevisionUid: string): Promise<void> {
+        try {
+            await this.apiService.deleteDraftRevision(nodeRevisionUid);
+        } catch (error: unknown) {
+            // Only log the error but do not fail the operation as we are
+            // deleting draft only when somethign fails and original error
+            // will bubble up.
+            this.logger.error('Failed to delete draft node revision', error);
+        }
+    }
+
+    async commitDraft(
+        nodeRevisionDraft: NodeRevisionDraft,
+        manifest: Uint8Array<ArrayBuffer>,
+        extendedAttributes: {
+            modificationTime?: Date;
+            size: number;
+            blockSizes: number[];
+            digests: {
+                sha1: string;
+            };
+        },
+        additionalExtendedAttributes?: object,
+        integrityInfo?: { checksumVerified: boolean },
+    ): Promise<void> {
+        const generatedExtendedAttributes = generateFileExtendedAttributes(
+            extendedAttributes,
+            additionalExtendedAttributes,
+        );
+        const nodeCommitCrypto = await this.cryptoService.commitFile(
+            nodeRevisionDraft.nodeKeys,
+            manifest,
+            generatedExtendedAttributes,
+        );
+        try {
+            await this.apiService.commitDraftRevision(nodeRevisionDraft.nodeRevisionUid, {
+                ...nodeCommitCrypto,
+                ...integrityInfo,
+            });
+        } catch (error: unknown) {
+            // Commit might be sent but due to network error no response is
+            // received. In this case, API service automatically retries the
+            // request. If the first attempt passed, it will fail on the second
+            // attempt. We need to check if the revision was actually committed.
+            let isRevisionUploaded;
+            try {
+                isRevisionUploaded = await this.apiService.isRevisionUploaded(nodeRevisionDraft.nodeRevisionUid);
+            } catch (catchError: unknown) {
+                this.logger.warn(`Failed to check if revision was committed: ${getErrorMessage(catchError)}`);
+                throw error; // Throw original error, not the checking one.
+            }
+            if (!isRevisionUploaded) {
+                this.logger.debug(`Revision was not committed`);
+                throw error;
+            }
+            this.logger.warn(`Node commit failed but node was committed successfully ${nodeRevisionDraft.nodeUid}`);
+        }
+        await this.notifyNodeUploaded(nodeRevisionDraft);
+    }
+
+    protected async notifyNodeUploaded(nodeRevisionDraft: NodeRevisionDraft): Promise<void> {
+        // If new revision to existing node was created, invalidate the node.
+        if (!nodeRevisionDraft.newNodeInfo) {
+            await this.nodesService.notifyNodeChanged(nodeRevisionDraft.nodeUid);
+        }
+    }
+}

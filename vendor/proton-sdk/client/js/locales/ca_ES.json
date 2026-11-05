@@ -1,0 +1,288 @@
+{
+  "headers": {
+    "plural-forms": "nplurals=2; plural=(n != 1);",
+    "language": "ca_ES"
+  },
+  "contexts": {
+    "Error": {
+      "A message is required when reporting copyright infringement or stolen data": [
+        "Es requereix un missatge quan s'informi d'una infracció dels drets d'autor o de dades robades"
+      ],
+      "Bookmark password is not available": [
+        "La contrasenya d'adreces d'interès no està disponible."
+      ],
+      "Cannot add photo to album without a valid name": [
+        "No es pot afegir la fotografia a l'àlbum sense un nom vàlid"
+      ],
+      "Cannot download a folder": [
+        "No es pot descarregar una carpeta"
+      ],
+      "Cannot move item without a valid name, please rename the item first": [
+        "No es pot moure l'element sense un nom vàlid, canvieu-li el nom primer"
+      ],
+      "Cannot share root folder": [
+        "No es pot compartir la carpeta arrel"
+      ],
+      "Cannot verify the author of this file": [
+        "No es pot verificar l'autor d'aquest fitxer"
+      ],
+      "Cannot verify who uploaded this file": [
+        "No es pot verificar qui ha carregat aquest fitxer"
+      ],
+      "Copy operation aborted": [
+        "S'ha cancel·lat l'operació de còpia"
+      ],
+      "Copying item to a non-folder is not allowed": [
+        "No està permès copiar un element a un lloc que no és una carpeta"
+      ],
+      "Could not find an available name": [
+        "No s'ha pogut trobar un nom disponible"
+      ],
+      "Could not load sharing details": [
+        "No s'han pogut carregar els detalls de la compartició"
+      ],
+      "Could not load the image preview: ${ message }": [
+        "No s'ha pogut carregar la previsualització de la imatge: ${ message }"
+      ],
+      "Could not read part of this file: ${ message }": [
+        "No s'ha pogut llegir una part d'aquest fitxer: ${ message }"
+      ],
+      "Could not unlock the parent folder": [
+        "No s'ha pogut desbloquejar la carpeta principal"
+      ],
+      "Could not unlock this item": [
+        "No s'ha pogut desbloquejar aquest element"
+      ],
+      "Creating documents in non-folders is not allowed": [
+        "La creació de documents fora de carpetes no està permesa"
+      ],
+      "Creating files in non-folders is not allowed": [
+        "No es permet crear carpetes en llocs que no són carpetes"
+      ],
+      "Creating folders in non-folders is not allowed": [
+        "No es permet crear carpetes en llocs que no són carpetes"
+      ],
+      "Device not found": [
+        "No s'ha trobat el dispositiu"
+      ],
+      "Expiration date cannot be in the past": [
+        "La data de caducitat no pot haver passat"
+      ],
+      "Failed to decrypt bookmark key: ${ message }": [
+        "No s'ha pogut desxifrar la clau d'adreces d'interès: ${ message }"
+      ],
+      "Failed to decrypt bookmark name: ${ message }": [
+        "No s'ha pogut desxifrar el nom de l'adreça d'interès: ${ message }"
+      ],
+      "Failed to decrypt bookmark password: ${ message }": [
+        "No s'ha pogut desxifrar la contrasenya d'adreces d'interès: ${ message }"
+      ],
+      "Failed to decrypt content key: ${ message }": [
+        "No s'ha pogut desxifrar la clau de contingut: ${ message }"
+      ],
+      "Failed to decrypt item name: ${ message }": [
+        "No s'ha pogut desxifrar el nom de l'element: ${ message }"
+      ],
+      "Failed to decrypt node key: ${ message }": [
+        "No s'ha pogut desxifrar la clau del node: ${ message }"
+      ],
+      "Failed to decrypt revision metadata": [
+        "No s'han pogut desxifrar les metadades de la revisió"
+      ],
+      "Failed to get inviter keys": [
+        "No s'han pogut obtenir les claus de qui us convida"
+      ],
+      "Failed to verify invitation": [
+        "No s'ha pogut verificar la invitació"
+      ],
+      "File download failed due to empty response": [
+        "La descàrrega del fitxer ha fallat a causa d'una resposta buida."
+      ],
+      "File has no revision": [
+        "Aquest fitxer no té cap revisió"
+      ],
+      "Image preview not found": [
+        "No s'ha trobat la previsualització de la imatge"
+      ],
+      "Invalid URL": [
+        "L'URL no és vàlid"
+      ],
+      "Invitation not found": [
+        "No s'ha trobat la invitació"
+      ],
+      "Item not found": [
+        "No s'ha trobat l'element"
+      ],
+      "Legacy public link cannot be updated. Please re-create a new public link.": [
+        "L'enllaç públic antic no es pot actualitzar. Torneu a crear-ne un de nou."
+      ],
+      "Missing inviter email": [
+        "Falta el correu electrònic de qui us convida"
+      ],
+      "Missing signature": [
+        "No s'ha trobat la signatura"
+      ],
+      "Missing signature for ${ signatureType }": [
+        "Falta la signatura per a ${ signatureType }"
+      ],
+      "Move operation aborted": [
+        "S'ha cancel·lat l'operació de moviment"
+      ],
+      "Moving item to a non-folder is not allowed": [
+        "No està permès moure un element a un lloc que no és una carpeta"
+      ],
+      "Moving root item is not allowed": [
+        "No està permès moure un element arrel"
+      ],
+      "Name must be ${ MAX_NODE_NAME_LENGTH } character long at most": [
+        "El nom ha de tenir com a màxim ${ MAX_NODE_NAME_LENGTH } caràcter",
+        "El nom ha de tenir com a màxim ${ MAX_NODE_NAME_LENGTH } caràcters"
+      ],
+      "Name must not be empty": [
+        "El nom no pot estar buit."
+      ],
+      "No file data was received. Please try again.": [
+        "No s'han rebut dades del fitxer. Torneu-ho a provar."
+      ],
+      "Only admins can convert external invitations": [
+        "Només els administradors/es poden convertir les invitacions externes"
+      ],
+      "Operation aborted": [
+        "S'ha interromput l'operació"
+      ],
+      "Operation failed, try again later": [
+        "L'operació ha fallat, torneu-ho a provar més tard"
+      ],
+      "Part of the file appears to be corrupted": [
+        "Sembla que una part del fitxer està malmesa"
+      ],
+      "Photo is already in the target album": [
+        "La foto ja és a l'àlbum de destinació"
+      ],
+      "Photo not found": [
+        "No s'ha trobat la fotografia"
+      ],
+      "Renaming root item is not allowed": [
+        "No està permès canviar el nom d'un element arrel"
+      ],
+      "Request aborted": [
+        "Sol·licitud cancel·lada"
+      ],
+      "Search index reached its storage quota": [
+        "L'índex de cerca ha assolit la seva quota d'emmagatzematge"
+      ],
+      "Signature is missing": [
+        "Falta la signatura"
+      ],
+      "Signature verification failed": [
+        "Ha fallat la verificació de la signatura"
+      ],
+      "Signature verification failed: ${ errorMessage }": [
+        "Hi ha hagut un error en la verificació de la signatura: ${ errorMessage }"
+      ],
+      "Signature verification for ${ signatureType } failed": [
+        "No s'ha pogut verificar la signatura de ${ signatureType }"
+      ],
+      "Signature verification for ${ signatureType } failed: ${ errorMessage }": [
+        "No s'ha pogut verificar la signatura per a ${ signatureType }: ${ errorMessage }"
+      ],
+      "Some file data failed to upload. Please try again.": [
+        "No s'han pogut carregar algunes dades del fitxer. Torneu-ho a provar."
+      ],
+      "Some file parts failed to upload. Please try again.": [
+        "No s'han pogut carregar algunes parts del fitxer. Torneu-ho a provar."
+      ],
+      "Some items could not be loaded": [
+        "No s'han pogut carregar alguns elements"
+      ],
+      "Something went wrong": [
+        "S'ha produït un error"
+      ],
+      "Something went wrong. Please try again.": [
+        "Alguna cosa ha anat malament. Torneu-ho a provar."
+      ],
+      "The uploaded file does not match the original. Please try again.": [
+        "El fitxer carregat no coincideix amb l'original. Torneu-ho a provar."
+      ],
+      "This file has missing crypto material": [
+        "A aquest fitxer li falta material criptogràfic"
+      ],
+      "This file has no version available to download": [
+        "Aquest fitxer no té cap versió disponible per descarregar"
+      ],
+      "This file version could not be uploaded": [
+        "No s'ha pogut carregar aquesta versió del fitxer"
+      ],
+      "This item has no image preview": [
+        "Aquest element no té previsualització d'imatge"
+      ],
+      "This item is no longer shared": [
+        "Aquest element ja no està compartit"
+      ],
+      "This item is not shared": [
+        "Aquest element no està compartit"
+      ],
+      "Too many server errors, please try again later": [
+        "Massa errors del servidor. Torneu-ho a provar més tard"
+      ],
+      "Too many server requests, please try again later": [
+        "Hi ha hagut massa peticions del servidor. Torneu-ho a provar més tard."
+      ],
+      "Unknown error": [
+        "Error desconegut"
+      ],
+      "Verification keys are not available": [
+        "Les claus de verificació no estan disponibles"
+      ],
+      "Verification keys for ${ signatureType } are not available": [
+        "Les claus de verificació per a ${ signatureType } no estan disponibles"
+      ],
+      "You can create public links for your own files only": [
+        "Només podeu crear enllaços públics per als vostres propis fitxers"
+      ],
+      "You can only leave items that are shared with you": [
+        "Només podeu abandonar els elements que us hagin estat compartits"
+      ],
+      "You can only upload a new version to a file": [
+        "Només podeu carregar una versió nova a un fitxer"
+      ],
+      "You can update a public link for your own files only": [
+        "Només podeu actualitzar un enllaç públic per als vostres propis fitxers"
+      ],
+      "You do not have access to this item": [
+        "No teniu accés a aquest element"
+      ],
+      "You do not have access to this shared item": [
+        "No teniu accés a aquest element compartit"
+      ],
+      "Your browser does not support features required for the search.": [
+        "El vostre navegador no suporta les característiques requerides per a la cerca."
+      ]
+    },
+    "Info": {
+      "Author is not provided on public link": [
+        "L'autor no es proporciona a l'enllaç públic"
+      ]
+    },
+    "Property": {
+      "attributes": [
+        "atributs"
+      ],
+      "content key": [
+        "clau de contingut"
+      ],
+      "hash key": [
+        "clau d'empremta electrònica"
+      ],
+      "key": [
+        "clau"
+      ],
+      "membership": [
+        "subscripció"
+      ],
+      "name": [
+        "nom"
+      ]
+    }
+  }
+}

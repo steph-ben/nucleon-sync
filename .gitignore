@@ -1,0 +1,4 @@
+node_modules/
+vendor/proton-sdk/cli/release/
+*.log
+.DS_Store

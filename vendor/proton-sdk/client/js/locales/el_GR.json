@@ -1,0 +1,288 @@
+{
+  "headers": {
+    "plural-forms": "nplurals=2; plural=(n != 1);",
+    "language": "el_GR"
+  },
+  "contexts": {
+    "Error": {
+      "A message is required when reporting copyright infringement or stolen data": [
+        "Απαιτείται μήνυμα κατά την αναφορά παραβίασης πνευματικών δικαιωμάτων ή κλοπής δεδομένων"
+      ],
+      "Bookmark password is not available": [
+        "Η σελιδοδείκτηση κωδικού δεν είναι διαθέσιμη"
+      ],
+      "Cannot add photo to album without a valid name": [
+        "Δεν είναι δυνατή η προσθήκη φωτογραφίας στο άλμπουμ χωρίς έγκυρο όνομα"
+      ],
+      "Cannot download a folder": [
+        "Δεν είναι δυνατή η λήψη ενός φακέλου"
+      ],
+      "Cannot move item without a valid name, please rename the item first": [
+        "Δεν είναι δυνατή η μετακίνηση στοιχείου χωρίς έγκυρο όνομα. Παρακαλούμε μετονομάστε το στοιχείο πρώτα."
+      ],
+      "Cannot share root folder": [
+        "Δεν είναι δυνατή η κοινοποίηση του κεντρικού φακέλου"
+      ],
+      "Cannot verify the author of this file": [
+        "Μέρος του αρχείου φαίνεται να είναι κατεστραμμένο"
+      ],
+      "Cannot verify who uploaded this file": [
+        "Δεν είναι δυνατή η επαλήθευση του χρήστη που ανέβασε αυτό το αρχείο"
+      ],
+      "Copy operation aborted": [
+        "Η αντιγραφή ακυρώθηκε"
+      ],
+      "Copying item to a non-folder is not allowed": [
+        "Δεν επιτρέπεται η αντιγραφή στοιχείου σε μη-φάκελο"
+      ],
+      "Could not find an available name": [
+        "Δεν ήταν δυνατή η εύρεση διαθέσιμου ονόματος"
+      ],
+      "Could not load sharing details": [
+        "Δεν ήταν δυνατή η φόρτωση των λεπτομερειών κοινής χρήσης"
+      ],
+      "Could not load the image preview: ${ message }": [
+        "Δεν ήταν δυνατή η φόρτωση της προεπισκόπησης εικόνας: ${ message }"
+      ],
+      "Could not read part of this file: ${ message }": [
+        "Δεν ήταν δυνατή η ανάγνωση μέρους αυτού του αρχείου: ${ message }"
+      ],
+      "Could not unlock the parent folder": [
+        "Δεν ήταν δυνατό το ξεκλείδωμα του γονικού φακέλου"
+      ],
+      "Could not unlock this item": [
+        "Δεν ήταν δυνατό το ξεκλείδωμα αυτού του στοιχείου"
+      ],
+      "Creating documents in non-folders is not allowed": [
+        "Δεν επιτρέπεται η δημιουργία εγγράφων σε μη-φακέλους."
+      ],
+      "Creating files in non-folders is not allowed": [
+        "Δεν επιτρέπεται η δημιουργία αρχείων σε μη-φακέλους."
+      ],
+      "Creating folders in non-folders is not allowed": [
+        "Δεν επιτρέπεται η δημιουργία φακέλων σε μη-φακέλους."
+      ],
+      "Device not found": [
+        "Η συσκευή δεν βρέθηκε"
+      ],
+      "Expiration date cannot be in the past": [
+        "Ημερομηνία λήξης δεν μπορεί να είναι στο παρελθόν"
+      ],
+      "Failed to decrypt bookmark key: ${ message }": [
+        "Αποτυχία αποκρυπτογράφησης κλειδιού σελιδοδείκτη: ${ message }"
+      ],
+      "Failed to decrypt bookmark name: ${ message }": [
+        "Αποτυχία αποκρυπτογράφησης ονόματος σελιδοδείκτη: ${ message }"
+      ],
+      "Failed to decrypt bookmark password: ${ message }": [
+        "Αποτυχία αποκρυπτογράφησης κωδικού σελιδοδείκτη: ${ message }"
+      ],
+      "Failed to decrypt content key: ${ message }": [
+        "Αποτυχία αποκρυπτογράφησης κλειδιού περιεχομένου: ${ message }"
+      ],
+      "Failed to decrypt item name: ${ message }": [
+        "Αποτυχία αποκρυπτογράφησης ονόματος στοιχείου: ${ message }"
+      ],
+      "Failed to decrypt node key: ${ message }": [
+        "Αποτυχία αποκρυπτογράφησης κλειδιού κόμβου: ${ message }"
+      ],
+      "Failed to decrypt revision metadata": [
+        "Αποτυχία αποκρυπτογράφησης μεταδεδομένων αναθεώρησης"
+      ],
+      "Failed to get inviter keys": [
+        "Αποτυχία λήψης κλειδιών προσκαλούντος"
+      ],
+      "Failed to verify invitation": [
+        "Αποτυχία επαλήθευσης πρόσκλησης"
+      ],
+      "File download failed due to empty response": [
+        "Η λήψη αρχείου απέτυχε λόγω κενής απόκρισης"
+      ],
+      "File has no revision": [
+        "Το αρχείο δεν έχει αναθεώρηση"
+      ],
+      "Image preview not found": [
+        "Δεν βρέθηκε προεπισκόπηση εικόνας"
+      ],
+      "Invalid URL": [
+        "Μη έγκυρη διεύθυνση URL"
+      ],
+      "Invitation not found": [
+        "Η πρόσκληση δεν βρέθηκε"
+      ],
+      "Item not found": [
+        "Δεν βρέθηκαν στοιχεία"
+      ],
+      "Legacy public link cannot be updated. Please re-create a new public link.": [
+        "Ο παλαιού τύπου δημόσιος σύνδεσμος δεν μπορεί να ενημερωθεί. Παρακαλούμε δημιουργήστε εκ νέου έναν νέο δημόσιο σύνδεσμο."
+      ],
+      "Missing inviter email": [
+        "Λείπει η ηλεκτρονική διεύθυνση του προσκαλούντος"
+      ],
+      "Missing signature": [
+        "Λείπει η υπογραφή"
+      ],
+      "Missing signature for ${ signatureType }": [
+        "Λείπει υπογραφή για ${ signatureType }"
+      ],
+      "Move operation aborted": [
+        "Η μετακίνηση ακυρώθηκε"
+      ],
+      "Moving item to a non-folder is not allowed": [
+        "Δεν επιτρέπεται η μετακίνηση στοιχείου σε μη-φάκελο"
+      ],
+      "Moving root item is not allowed": [
+        "Η μετακίνηση του στοιχείου ρίζας δεν επιτρέπεται"
+      ],
+      "Name must be ${ MAX_NODE_NAME_LENGTH } character long at most": [
+        "Το όνομα δεν πρέπει να υπερβαίνει τον ${ MAX_NODE_NAME_LENGTH } χαρακτήρα",
+        "Το όνομα δεν πρέπει να υπερβαίνει τους ${ MAX_NODE_NAME_LENGTH } χαρακτήρες"
+      ],
+      "Name must not be empty": [
+        "Το όνομα δεν πρέπει να είναι κενό"
+      ],
+      "No file data was received. Please try again.": [
+        "Δεν ελήφθησαν δεδομένα αρχείου. Παρακαλούμε δοκιμάστε ξανά."
+      ],
+      "Only admins can convert external invitations": [
+        "Μόνο οι διαχειριστές μπορούν να μετατρέψουν εξωτερικές προσκλήσεις"
+      ],
+      "Operation aborted": [
+        "Η λειτουργία ακυρώθηκε"
+      ],
+      "Operation failed, try again later": [
+        "Η λειτουργία απέτυχε, δοκιμάστε ξανά αργότερα"
+      ],
+      "Part of the file appears to be corrupted": [
+        "Μέρος του αρχείου φαίνεται να είναι κατεστραμμένο"
+      ],
+      "Photo is already in the target album": [
+        "Η φωτογραφία βρίσκεται ήδη στο άλμπουμ προορισμού"
+      ],
+      "Photo not found": [
+        "Η φωτογραφία δεν βρέθηκε"
+      ],
+      "Renaming root item is not allowed": [
+        "Δεν επιτρέπεται η μετονομασία του ριζικού στοιχείου"
+      ],
+      "Request aborted": [
+        "Το αίτημα ακυρώθηκε"
+      ],
+      "Search index reached its storage quota": [
+        "Το ευρετήριο αναζήτησης έφτασε στο όριο αποθηκευτικού χώρου του."
+      ],
+      "Signature is missing": [
+        "Η υπογραφή λείπει"
+      ],
+      "Signature verification failed": [
+        "Η επαλήθευση υπογραφής απέτυχε"
+      ],
+      "Signature verification failed: ${ errorMessage }": [
+        "Αποτυχία επαλήθευσης υπογραφής: ${ errorMessage }"
+      ],
+      "Signature verification for ${ signatureType } failed": [
+        "Αποτυχία επαλήθευσης υπογραφής για ${ signatureType }"
+      ],
+      "Signature verification for ${ signatureType } failed: ${ errorMessage }": [
+        "Αποτυχία επαλήθευσης υπογραφής για ${ signatureType }: ${ errorMessage }"
+      ],
+      "Some file data failed to upload. Please try again.": [
+        "Η μεταφόρτωση ορισμένων δεδομένων αρχείου απέτυχε. Παρακαλούμε δοκιμάστε ξανά."
+      ],
+      "Some file parts failed to upload. Please try again.": [
+        "Η μεταφόρτωση ορισμένων τμημάτων του αρχείου απέτυχε. Παρακαλούμε δοκιμάστε ξανά."
+      ],
+      "Some items could not be loaded": [
+        "Δεν ήταν δυνατή η φόρτωση ορισμένων στοιχείων"
+      ],
+      "Something went wrong": [
+        "Κάτι πήγε στραβά"
+      ],
+      "Something went wrong. Please try again.": [
+        "Κάτι πήγε στραβά. Παρακαλούμε δοκιμάστε ξανά."
+      ],
+      "The uploaded file does not match the original. Please try again.": [
+        "Το μεταφορτωμένο αρχείο δεν ταιριάζει με το πρωτότυπο. Παρακαλούμε δοκιμάστε ξανά."
+      ],
+      "This file has missing crypto material": [
+        "Αυτό το αρχείο δεν έχει κρυπτογραφικό υλικό"
+      ],
+      "This file has no version available to download": [
+        "Αυτό το αρχείο δεν έχει διαθέσιμη έκδοση για λήψη"
+      ],
+      "This file version could not be uploaded": [
+        "Δεν ήταν δυνατή η μεταφόρτωση αυτής της έκδοσης αρχείου"
+      ],
+      "This item has no image preview": [
+        "Αυτό το στοιχείο δεν έχει προεπισκόπηση εικόνας"
+      ],
+      "This item is no longer shared": [
+        "Αυτό το στοιχείο δεν είναι πλέον κοινοποιημένο"
+      ],
+      "This item is not shared": [
+        "Αυτό το στοιχείο δεν κοινοποιείται"
+      ],
+      "Too many server errors, please try again later": [
+        "Υπερβολικός αριθμός σφαλμάτων διακομιστή, παρακαλούμε δοκιμάστε ξανά αργότερα"
+      ],
+      "Too many server requests, please try again later": [
+        "Υπερβολικός αριθμός αιτημάτων διακομιστή, παρακαλούμε δοκιμάστε ξανά αργότερα"
+      ],
+      "Unknown error": [
+        "Άγνωστο σφάλμα"
+      ],
+      "Verification keys are not available": [
+        "Τα κλειδιά επαλήθευσης δεν είναι διαθέσιμα"
+      ],
+      "Verification keys for ${ signatureType } are not available": [
+        "Τα κλειδιά επαλήθευσης για ${ signatureType } δεν είναι διαθέσιμα"
+      ],
+      "You can create public links for your own files only": [
+        "Μπορείτε να δημιουργήσετε δημόσιους συνδέσμους μόνο για τα δικά σας αρχεία"
+      ],
+      "You can only leave items that are shared with you": [
+        "Μπορείτε να αφήσετε μόνο στοιχεία που έχουν κοινοποιηθεί σε εσάς"
+      ],
+      "You can only upload a new version to a file": [
+        "Μπορείτε να ανεβάσετε μόνο μια νέα έκδοση σε ένα αρχείο"
+      ],
+      "You can update a public link for your own files only": [
+        "Μπορείτε να ενημερώσετε έναν δημόσιο σύνδεσμο μόνο για τα δικά σας αρχεία"
+      ],
+      "You do not have access to this item": [
+        "Δεν έχετε πρόσβαση σε αυτό το στοιχείο"
+      ],
+      "You do not have access to this shared item": [
+        "Δεν έχετε πρόσβαση σε αυτό το κοινόχρηστο στοιχείο"
+      ],
+      "Your browser does not support features required for the search.": [
+        "Το πρόγραμμα περιήγησής σας δεν υποστηρίζει τις λειτουργίες που απαιτούνται για την αναζήτηση."
+      ]
+    },
+    "Info": {
+      "Author is not provided on public link": [
+        "Ο συγγραφέας δεν παρέχεται στον δημόσιο σύνδεσμο."
+      ]
+    },
+    "Property": {
+      "attributes": [
+        "ιδιότητες"
+      ],
+      "content key": [
+        "κλειδί περιεχομένου"
+      ],
+      "hash key": [
+        "κλειδί hash"
+      ],
+      "key": [
+        "κλειδί"
+      ],
+      "membership": [
+        "συνδρομή"
+      ],
+      "name": [
+        "ονομα"
+      ]
+    }
+  }
+}

@@ -1,0 +1,189 @@
+{
+  "headers": {
+    "plural-forms": "nplurals=2; plural=(n != 1);",
+    "language": "es_ES"
+  },
+  "contexts": {
+    "Error": {
+      "A message is required when reporting copyright infringement or stolen data": [
+        "Se requiere un mensaje al denunciar una infracción de derechos de autor o el robo de datos"
+      ],
+      "Bookmark password is not available": [
+        "La contraseña del marcador no está disponible"
+      ],
+      "Cannot add photo to album without a valid name": [
+        "No se puede añadir una foto a un álbum sin un nombre válido"
+      ],
+      "Cannot download a folder": [
+        "No se puede descargar una carpeta."
+      ],
+      "Cannot share root folder": [
+        "No se puede compartir la carpeta principal."
+      ],
+      "Copy operation aborted": [
+        "Se ha cancelado la copia."
+      ],
+      "Copying item to a non-folder is not allowed": [
+        "No está permitido copiar un elemento a una ubicación que no sea una carpeta."
+      ],
+      "Creating documents in non-folders is not allowed": [
+        "No está permitido crear documentos en elementos que no sean carpetas."
+      ],
+      "Creating files in non-folders is not allowed": [
+        "No está permitido crear archivos en ubicaciones que no sean carpetas."
+      ],
+      "Creating folders in non-folders is not allowed": [
+        "No está permitido crear carpetas en elementos que no sean carpetas."
+      ],
+      "Device not found": [
+        "No se ha encontrado el dispositivo."
+      ],
+      "Expiration date cannot be in the past": [
+        "La fecha de expiración no puede estar en el pasado."
+      ],
+      "Failed to decrypt bookmark key: ${ message }": [
+        "Error al descifrar la clave del marcador: ${ message }"
+      ],
+      "Failed to decrypt bookmark name: ${ message }": [
+        "Error al descifrar el nombre del marcador: ${ message }"
+      ],
+      "Failed to decrypt bookmark password: ${ message }": [
+        "Error al descifrar la contraseña del marcador: ${ message }"
+      ],
+      "Failed to decrypt content key: ${ message }": [
+        "Error al descifrar la clave del contenido: ${ message }"
+      ],
+      "Failed to decrypt item name: ${ message }": [
+        "Error al descifrar el nombre del elemento: ${ message }"
+      ],
+      "Failed to decrypt node key: ${ message }": [
+        "Error al descifrar la clave del nodo: ${ message }"
+      ],
+      "Failed to decrypt revision metadata": [
+        "No se han podido descifrar los metadatos de la revisión"
+      ],
+      "Failed to get inviter keys": [
+        "Fallo al obtener las claves de quien invita"
+      ],
+      "Failed to verify invitation": [
+        "Fallo al verificar la invitación"
+      ],
+      "File download failed due to empty response": [
+        "Error con la descarga del archivo debido a una respuesta vacía"
+      ],
+      "File has no revision": [
+        "El archivo no tiene revisiones"
+      ],
+      "Invalid URL": [
+        "La URL no es válida."
+      ],
+      "Invitation not found": [
+        "No se ha encontrado la invitación."
+      ],
+      "Legacy public link cannot be updated. Please re-create a new public link.": [
+        "El enlace público de origen no se puede actualizar. Vuelve a crear un nuevo enlace público."
+      ],
+      "Missing inviter email": [
+        "Falta el correo electrónico de quien invita"
+      ],
+      "Missing signature": [
+        "Falta la firma."
+      ],
+      "Missing signature for ${ signatureType }": [
+        "Falta la firma para ${ signatureType }"
+      ],
+      "Move operation aborted": [
+        "Se ha cancelado el traslado."
+      ],
+      "Moving item to a non-folder is not allowed": [
+        "No está permitido mover un elemento a una ubicación que no sea una carpeta."
+      ],
+      "Moving root item is not allowed": [
+        "No se permite mover el elemento principal."
+      ],
+      "Name must be ${ MAX_NODE_NAME_LENGTH } character long at most": [
+        "El nombre debe tener como máximo ${ MAX_NODE_NAME_LENGTH } carácter.",
+        "El nombre debe tener como máximo ${ MAX_NODE_NAME_LENGTH } caracteres."
+      ],
+      "Name must not be empty": [
+        "El nombre no debe estar vacío."
+      ],
+      "Operation aborted": [
+        "Operación cancelada"
+      ],
+      "Operation failed, try again later": [
+        "Operación fallida, inténtalo de nuevo más tarde"
+      ],
+      "Photo is already in the target album": [
+        "La foto ya está en el álbum de destino"
+      ],
+      "Photo not found": [
+        "Foto no encontrada"
+      ],
+      "Renaming root item is not allowed": [
+        "No se permite cambiar el nombre del elemento principal."
+      ],
+      "Request aborted": [
+        "Solicitud cancelada"
+      ],
+      "Signature is missing": [
+        "Falta la firma"
+      ],
+      "Signature verification failed": [
+        "Error al verificar la firma"
+      ],
+      "Signature verification failed: ${ errorMessage }": [
+        "Fallo en la verificación de firma: ${ errorMessage }"
+      ],
+      "Signature verification for ${ signatureType } failed": [
+        "Error en la verificación de la firma para ${ signatureType }"
+      ],
+      "Signature verification for ${ signatureType } failed: ${ errorMessage }": [
+        "Fallo en la verificación de firma para ${ signatureType }: ${ errorMessage }"
+      ],
+      "Too many server errors, please try again later": [
+        "Demasiados errores del servidor. Inténtalo de nuevo más tarde."
+      ],
+      "Too many server requests, please try again later": [
+        "Demasiadas solicitudes del servidor. Inténtalo de nuevo más tarde."
+      ],
+      "Unknown error": [
+        "Error desconocido"
+      ],
+      "Verification keys are not available": [
+        "Las claves de verificación no están disponibles."
+      ],
+      "Verification keys for ${ signatureType } are not available": [
+        "Las claves de verificación para ${ signatureType } no están disponibles."
+      ],
+      "Your browser does not support features required for the search.": [
+        "Tu navegador no admite las funciones necesarias para la búsqueda."
+      ]
+    },
+    "Info": {
+      "Author is not provided on public link": [
+        "El autor no se proporciona en el enlace público"
+      ]
+    },
+    "Property": {
+      "attributes": [
+        "atributos"
+      ],
+      "content key": [
+        "clave de contenido"
+      ],
+      "hash key": [
+        "clave hash"
+      ],
+      "key": [
+        "clave"
+      ],
+      "membership": [
+        "membresía"
+      ],
+      "name": [
+        "nombre"
+      ]
+    }
+  }
+}

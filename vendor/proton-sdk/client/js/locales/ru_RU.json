@@ -1,0 +1,147 @@
+{
+  "headers": {
+    "plural-forms": "nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);",
+    "language": "ru_RU"
+  },
+  "contexts": {
+    "Error": {
+      "Bookmark password is not available": [
+        "Пароль закладки недоступен"
+      ],
+      "Cannot download a folder": [
+        "Невозможно скачать папку"
+      ],
+      "Cannot share root folder": [
+        "Невозможно поделиться корневой папкой"
+      ],
+      "Creating files in non-folders is not allowed": [
+        "Создание файлов в элементах, не являющихся папками, не допускается"
+      ],
+      "Creating folders in non-folders is not allowed": [
+        "Создание папок в элементах, не являющихся папками, не допускается"
+      ],
+      "Device not found": [
+        "Устройство не найдено"
+      ],
+      "Expiration date cannot be in the past": [
+        "Дата окончания срока действия не может быть в прошлом"
+      ],
+      "Failed to decrypt bookmark key: ${ message }": [
+        "Не удалось расшифровать ключ закладки: ${ message }"
+      ],
+      "Failed to decrypt bookmark name: ${ message }": [
+        "Не удалось расшифровать имя закладки: ${ message }"
+      ],
+      "Failed to decrypt bookmark password: ${ message }": [
+        "Не удалось расшифровать пароль закладки: ${ message }"
+      ],
+      "Failed to decrypt content key: ${ message }": [
+        "Не удалось расшифровать ключ содержимого: ${ message }"
+      ],
+      "Failed to decrypt item name: ${ message }": [
+        "Не удалось расшифровать имя элемента: ${ message }"
+      ],
+      "Failed to decrypt node key: ${ message }": [
+        "Не удалось расшифровать ключ узла: ${ message }"
+      ],
+      "Failed to get inviter keys": [
+        "Не удалось получить ключи пригласившего"
+      ],
+      "Failed to verify invitation": [
+        "Не удалось проверить приглашение"
+      ],
+      "File download failed due to empty response": [
+        "Не удалось скачать файл из-за пустого ответа"
+      ],
+      "Invitation not found": [
+        "Приглашение не найдено"
+      ],
+      "Legacy public link cannot be updated. Please re-create a new public link.": [
+        "Устаревшую публичную ссылку невозможно обновить. Создайте новую публичную ссылку."
+      ],
+      "Missing inviter email": [
+        "Отсутствует адрес электронной почты пригласившего"
+      ],
+      "Missing signature": [
+        "Подпись отсутствует"
+      ],
+      "Missing signature for ${ signatureType }": [
+        "Отсутствует подпись для ${ signatureType }"
+      ],
+      "Move operation aborted": [
+        "Операция перемещения прервана"
+      ],
+      "Moving item to a non-folder is not allowed": [
+        "Перемещение элемента в элемент, не являющийся папкой, не допускается"
+      ],
+      "Moving root item is not allowed": [
+        "Перемещение корневого элемента не допускается"
+      ],
+      "Name must be ${ MAX_NODE_NAME_LENGTH } character long at most": [
+        "Имя должно состоять не более чем из ${ MAX_NODE_NAME_LENGTH } символа",
+        "Имя должно состоять не более чем из ${ MAX_NODE_NAME_LENGTH } символов",
+        "Имя должно состоять не более чем из ${ MAX_NODE_NAME_LENGTH } символов",
+        "Имя должно состоять не более чем из ${ MAX_NODE_NAME_LENGTH } символов"
+      ],
+      "Name must not be empty": [
+        "Название не может быть пустым"
+      ],
+      "Operation aborted": [
+        "Операция прервана"
+      ],
+      "Renaming root item is not allowed": [
+        "Переименование корневого элемента не допускается"
+      ],
+      "Request aborted": [
+        "Запрос прерван"
+      ],
+      "Signature verification failed": [
+        "Проверка подписи не удалась"
+      ],
+      "Signature verification failed: ${ errorMessage }": [
+        "Проверка подписи не удалась: ${ errorMessage }"
+      ],
+      "Signature verification for ${ signatureType } failed": [
+        "Проверка подписи для ${ signatureType } не удалась"
+      ],
+      "Signature verification for ${ signatureType } failed: ${ errorMessage }": [
+        "Проверка подписи для ${ signatureType } не удалась: ${ errorMessage }"
+      ],
+      "Too many server errors, please try again later": [
+        "Слишком много ошибок сервера, повторите попытку позже"
+      ],
+      "Too many server requests, please try again later": [
+        "Слишком много запросов к серверу, повторите попытку позже"
+      ],
+      "Unknown error": [
+        "Неизвестная ошибка"
+      ],
+      "Verification keys are not available": [
+        "Ключи проверки недоступны"
+      ],
+      "Verification keys for ${ signatureType } are not available": [
+        "Ключи проверки для ${ signatureType } недоступны"
+      ]
+    },
+    "Property": {
+      "attributes": [
+        "атрибуты"
+      ],
+      "content key": [
+        "ключ содержимого"
+      ],
+      "hash key": [
+        "хеш-ключ"
+      ],
+      "key": [
+        "ключ"
+      ],
+      "membership": [
+        "членство"
+      ],
+      "name": [
+        "название"
+      ]
+    }
+  }
+}

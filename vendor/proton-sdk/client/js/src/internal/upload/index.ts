@@ -1,0 +1,117 @@
+import { DriveCrypto } from '../../crypto';
+import type { FileUploader } from '../../interface';
+import { FeatureFlagProvider, FeatureFlags, ProtonDriveTelemetry, UploadMetadata } from '../../interface';
+import { DriveAPIService } from '../apiService';
+import { UploadAPIService } from './apiService';
+import { UploadCryptoService } from './cryptoService';
+import { FileRevisionUploader, FileUploader as FileUploaderClass } from './fileUploader';
+import { NodesService, SharesService } from './interface';
+import { UploadManager } from './manager';
+import { UploadQueue } from './queue';
+import { UploadTelemetry } from './telemetry';
+
+const SMALL_FILE_SIZE_LIMIT = 128 * 1024; // 128 KiB
+
+/**
+ * Provides facade for the upload module.
+ *
+ * The upload module is responsible for handling file uploads, including
+ * metadata generation, content upload, API communication, encryption,
+ * and verifications.
+ */
+export function initUploadModule(
+    telemetry: ProtonDriveTelemetry,
+    apiService: DriveAPIService,
+    driveCrypto: DriveCrypto,
+    sharesService: SharesService,
+    nodesService: NodesService,
+    featureFlagProvider: FeatureFlagProvider,
+    clientUid?: string,
+    allowSmallFileUpload: boolean = true,
+) {
+    const api = new UploadAPIService(apiService, clientUid);
+    const cryptoService = new UploadCryptoService(telemetry, driveCrypto, nodesService);
+
+    const uploadTelemetry = new UploadTelemetry(telemetry, sharesService);
+    const manager = new UploadManager(telemetry, api, cryptoService, nodesService, clientUid);
+
+    const queue = new UploadQueue();
+
+    async function shouldUseSmallFileUpload(expectedSize: number): Promise<boolean> {
+        const isEnabled =
+            allowSmallFileUpload && (await featureFlagProvider.isEnabled(FeatureFlags.DriveSmallFileUpload));
+        if (!isEnabled) {
+            return false;
+        }
+        return expectedSize < SMALL_FILE_SIZE_LIMIT;
+    }
+
+    /**
+     * Returns a FileUploader instance that can be used to upload a file to
+     * a parent folder.
+     *
+     * This operation does not call the API, it only returns a FileUploader
+     * instance when the upload queue has capacity.
+     */
+    async function getFileUploader(
+        parentFolderUid: string,
+        name: string,
+        metadata: UploadMetadata,
+        signal?: AbortSignal,
+    ): Promise<FileUploader> {
+        await queue.waitForCapacity(metadata.expectedSize, signal);
+
+        const onFinish = () => {
+            queue.releaseCapacity(metadata.expectedSize);
+        };
+
+        return new FileUploaderClass(
+            uploadTelemetry,
+            api,
+            cryptoService,
+            manager,
+            parentFolderUid,
+            name,
+            metadata,
+            onFinish,
+            shouldUseSmallFileUpload,
+            signal,
+        );
+    }
+
+    /**
+     * Returns a FileUploader instance that can be used to upload a new
+     * revision of a file.
+     *
+     * This operation does not call the API, it only returns a
+     * FileRevisionUploader instance when the upload queue has capacity.
+     */
+    async function getFileRevisionUploader(
+        nodeUid: string,
+        metadata: UploadMetadata,
+        signal?: AbortSignal,
+    ): Promise<FileUploader> {
+        await queue.waitForCapacity(metadata.expectedSize, signal);
+
+        const onFinish = () => {
+            queue.releaseCapacity(metadata.expectedSize);
+        };
+
+        return new FileRevisionUploader(
+            uploadTelemetry,
+            api,
+            cryptoService,
+            manager,
+            nodeUid,
+            metadata,
+            onFinish,
+            shouldUseSmallFileUpload,
+            signal,
+        );
+    }
+
+    return {
+        getFileUploader,
+        getFileRevisionUploader,
+    };
+}

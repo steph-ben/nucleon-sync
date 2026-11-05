@@ -1,0 +1,298 @@
+import { type LocalFs, PathBusy, type RemoteFs, type Store } from './interfaces';
+import { reconcile } from './reconcile';
+import { type Action, type BaseRec, type Entry, ROOT, type Plan, type ReconcileOptions, type Ref, type Snapshot } from './types';
+
+export interface CycleResult {
+    plan: Plan;
+    done: number;
+    skipped: number;
+    errors: string[];
+}
+
+export class SafetyStop extends Error {}
+
+/** En dessous, vider un tout petit dossier est un geste normal, pas une panne. */
+const EMPTY_GUARD_MIN = 5;
+const SWAP_PREFIX = '.proton-sync-swap-';
+
+export class Engine {
+    private recs = new Map<string, BaseRec>();
+    private L: Snapshot = new Map();
+    private R: Snapshot = new Map();
+    private seq = 0;
+
+    constructor(
+        private local: LocalFs,
+        private remote: RemoteFs,
+        private store: Store,
+        private options: Omit<ReconcileOptions, 'today'> & { newKey: () => string; today: () => string; log?: (s: string) => void; isFatal?: (e: unknown) => boolean },
+    ) {}
+
+    async planOnly(approveDeletes = false): Promise<Plan> {
+        await this.load();
+        return reconcile([...this.recs.values()], this.L, this.R, { ...this.options, today: this.options.today(), approveDeletes });
+    }
+
+    /** Une passe : recharge l'état réel, planifie, exécute. Reprendre après coupure = relancer. */
+    async cycle(approveDeletes = false): Promise<CycleResult> {
+        const plan = await this.planOnly(approveDeletes);
+        for (const b of plan.rebinds) this.save({ ...this.recs.get(b.key)!, localId: b.localId, remoteId: b.remoteId });
+        let done = 0;
+        let skipped = 0;
+        let hardFailure = false;
+        const errors: string[] = [];
+        const guarded = async (run: () => Promise<boolean>) => {
+            try {
+                if (await run()) done++;
+                else skipped++;
+            } catch (e) {
+                if (this.options.isFatal?.(e)) throw e;
+                if (!(e instanceof PathBusy)) hardFailure = true;
+                errors.push(e instanceof Error ? e.message : String(e));
+            }
+        };
+        const moves: Action[] = [];
+        const flushMoves = async () => {
+            if (moves.length) {
+                const batch = moves.splice(0);
+                await guarded(async () => {
+                    await this.runMoves(batch);
+                    return true;
+                });
+            }
+        };
+        for (const a of plan.actions) {
+            if (a.t === 'remoteMove' || a.t === 'localMove') {
+                moves.push(a);
+                continue;
+            }
+            await flushMoves();
+            // Après une vraie erreur, on ne supprime rien : un élément à sauver a pu rester dedans.
+            if (hardFailure && (a.t === 'remoteTrash' || a.t === 'localQuarantine')) {
+                skipped++;
+                continue;
+            }
+            await guarded(() => this.apply(a));
+        }
+        await flushMoves();
+        return { plan, done, skipped, errors };
+    }
+
+    private async load() {
+        await this.local.assertRootSafe();
+        const base = this.store.all();
+        this.recs = new Map(base.map((r) => [r.key, { ...r }]));
+        const byLocal = new Map(base.map((r) => [r.localId, r]));
+        this.L = await this.local.scan(byLocal);
+        this.R = await this.remote.snapshot();
+        if (base.length >= EMPTY_GUARD_MIN && this.L.size === 0) throw new SafetyStop('dossier local vide alors que la base ne l’est pas');
+        if (base.length >= EMPTY_GUARD_MIN && this.R.size === 0) throw new SafetyStop('Drive vide alors que la base ne l’est pas');
+    }
+
+    private path(id: string): string {
+        const parts: string[] = [];
+        let guard = 0;
+        for (let c = id; c !== ROOT; ) {
+            const e = this.L.get(c);
+            if (!e || guard++ > 10000) throw new Error(`chemin local introuvable pour ${id}`);
+            parts.unshift(e.name);
+            c = e.parent;
+        }
+        return parts.join('/');
+    }
+
+    private resolve(ref: Ref): { key: string; localId: string; remoteId: string } {
+        if (ref.t === 'root') return { key: ROOT, localId: ROOT, remoteId: ROOT };
+        for (const r of this.recs.values()) {
+            const hit = ref.t === 'rec' ? r.key === ref.key : ref.t === 'newLocal' ? r.localId === ref.id : r.remoteId === ref.id;
+            if (hit) return { key: r.key, localId: r.localId, remoteId: r.remoteId };
+        }
+        throw new Error(`parent non résolu : ${JSON.stringify(ref)}`);
+    }
+
+    private save(rec: BaseRec) {
+        this.recs.set(rec.key, rec);
+        this.store.put(rec);
+    }
+
+    private drop(key: string) {
+        this.recs.delete(key);
+        this.store.remove(key);
+    }
+
+    private makeRec(l: Entry, r: Entry, parentKey: string, name: string): BaseRec {
+        return { key: this.options.newKey(), parent: parentKey, name, kind: l.kind, localId: l.id, remoteId: r.id, hash: l.hash, size: l.size, localMtime: l.mtime, rev: r.rev };
+    }
+
+    private async apply(a: Action): Promise<boolean> {
+        switch (a.t) {
+            case 'conflictRename': {
+                const e = this.L.get(a.localId)!;
+                const dir = e.parent === ROOT ? '' : `${this.path(e.parent)}/`;
+                await this.local.move(this.path(e.id), `${dir}${a.newName}`);
+                e.name = a.newName;
+                return true;
+            }
+            case 'forget':
+                this.drop(a.key);
+                return true;
+            case 'link': {
+                const l = this.L.get(a.localId)!;
+                const r = this.R.get(a.remoteId)!;
+                const parent = this.parentKey(l.parent);
+                this.save(this.makeRec(l, r, parent, r.name));
+                return true;
+            }
+            case 'remoteMkdir': {
+                const p = this.resolve(a.parent);
+                const l = this.L.get(a.localId)!;
+                const r = await this.remote.mkdir(p.remoteId, a.name);
+                this.R.set(r.id, r);
+                this.save(this.makeRec(l, r, p.key, a.name));
+                return true;
+            }
+            case 'localMkdir': {
+                const p = this.resolve(a.parent);
+                const r = this.R.get(a.remoteId)!;
+                const dir = p.localId === ROOT ? a.name : `${this.path(p.localId)}/${a.name}`;
+                const l = await this.local.mkdir(dir);
+                l.parent = p.localId;
+                this.L.set(l.id, l);
+                this.save(this.makeRec(l, r, p.key, a.name));
+                return true;
+            }
+            case 'upload': {
+                const p = this.resolve(a.parent);
+                const l = this.L.get(a.localId)!;
+                const path = this.path(l.id);
+                const src = await this.local.openSource(path);
+                const r = await this.remote.upload(p.remoteId, a.name, path, src, l.hash);
+                this.R.set(r.id, r);
+                this.save(this.makeRec(l, r, p.key, a.name));
+                return true;
+            }
+            case 'uploadRevision': {
+                const rec = this.recs.get(a.key)!;
+                const l = this.currentLocal(rec);
+                const path = this.path(l.id);
+                const src = await this.local.openSource(path);
+                const r = await this.remote.uploadRevision(rec.remoteId, path, src, l.hash);
+                this.R.set(r.id, r);
+                this.save({ ...rec, localId: l.id, hash: l.hash, size: l.size, localMtime: l.mtime, rev: r.rev });
+                return true;
+            }
+            case 'download': {
+                const p = this.resolve(a.parent);
+                const r = this.R.get(a.remoteId)!;
+                const path = p.localId === ROOT ? a.name : `${this.path(p.localId)}/${a.name}`;
+                const l = await this.local.writeFile(path, r.hash, r.mtime, (tmp) => this.remote.download(r.id, tmp));
+                l.parent = p.localId;
+                this.L.set(l.id, l);
+                this.save(this.makeRec(l, r, p.key, a.name));
+                return true;
+            }
+            case 'downloadRevision': {
+                const rec = this.recs.get(a.key)!;
+                const old = this.currentLocal(rec);
+                const r = this.currentRemote(rec);
+                const path = this.path(old.id);
+                if (!(await this.local.isUnchanged(path, old))) return false;
+                await this.local.quarantine(path);
+                const l = await this.local.writeFile(path, r.hash, r.mtime, (tmp) => this.remote.download(r.id, tmp));
+                l.parent = old.parent;
+                this.L.delete(old.id);
+                this.L.set(l.id, l);
+                this.save({ ...rec, localId: l.id, remoteId: r.id, hash: l.hash, size: l.size, localMtime: l.mtime, rev: r.rev });
+                return true;
+            }
+            case 'refresh': {
+                const rec = this.recs.get(a.key)!;
+                const l = this.currentLocal(rec);
+                const r = this.currentRemote(rec);
+                const position = { ...rec, parent: this.parentKey(l.parent), name: r.name, localId: l.id, remoteId: r.id };
+                this.save(a.content ? { ...position, hash: l.hash, size: l.size, localMtime: l.mtime, rev: r.rev } : position);
+                return true;
+            }
+            case 'remoteTrash': {
+                const rec = this.recs.get(a.key)!;
+                await this.remote.trash(rec.remoteId);
+                this.drop(rec.key);
+                return true;
+            }
+            case 'localQuarantine': {
+                const rec = this.recs.get(a.key)!;
+                const l = this.currentLocal(rec);
+                const path = this.path(l.id);
+                if (l.kind === 'file' && !(await this.local.isUnchanged(path, l))) return false;
+                await this.local.quarantine(path);
+                this.drop(rec.key);
+                return true;
+            }
+            default:
+                throw new Error(`action inconnue ${(a as Action).t}`);
+        }
+    }
+
+    private parentKey(localParent: string): string {
+        if (localParent === ROOT) return ROOT;
+        for (const r of this.recs.values()) if (r.localId === localParent) return r.key;
+        throw new Error(`parent sans enregistrement : ${localParent}`);
+    }
+
+    private currentLocal(rec: BaseRec): Entry {
+        const e = this.L.get(rec.localId);
+        if (!e) throw new Error(`élément local absent : ${rec.name}`);
+        return e;
+    }
+
+    private currentRemote(rec: BaseRec): Entry {
+        const e = this.R.get(rec.remoteId);
+        if (!e) throw new Error(`élément distant absent : ${rec.name}`);
+        return e;
+    }
+
+    /** Exécute les déplacements dans un ordre sûr. Un échange a <-> b passe par un nom temporaire. */
+    private async runMoves(moves: Action[]) {
+        const pending = [...moves] as Extract<Action, { t: 'remoteMove' | 'localMove' }>[];
+        const occupied = (a: (typeof pending)[number], parent: { localId: string; remoteId: string }) => {
+            const snap = a.t === 'remoteMove' ? this.R : this.L;
+            const pid = a.t === 'remoteMove' ? parent.remoteId : parent.localId;
+            const self = a.t === 'remoteMove' ? this.recs.get(a.key)!.remoteId : this.recs.get(a.key)!.localId;
+            for (const e of snap.values()) if (e.id !== self && e.parent === pid && e.name.normalize('NFC') === a.name.normalize('NFC')) return e;
+            return undefined;
+        };
+        while (pending.length) {
+            let progressed = false;
+            for (const a of [...pending]) {
+                const p = this.resolve(a.parent);
+                if (occupied(a, p)) continue;
+                await this.applyMove(a, p);
+                pending.splice(pending.indexOf(a), 1);
+                progressed = true;
+            }
+            if (progressed) continue;
+            const a = pending[0]!;
+            const p = this.resolve(a.parent);
+            const blocker = occupied(a, p)!;
+            const tmp = `${SWAP_PREFIX}${++this.seq}`;
+            const blockerAction = pending.find((m) => (m.t === 'remoteMove' ? this.recs.get(m.key)!.remoteId : this.recs.get(m.key)!.localId) === blocker.id);
+            if (!blockerAction) throw new Error(`destination occupée : ${a.name}`);
+            await this.applyMove({ ...blockerAction, name: tmp }, this.resolve(blockerAction.parent));
+        }
+    }
+
+    private async applyMove(a: Extract<Action, { t: 'remoteMove' | 'localMove' }>, p: { key: string; localId: string; remoteId: string }) {
+        const rec = this.recs.get(a.key)!;
+        if (a.t === 'remoteMove') {
+            const r = await this.remote.move(rec.remoteId, p.remoteId, a.name);
+            this.R.set(r.id, r);
+        } else {
+            const l = this.currentLocal(rec);
+            const to = p.localId === ROOT ? a.name : `${this.path(p.localId)}/${a.name}`;
+            await this.local.move(this.path(l.id), to);
+            l.parent = p.localId;
+            l.name = a.name;
+        }
+        this.save({ ...rec, parent: p.key, name: a.name });
+    }
+}

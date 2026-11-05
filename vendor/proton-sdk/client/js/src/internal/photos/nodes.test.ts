@@ -1,0 +1,407 @@
+import { MemoryCache } from '../../cache';
+import { MemberRole, NodeType } from '../../interface';
+import { getMockLogger } from '../../tests/logger';
+import { getMockTelemetry } from '../../tests/telemetry';
+import { DriveAPIService } from '../apiService';
+import { DecryptedPhotoNode } from './interface';
+import { PhotosNodesAccess, PhotosNodesAPIService, PhotosNodesCache, PhotosNodesCryptoService } from './nodes';
+
+function generateAPINode() {
+    return {
+        Link: {
+            LinkID: 'linkId',
+            ParentLinkID: 'parentLinkId',
+            NameHash: 'nameHash',
+            CreateTime: 123456789,
+            ModifyTime: 1234567890,
+            TrashTime: 0,
+            Name: 'encName',
+            SignatureEmail: 'sigEmail',
+            NameSignatureEmail: 'nameSigEmail',
+            NodeKey: 'nodeKey',
+            NodePassphrase: 'nodePass',
+            NodePassphraseSignature: 'nodePassSig',
+        },
+        SharingSummary: null,
+        Sharing: null,
+        Membership: null,
+    };
+}
+
+function generateAPIFolderNode(linkOverrides = {}, overrides = {}) {
+    const node = generateAPINode();
+    return {
+        ...node,
+        Link: { ...node.Link, Type: 1, ...linkOverrides },
+        Folder: { XAttr: '{folder}', NodeHashKey: 'nodeHashKey' },
+        Photo: null,
+        ...overrides,
+    };
+}
+
+function generateAPIAlbumNode(linkOverrides = {}, overrides = {}) {
+    const node = generateAPINode();
+    return {
+        ...node,
+        Link: { ...node.Link, Type: 3, ...linkOverrides },
+        Photo: null,
+        Album: {
+            PhotoCount: 1,
+            CoverLinkID: 'coverLinkId',
+            LastActivityTime: 1700002000,
+        },
+        Folder: null,
+        ...overrides,
+    };
+}
+
+function generateAPIPhotoNode(linkOverrides = {}, photoOverrides = {}, overrides = {}) {
+    const node = generateAPINode();
+    return {
+        ...node,
+        Link: { ...node.Link, Type: 2, ...linkOverrides },
+        Photo: {
+            CaptureTime: 1700000000,
+            MainPhotoLinkID: null,
+            RelatedPhotosLinkIDs: [],
+            ContentHash: 'contentHash123',
+            Tags: [1, 2],
+            Albums: [
+                {
+                    AlbumLinkID: 'albumLinkId1',
+                    AddedTime: 1700001000,
+                    Hash: 'albumHash',
+                    ContentHash: 'albumContentHash',
+                },
+            ],
+            ActiveRevision: {
+                RevisionID: 'revisionId',
+                CreateTime: 1234567890,
+                SignatureEmail: 'revSigEmail',
+                XAttr: '{photo}',
+                EncryptedSize: 12,
+                IsImported: false,
+            },
+            MediaType: 'image/jpeg',
+            ContentKeyPacket: 'contentKeyPacket',
+            ContentKeyPacketSignature: 'contentKeyPacketSig',
+            ...photoOverrides,
+        },
+        Folder: null,
+        ...overrides,
+    };
+}
+
+describe('PhotosNodesAPIService', () => {
+    let apiMock: DriveAPIService;
+    let api: PhotosNodesAPIService;
+
+    beforeEach(() => {
+        // @ts-expect-error Mocking for testing purposes
+        apiMock = {
+            post: jest.fn(),
+        };
+        api = new PhotosNodesAPIService(getMockLogger(), apiMock, 'clientUid');
+    });
+
+    describe('linkToEncryptedNode', () => {
+        async function testIterateNodes(mockedLink: object, expectedType?: NodeType) {
+            apiMock.post = jest.fn().mockResolvedValue({ Links: [mockedLink] });
+
+            const nodes = await Array.fromAsync(api.iterateNodes(['volumeId~nodeId'], 'volumeId'));
+            if (expectedType) {
+                expect(nodes).toHaveLength(1);
+                expect(nodes[0].type).toBe(expectedType);
+            } else {
+                expect(nodes).toHaveLength(0);
+            }
+
+            return nodes;
+        }
+
+        it('should convert folder (type 1) to folder node', async () => {
+            await testIterateNodes(generateAPIFolderNode(), NodeType.Folder);
+        });
+
+        it('should convert album (type 3) to album node', async () => {
+            const nodes = await testIterateNodes(generateAPIAlbumNode(), NodeType.Album);
+
+            expect(nodes[0].album).toBeDefined();
+            expect(nodes[0].album?.photoCount).toEqual(1);
+            expect(nodes[0].album?.coverPhotoNodeUid).toBe('volumeId~coverLinkId');
+            expect(nodes[0].album?.lastActivityTime).toEqual(new Date(1700002000 * 1000));
+        });
+
+        it('should convert photo (type 2) to photo node with photo attributes', async () => {
+            const nodes = await testIterateNodes(generateAPIPhotoNode(), NodeType.Photo);
+
+            expect(nodes[0].photo).toBeDefined();
+            expect(nodes[0].photo?.captureTime).toEqual(new Date(1700000000 * 1000));
+            expect(nodes[0].photo?.tags).toEqual([1, 2]);
+            expect(nodes[0].photo?.albums).toHaveLength(1);
+            expect(nodes[0].photo?.albums[0].nodeUid).toBe('volumeId~albumLinkId1');
+            expect(nodes[0].photo?.albums[0].additionTime).toEqual(new Date(1700001000 * 1000));
+        });
+
+        it('should handle photo node with null capture time', async () => {
+            await testIterateNodes(generateAPIPhotoNode({}, { CaptureTime: null }), undefined);
+        });
+
+        it('should handle photo node with capture time set to zero', async () => {
+            const nodes = await testIterateNodes(generateAPIPhotoNode({}, { CaptureTime: 0 }), NodeType.Photo);
+
+            expect(nodes[0].photo).toBeDefined();
+            expect(nodes[0].photo?.captureTime).toEqual(new Date(0));
+        });
+    });
+});
+
+describe('PhotosNodesCache', () => {
+    let cache: PhotosNodesCache;
+
+    beforeEach(() => {
+        const memoryCache = new MemoryCache<string>();
+        cache = new PhotosNodesCache(getMockLogger(), memoryCache);
+    });
+
+    describe('deserialiseNode', () => {
+        it('should convert photo attributes dates from strings to Date objects', () => {
+            const serialisedNode = JSON.stringify({
+                uid: 'volumeId~linkId',
+                parentUid: 'volumeId~parentLinkId',
+                type: NodeType.Photo,
+                directRole: MemberRole.Admin,
+                isShared: false,
+                isSharedByUrl: false,
+                creationTime: '2023-11-14T22:13:20.000Z',
+                modificationTime: '2023-11-14T22:13:20.000Z',
+                photo: {
+                    captureTime: '2023-11-14T22:13:20.000Z',
+                    mainPhotoNodeUid: undefined,
+                    relatedPhotoNodeUids: [],
+                    tags: [1],
+                    albums: [
+                        {
+                            nodeUid: 'volumeId~albumId',
+                            additionTime: '2023-11-15T10:00:00.000Z',
+                        },
+                    ],
+                },
+                album: {
+                    photoCount: 1,
+                    coverPhotoNodeUid: 'volumeId~coverLinkId',
+                    lastActivityTime: '2023-11-15T10:33:20.000Z',
+                },
+            });
+
+            const node = cache.deserialiseNode(serialisedNode);
+
+            expect(node.photo).toBeDefined();
+            expect(node.photo?.captureTime).toBeInstanceOf(Date);
+            expect(node.photo?.captureTime).toEqual(new Date('2023-11-14T22:13:20.000Z'));
+            expect(node.photo?.albums[0].additionTime).toBeInstanceOf(Date);
+            expect(node.photo?.albums[0].additionTime).toEqual(new Date('2023-11-15T10:00:00.000Z'));
+            expect(node.album).toBeDefined();
+            expect(node.album?.photoCount).toEqual(1);
+            expect(node.album?.coverPhotoNodeUid).toBe('volumeId~coverLinkId');
+            expect(node.album?.lastActivityTime).toBeInstanceOf(Date);
+            expect(node.album?.lastActivityTime).toEqual(new Date('2023-11-15T10:33:20.000Z'));
+        });
+
+        it('should handle node without photo attributes', () => {
+            const serialisedNode = JSON.stringify({
+                uid: 'volumeId~linkId',
+                parentUid: 'volumeId~parentLinkId',
+                type: NodeType.Folder,
+                directRole: MemberRole.Admin,
+                isShared: false,
+                isSharedByUrl: false,
+                creationTime: '2023-11-14T22:13:20.000Z',
+                modificationTime: '2023-11-14T22:13:20.000Z',
+            });
+
+            const node = cache.deserialiseNode(serialisedNode);
+
+            expect(node.photo).toBeUndefined();
+            expect(node.album).toBeUndefined();
+        });
+    });
+});
+
+describe('PhotosNodesAccess', () => {
+    describe('getParentKeys', () => {
+        let access: PhotosNodesAccess;
+        let getNodeKeysMock: jest.Mock;
+        let getSharePrivateKeyMock: jest.Mock;
+
+        beforeEach(() => {
+            getNodeKeysMock = jest.fn().mockResolvedValue({ key: 'key', hashKey: 'hashKey' });
+            getSharePrivateKeyMock = jest.fn().mockResolvedValue('shareKey');
+            access = new PhotosNodesAccess(
+                getMockTelemetry(),
+                // @ts-expect-error No need to implement for this test
+                {},
+                {},
+                { getNodeKeys: jest.fn().mockRejectedValue(new Error()) },
+                {},
+                { getSharePrivateKey: getSharePrivateKeyMock },
+            );
+            jest.spyOn(access, 'getNodeKeys').mockImplementation(getNodeKeysMock);
+        });
+
+        it('should use parentUid path when set, ignoring shareId', async () => {
+            await access.getParentKeys({
+                uid: 'v~node',
+                parentUid: 'v~parent',
+                shareId: 'publicLinkShareId',
+                photo: undefined,
+            });
+            expect(getNodeKeysMock).toHaveBeenCalledWith('v~parent');
+            expect(getSharePrivateKeyMock).not.toHaveBeenCalled();
+        });
+
+        it('should use album key when no parentUid but has albums, even when shareId is set', async () => {
+            await access.getParentKeys({
+                uid: 'v~node',
+                parentUid: undefined,
+                shareId: 'publicLinkShareId',
+                // @ts-expect-error No need to implement for this test
+                photo: { albums: [{ nodeUid: 'v~album' }] },
+            });
+            expect(getNodeKeysMock).toHaveBeenCalledWith('v~album');
+            expect(getSharePrivateKeyMock).not.toHaveBeenCalled();
+        });
+
+        it('should fall back to shareId when no parentUid and no albums', async () => {
+            await access.getParentKeys({
+                uid: 'v~node',
+                parentUid: undefined,
+                shareId: 'rootShareId',
+                // @ts-expect-error No need to implement for this test
+                photo: { albums: [] },
+            });
+            expect(getSharePrivateKeyMock).toHaveBeenCalledWith('rootShareId');
+        });
+    });
+
+    describe('updateAlbumMetadataCache', () => {
+        let access: PhotosNodesAccess;
+        let mockCache: { getNode: jest.Mock; setNode: jest.Mock };
+
+        beforeEach(() => {
+            mockCache = { getNode: jest.fn(), setNode: jest.fn() };
+            access = new PhotosNodesAccess(
+                getMockTelemetry(),
+                // @ts-expect-error Mocking for testing purposes
+                {},
+                mockCache,
+                { getNodeKeys: jest.fn().mockRejectedValue(new Error()) },
+                {},
+                {},
+            );
+        });
+
+        it('updates album metadata in cache', async () => {
+            const existing = { uid: 'v~album1', type: NodeType.Album, album: { photoCount: 1, coverPhotoNodeUid: 'v~old', lastActivityTime: new Date('2024-01-01') } } as DecryptedPhotoNode;
+            mockCache.getNode.mockResolvedValue(existing);
+
+            await access.updateAlbumMetadataCache('v~album1', { photoCount: 5, coverNodeUid: 'v~new', lastActivityTime: new Date('2024-06-01') });
+
+            expect(mockCache.setNode).toHaveBeenCalledWith(expect.objectContaining({
+                album: { photoCount: 5, coverPhotoNodeUid: 'v~new', lastActivityTime: new Date('2024-06-01') },
+            }));
+        });
+
+        it('does nothing when node is not in cache', async () => {
+            mockCache.getNode.mockRejectedValue(new Error('Entity not found'));
+            await expect(access.updateAlbumMetadataCache('v~missing', { photoCount: 3, coverNodeUid: undefined, lastActivityTime: new Date() })).resolves.toBeUndefined();
+            expect(mockCache.setNode).not.toHaveBeenCalled();
+        });
+
+        it('does nothing when cached node has no album field', async () => {
+            mockCache.getNode.mockResolvedValue({ uid: 'v~folder1', type: NodeType.Folder } as DecryptedPhotoNode);
+            await access.updateAlbumMetadataCache('v~folder1', { photoCount: 2, coverNodeUid: undefined, lastActivityTime: new Date() });
+            expect(mockCache.setNode).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('parseNode', () => {
+        it('should keep photo type and add photo object', async () => {
+            const telemetry = getMockTelemetry();
+
+            // @ts-expect-error Mocking for testing purposes
+            const cryptoService: PhotosNodesCryptoService = {};
+            // @ts-expect-error Mocking for testing purposes
+            const apiService: PhotosNodesAPIService = {};
+            // @ts-expect-error Mocking for testing purposes
+            const cacheService: PhotosNodesCache = {};
+            // @ts-expect-error Mocking for testing purposes
+            const cryptoCache: NodesCryptoCache = {};
+            // @ts-expect-error Mocking for testing purposes
+            const sharesService: SharesService = {};
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const nodesAccess = new PhotosNodesAccess(
+                telemetry,
+                apiService,
+                cacheService,
+                cryptoCache,
+                cryptoService,
+                sharesService,
+            );
+
+            const unparsedNode = {
+                uid: 'volumeId~linkId',
+                parentUid: 'volumeId~parentLinkId',
+                type: NodeType.Photo,
+                name: 'photo.jpg',
+                hash: 'hash123',
+                directRole: MemberRole.Admin,
+                isShared: false,
+                isSharedByUrl: false,
+                creationTime: new Date(),
+                modificationTime: new Date(),
+                trashTime: undefined,
+                mediaType: 'image/jpeg',
+                folder: undefined,
+                file: {
+                    activeRevision: {
+                        uid: 'revisionId',
+                        state: 'active' as const,
+                        creationTime: new Date(),
+                        storageSize: 100,
+                        signatureEmail: 'test@example.com',
+                        claimedModificationTime: new Date(),
+                        claimedSize: 100,
+                        claimedDigests: { sha1: 'sha1hash' },
+                        claimedBlockSizes: [100],
+                    },
+                },
+                photo: {
+                    captureTime: new Date('2023-11-14T22:13:20.000Z'),
+                    mainPhotoNodeUid: undefined,
+                    relatedPhotoNodeUids: [],
+                    tags: [1, 2],
+                    albums: [],
+                },
+                album: {
+                    photoCount: 1,
+                    coverPhotoNodeUid: 'volumeId~coverLinkId',
+                    lastActivityTime: new Date('2023-11-15T10:33:20.000Z'),
+                },
+            };
+
+            // @ts-expect-error Accessing protected method for testing
+            const parsedNode = nodesAccess.parseNode(unparsedNode);
+
+            expect(parsedNode.type).toBe(NodeType.Photo);
+            expect(parsedNode.photo).toBeDefined();
+            expect(parsedNode.photo?.captureTime).toEqual(new Date('2023-11-14T22:13:20.000Z'));
+            expect(parsedNode.photo?.tags).toEqual([1, 2]);
+            expect(parsedNode.album).toBeDefined();
+            expect(parsedNode.album?.photoCount).toEqual(1);
+            expect(parsedNode.album?.coverPhotoNodeUid).toBe('volumeId~coverLinkId');
+            expect(parsedNode.album?.lastActivityTime).toEqual(new Date('2023-11-15T10:33:20.000Z'));
+        });
+    });
+});

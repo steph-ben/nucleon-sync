@@ -1,0 +1,288 @@
+{
+  "headers": {
+    "plural-forms": "nplurals=2; plural=(n != 1);",
+    "language": "es_LA"
+  },
+  "contexts": {
+    "Error": {
+      "A message is required when reporting copyright infringement or stolen data": [
+        "Se requiere un mensaje al denunciar una infracción de derechos de autor o robo de datos"
+      ],
+      "Bookmark password is not available": [
+        "La contraseña del marcador no está disponible."
+      ],
+      "Cannot add photo to album without a valid name": [
+        "No se puede añadir una foto a un álbum sin un nombre válido"
+      ],
+      "Cannot download a folder": [
+        "No se puede descargar una carpeta."
+      ],
+      "Cannot move item without a valid name, please rename the item first": [
+        "No se puede mover el elemento sin un nombre válido, primero renombre el elemento"
+      ],
+      "Cannot share root folder": [
+        "No se puede compartir la carpeta raíz"
+      ],
+      "Cannot verify the author of this file": [
+        "No se puede verificar el autor de este archivo"
+      ],
+      "Cannot verify who uploaded this file": [
+        "No se puede verificar quién cargó este archivo"
+      ],
+      "Copy operation aborted": [
+        "Se canceló la operación de copia"
+      ],
+      "Copying item to a non-folder is not allowed": [
+        "No está permitido copiar un elemento a una ubicación que no es una carpeta"
+      ],
+      "Could not find an available name": [
+        "No se pudo encontrar un nombre disponible"
+      ],
+      "Could not load sharing details": [
+        "No se pudieron cargar los detalles de la compartición"
+      ],
+      "Could not load the image preview: ${ message }": [
+        "No se pudo cargar la vista previa de imagen: ${ message }"
+      ],
+      "Could not read part of this file: ${ message }": [
+        "No se pudo leer parte de este archivo: ${ message }"
+      ],
+      "Could not unlock the parent folder": [
+        "No se pudo desbloquear la carpeta principal"
+      ],
+      "Could not unlock this item": [
+        "No se pudo desbloquear este elemento"
+      ],
+      "Creating documents in non-folders is not allowed": [
+        "No está permitido crear documentos en ubicaciones que no son carpetas"
+      ],
+      "Creating files in non-folders is not allowed": [
+        "No está permitido crear archivos en ubicaciones que no son carpetas"
+      ],
+      "Creating folders in non-folders is not allowed": [
+        "No está permitido crear carpetas en ubicaciones que no son carpetas"
+      ],
+      "Device not found": [
+        "No se encontró el dispositivo"
+      ],
+      "Expiration date cannot be in the past": [
+        "La fecha de expiración no puede estar en el pasado."
+      ],
+      "Failed to decrypt bookmark key: ${ message }": [
+        "Error al descifrar la clave del marcador: ${ message }"
+      ],
+      "Failed to decrypt bookmark name: ${ message }": [
+        "Error al descifrar el nombre del marcador: ${ message }"
+      ],
+      "Failed to decrypt bookmark password: ${ message }": [
+        "Error al descifrar la contraseña del marcador: ${ message }"
+      ],
+      "Failed to decrypt content key: ${ message }": [
+        "No se pudo descifrar la clave de contenido: ${ message }"
+      ],
+      "Failed to decrypt item name: ${ message }": [
+        "No se pudo descifrar el nombre del elemento: ${ message }"
+      ],
+      "Failed to decrypt node key: ${ message }": [
+        "No se pudo descifrar la clave de nodo: ${ message }"
+      ],
+      "Failed to decrypt revision metadata": [
+        "Error al descifrar la revisión de los metadatos"
+      ],
+      "Failed to get inviter keys": [
+        "No se pudieron obtener las claves de quien invita"
+      ],
+      "Failed to verify invitation": [
+        "No se pudo verificar la invitación"
+      ],
+      "File download failed due to empty response": [
+        "Error con la descarga del archivo debido a una respuesta vacía"
+      ],
+      "File has no revision": [
+        "El archivo no tiene revisiones"
+      ],
+      "Image preview not found": [
+        "No se encontró la vista previa de la imagen"
+      ],
+      "Invalid URL": [
+        "URL inválida"
+      ],
+      "Invitation not found": [
+        "Invitación no encontrada"
+      ],
+      "Item not found": [
+        "Elemento no encontrado"
+      ],
+      "Legacy public link cannot be updated. Please re-create a new public link.": [
+        "El enlace público de origen no se puede actualizar. Vuelva a crear un nuevo enlace público."
+      ],
+      "Missing inviter email": [
+        "Falta el correo electrónico de quien invita"
+      ],
+      "Missing signature": [
+        "Falta la firma"
+      ],
+      "Missing signature for ${ signatureType }": [
+        "Falta la firma para ${ signatureType }"
+      ],
+      "Move operation aborted": [
+        "Se ha cancelado el traslado."
+      ],
+      "Moving item to a non-folder is not allowed": [
+        "No está permitido mover un elemento a una ubicación que no es una carpeta"
+      ],
+      "Moving root item is not allowed": [
+        "No se permite mover el elemento principal."
+      ],
+      "Name must be ${ MAX_NODE_NAME_LENGTH } character long at most": [
+        "El nombre debe tener como máximo ${ MAX_NODE_NAME_LENGTH } caracter",
+        "El nombre debe tener como máximo ${ MAX_NODE_NAME_LENGTH } caracteres"
+      ],
+      "Name must not be empty": [
+        "El nombre no debe estar vacío"
+      ],
+      "No file data was received. Please try again.": [
+        "No se recibió ningún dato del archivo. Intente de nuevo."
+      ],
+      "Only admins can convert external invitations": [
+        "Solo los administradores pueden convertir invitaciones externas"
+      ],
+      "Operation aborted": [
+        "Operación cancelada"
+      ],
+      "Operation failed, try again later": [
+        "Operación fallida, inténtelo de nuevo más tarde"
+      ],
+      "Part of the file appears to be corrupted": [
+        "Parte del archivo parece estar corrupto"
+      ],
+      "Photo is already in the target album": [
+        "La foto ya está en el álbum de destino"
+      ],
+      "Photo not found": [
+        "Foto no encontrada"
+      ],
+      "Renaming root item is not allowed": [
+        "No se permite cambiar el nombre del elemento principal."
+      ],
+      "Request aborted": [
+        "Solicitud cancelada"
+      ],
+      "Search index reached its storage quota": [
+        "El índice de búsqueda alcanzó la cuota de capacidad"
+      ],
+      "Signature is missing": [
+        "Falta la firma"
+      ],
+      "Signature verification failed": [
+        "Error al verificar la firma"
+      ],
+      "Signature verification failed: ${ errorMessage }": [
+        "Falló la verificación de la firma: ${ errorMessage }"
+      ],
+      "Signature verification for ${ signatureType } failed": [
+        "Error en la verificación de la firma para ${ signatureType }"
+      ],
+      "Signature verification for ${ signatureType } failed: ${ errorMessage }": [
+        "Falló la verificación de la firma para ${ signatureType }: ${ errorMessage }"
+      ],
+      "Some file data failed to upload. Please try again.": [
+        "Error al cargar algunos datos del archivo. Intente de nuevo."
+      ],
+      "Some file parts failed to upload. Please try again.": [
+        "Error al cargar algunas partes del archivo. Intente de nuevo."
+      ],
+      "Some items could not be loaded": [
+        "No se pudieron cargar algunos elementos"
+      ],
+      "Something went wrong": [
+        "Ocurrió un error"
+      ],
+      "Something went wrong. Please try again.": [
+        "Algo salió mal. Intente de nuevo."
+      ],
+      "The uploaded file does not match the original. Please try again.": [
+        "El archivo cargado no coincide con el original. Intente de nuevo."
+      ],
+      "This file has missing crypto material": [
+        "Este archivo tiene material cripto faltante"
+      ],
+      "This file has no version available to download": [
+        "Este archivo no tiene una versión disponible para descargar"
+      ],
+      "This file version could not be uploaded": [
+        "No se pudo cargar esta versión del archivo"
+      ],
+      "This item has no image preview": [
+        "Este elemento no tiene vista previa de imagen"
+      ],
+      "This item is no longer shared": [
+        "Este elemento ya no está siendo compartido"
+      ],
+      "This item is not shared": [
+        "Este elemento no está compartido"
+      ],
+      "Too many server errors, please try again later": [
+        "Demasiados errores del servidor. Inténtelo de nuevo más tarde."
+      ],
+      "Too many server requests, please try again later": [
+        "Demasiadas solicitudes de servidor. Inténtelo de nuevo más tarde."
+      ],
+      "Unknown error": [
+        "Error desconocido"
+      ],
+      "Verification keys are not available": [
+        "Las claves de verificación no están disponibles"
+      ],
+      "Verification keys for ${ signatureType } are not available": [
+        "Las claves de verificación para ${ signatureType } no están disponibles"
+      ],
+      "You can create public links for your own files only": [
+        "Puede crear un enlace público solo para sus propios archivos"
+      ],
+      "You can only leave items that are shared with you": [
+        "Solo puede abandonar elementos que se comparten con usted"
+      ],
+      "You can only upload a new version to a file": [
+        "Solo puede cargar una versión nueva a un archivo"
+      ],
+      "You can update a public link for your own files only": [
+        "Puede actualizar un enlace público solo para sus propios archivos"
+      ],
+      "You do not have access to this item": [
+        "No tiene acceso a este elemento"
+      ],
+      "You do not have access to this shared item": [
+        "No tiene acceso a este elemento compartido"
+      ],
+      "Your browser does not support features required for the search.": [
+        "Su navegador no soporta funciones requeridas para la búsqueda."
+      ]
+    },
+    "Info": {
+      "Author is not provided on public link": [
+        "El autor no se proporciona en el enlace público"
+      ]
+    },
+    "Property": {
+      "attributes": [
+        "atributos"
+      ],
+      "content key": [
+        "clave de contenido"
+      ],
+      "hash key": [
+        "clave hash"
+      ],
+      "key": [
+        "clave"
+      ],
+      "membership": [
+        "membresía"
+      ],
+      "name": [
+        "nombre"
+      ]
+    }
+  }
+}

@@ -1,0 +1,287 @@
+{
+  "headers": {
+    "plural-forms": "nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);",
+    "language": "be_BY"
+  },
+  "contexts": {
+    "Error": {
+      "A message is required when reporting copyright infringement or stolen data": [
+        "Паведамленне патрабуецца пры парушэнні аўтарскіх правоў або крадзяжы даных"
+      ],
+      "Bookmark password is not available": [
+        "Пароль закладкі недаступны"
+      ],
+      "Cannot add photo to album without a valid name": [
+        "Нельга дадаць фатаграфію ў альбом без сапраўднай назвы"
+      ],
+      "Cannot download a folder": [
+        "Немагчыма спампаваць папку"
+      ],
+      "Cannot move item without a valid name, please rename the item first": [
+        "Немагчыма перамясціць элемент без сапраўднай назвы. Спачатку дайце іншую назву элементу"
+      ],
+      "Cannot share root folder": [
+        "Немагчыма абагуліць каранёвую папку"
+      ],
+      "Cannot verify the author of this file": [
+        "Немагчыма спраўдзіць аўтара гэтага файла"
+      ],
+      "Cannot verify who uploaded this file": [
+        "Немагчыма спраўдзіць хто запампаваў гэты файл"
+      ],
+      "Copy operation aborted": [
+        "Аперацыя капіявання перарвана"
+      ],
+      "Copying item to a non-folder is not allowed": [
+        "Капіяванне элементаў у асяроддзі, якое не належыць папкам забаронена"
+      ],
+      "Could not find an available name": [
+        "Немагчыма знайсці даступную назву"
+      ],
+      "Could not load sharing details": [
+        "Немагчыма загрузіць падрабязнасці абагульвання"
+      ],
+      "Could not load the image preview: ${ message }": [
+        "Немагчыма загрузіць папярэдні прагляд відарыса: ${ message }"
+      ],
+      "Could not read part of this file: ${ message }": [
+        "Немагчыма прачытаць частку гэтага файла: ${ message }"
+      ],
+      "Could not unlock the parent folder": [
+        "Немагчыма разблакіраваць бацькоўскую папку"
+      ],
+      "Could not unlock this item": [
+        "Немагчыма разблакіраваць гэты элемент"
+      ],
+      "Creating documents in non-folders is not allowed": [
+        "Стварэнне дакументаў у асяроддзі, якое не належыць папкам забаронена"
+      ],
+      "Creating files in non-folders is not allowed": [
+        "Стварэнне файлаў у асяроддзі, якое не належыць папкам забаронена"
+      ],
+      "Creating folders in non-folders is not allowed": [
+        "Стварэнне папак у асяроддзі, якое не належыць папкам забаронена"
+      ],
+      "Device not found": [
+        "Прылада не знойдзена"
+      ],
+      "Expiration date cannot be in the past": [
+        "Тэрмін дзеяння не можа быць у мінулым"
+      ],
+      "Failed to decrypt bookmark key: ${ message }": [
+        "Не ўдалося расшыфраваць ключ закладкі: ${ message }"
+      ],
+      "Failed to decrypt bookmark name: ${ message }": [
+        "Не ўдалося расшыфраваць назву закладкі: ${ message }"
+      ],
+      "Failed to decrypt bookmark password: ${ message }": [
+        "Не ўдалося расшыфраваць пароль закладкі: ${ message }"
+      ],
+      "Failed to decrypt content key: ${ message }": [
+        "Не ўдалося расшыфраваць ключ змесціва: ${ message }"
+      ],
+      "Failed to decrypt item name: ${ message }": [
+        "Не ўдалося расшыфраваць назву элемента: ${ message }"
+      ],
+      "Failed to decrypt node key: ${ message }": [
+        "Не ўдалося расшыфраваць ключ вузла: ${ message }"
+      ],
+      "Failed to decrypt revision metadata": [
+        "Не ўдалося расшыфраваць выпраўленыя метаданыя"
+      ],
+      "Failed to get inviter keys": [
+        "Не ўдалося атрымаць ключы запрашальніка"
+      ],
+      "Failed to verify invitation": [
+        "Не ўдалося спраўдзіць запрашэнне"
+      ],
+      "File download failed due to empty response": [
+        "Спампоўка файла не атрымалася па прычыне пустога адказу"
+      ],
+      "File has no revision": [
+        "У файла адсутнічае рэдакцыя"
+      ],
+      "Image preview not found": [
+        "Папярэдні прагляд відарыса не знойдзены"
+      ],
+      "Invalid URL": [
+        "Памылковы URL-адрас"
+      ],
+      "Invitation not found": [
+        "Запрашэнне не знойдзена"
+      ],
+      "Item not found": [
+        "Элемент не знойдзены"
+      ],
+      "Legacy public link cannot be updated. Please re-create a new public link.": [
+        "Немагчыма абнавіць старую публічную спасылку. Стварыце новую публічную спасылку."
+      ],
+      "Missing inviter email": [
+        "Адсутнічае адрас электроннай пошты запрашальніка"
+      ],
+      "Missing signature": [
+        "Адсутнічае подпіс"
+      ],
+      "Missing signature for ${ signatureType }": [
+        "Адсутнічае подпіс для ${ signatureType }"
+      ],
+      "Move operation aborted": [
+        "Аперацыя перамяшчэння перарвана"
+      ],
+      "Moving item to a non-folder is not allowed": [
+        "Перамяшчэнне элементаў у асяроддзі, якое не належыць папка забаронена"
+      ],
+      "Moving root item is not allowed": [
+        "Перамяшчаць каранёвы элемент забаронена"
+      ],
+      "Name must be ${ MAX_NODE_NAME_LENGTH } character long at most": [
+        "Назва не павінна перавышаць даўжыню ў ${ MAX_NODE_NAME_LENGTH } сімвал",
+        "Назва не павінна перавышаць даўжыню ў ${ MAX_NODE_NAME_LENGTH } сімвалы",
+        "Назва не павінна перавышаць даўжыню ў ${ MAX_NODE_NAME_LENGTH } сімвалаў",
+        "Назва не павінна перавышаць даўжыню ў ${ MAX_NODE_NAME_LENGTH } сімвалаў"
+      ],
+      "Name must not be empty": [
+        "Назва не можа быць пустой"
+      ],
+      "No file data was received. Please try again.": [
+        "Даныя файла не атрыманы. Паўтарыце спробу."
+      ],
+      "Only admins can convert external invitations": [
+        "Толькі адміністратары могуць пераўтвараць знешнія запрашэнні"
+      ],
+      "Operation aborted": [
+        "Аперацыя перарвана"
+      ],
+      "Operation failed, try again later": [
+        "Збой аперацыі. Паўтарыце спробу пазней."
+      ],
+      "Part of the file appears to be corrupted": [
+        "Здаецца, што частка файла пашкоджана"
+      ],
+      "Photo is already in the target album": [
+        "Фатаграфіі ўжо знаходзяцца ў мэтавым альбоме"
+      ],
+      "Photo not found": [
+        "Фатаграфія не знойдзена"
+      ],
+      "Renaming root item is not allowed": [
+        "Перайменаванне каранёвага элемента забаронена"
+      ],
+      "Request aborted": [
+        "Запыт перарваны"
+      ],
+      "Signature is missing": [
+        "Подпіс адсутнічае"
+      ],
+      "Signature verification failed": [
+        "Не ўдалося спраўдзіць подпіс"
+      ],
+      "Signature verification failed: ${ errorMessage }": [
+        "Не ўдалося спраўдзіць подпіс: ${ errorMessage }"
+      ],
+      "Signature verification for ${ signatureType } failed": [
+        "Збой спраўджання подпісу для ${ signatureType }"
+      ],
+      "Signature verification for ${ signatureType } failed: ${ errorMessage }": [
+        "Збой спраўджання подпісу для ${ signatureType }: ${ errorMessage }"
+      ],
+      "Some file data failed to upload. Please try again.": [
+        "Не ўдалося запампаваць некаторыя даныя файла. Паўтарыце спробу."
+      ],
+      "Some file parts failed to upload. Please try again.": [
+        "Не ўдалося запампаваць некаторыя часткі файла. Паўтарыце спробу."
+      ],
+      "Some items could not be loaded": [
+        "Некаторыя элементы не могуць быць загружаны"
+      ],
+      "Something went wrong": [
+        "Нешта пайшло не так"
+      ],
+      "Something went wrong. Please try again.": [
+        "Нешта пайшло не так. Паўтарыце спробу."
+      ],
+      "The uploaded file does not match the original. Please try again.": [
+        "Запампаваны файл не адпавядае арыгінальнаму. Паўтарыце спробу."
+      ],
+      "This file has missing crypto material": [
+        "У файла адсутнічае крыптаматэрыял"
+      ],
+      "This file has no version available to download": [
+        "У гэтага файла адсутнічае даступная версія для спампоўвання"
+      ],
+      "This file version could not be uploaded": [
+        "Гэта версія файла не можа быць запампавана"
+      ],
+      "This item has no image preview": [
+        "У гэтага элемента няма папярэдняга прагляду відарыса"
+      ],
+      "This item is no longer shared": [
+        "Гэты элемент больш абагульваецца"
+      ],
+      "This item is not shared": [
+        "Гэты элемент не абагульваецца"
+      ],
+      "Too many server errors, please try again later": [
+        "Занадта шмат памылак на серверы. Паўтарыце спробу пазней."
+      ],
+      "Too many server requests, please try again later": [
+        "Занадта шмат запытаў да сервера. Паўтарыце спробу пазней."
+      ],
+      "Unknown error": [
+        "Невядомая памылка"
+      ],
+      "Verification keys are not available": [
+        "Ключы спраўджання недаступны"
+      ],
+      "Verification keys for ${ signatureType } are not available": [
+        "Ключы спраўджання для ${ signatureType } недаступны"
+      ],
+      "You can create public links for your own files only": [
+        "Вы можаце ствараць публічныя спасылкі толькі для свайго ўласнага файла"
+      ],
+      "You can only leave items that are shared with you": [
+        "Вы можаце толькі выходзіць з элементаў, якія абагулены з вамі"
+      ],
+      "You can only upload a new version to a file": [
+        "Вы можаце запампаваць новую версію ў файл"
+      ],
+      "You can update a public link for your own files only": [
+        "Вы можаце абнавіць публічную спасылку толькі для свайго ўласнага файла"
+      ],
+      "You do not have access to this item": [
+        "У вас больш няма доступу да гэтага элемента"
+      ],
+      "You do not have access to this shared item": [
+        "У вас больш няма доступу да гэтага абагуленага элемента"
+      ],
+      "Your browser does not support features required for the search.": [
+        "Ваш браўзер не падтрымлівае неабходныя функцыі для пошуку."
+      ]
+    },
+    "Info": {
+      "Author is not provided on public link": [
+        "Аўтар не пазначаны ў публічнай спасылцы"
+      ]
+    },
+    "Property": {
+      "attributes": [
+        "атрыбуты"
+      ],
+      "content key": [
+        "ключ змесціва"
+      ],
+      "hash key": [
+        "хэш-ключ"
+      ],
+      "key": [
+        "ключ"
+      ],
+      "membership": [
+        "членства"
+      ],
+      "name": [
+        "назва"
+      ]
+    }
+  }
+}

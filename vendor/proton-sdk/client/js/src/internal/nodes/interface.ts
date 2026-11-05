@@ -1,0 +1,224 @@
+import { PrivateKey, SessionKey } from '../../crypto';
+import {
+    AnonymousUser,
+    Author,
+    InvalidNameError,
+    MemberRole,
+    NodeEntity,
+    NodeType,
+    Result,
+    Revision,
+    RevisionState,
+    ThumbnailType,
+} from '../../interface';
+
+export type FilterOptions = {
+    type?: NodeType;
+};
+
+/**
+ * Internal common node interface for both encrypted or decrypted node.
+ */
+interface BaseNode {
+    // Internal metadata
+    hash?: string; // root node doesn't have any hash
+    // ecnryptedName should not be needed to keep, nameSessionKey should be enough.
+    // We will improve this in the future.
+    encryptedName: string;
+    thirdParty?: boolean;
+    sdk?: boolean;
+
+    // Basic node metadata
+    uid: string;
+    parentUid?: string;
+    type: NodeType;
+    mediaType?: string;
+    creationTime: Date; // created on the server
+    modificationTime: Date; // modified on server
+    trashTime?: Date;
+    totalStorageSize?: number;
+
+    // Share node metadata
+    shareId?: string;
+    isShared: boolean;
+    isSharedByUrl: boolean;
+    directRole: MemberRole;
+    membership?: {
+        role: MemberRole;
+        inviteTime: Date;
+        // TODO: acceptedBy: Author;
+    };
+    ownedBy: {
+        email?: string;
+        organization?: string;
+    };
+}
+
+/**
+ * Interface used only internaly in the nodes module.
+ *
+ * Outside of the module, the decrypted node interface should be used.
+ */
+export interface EncryptedNode extends BaseNode {
+    encryptedCrypto: EncryptedNodeFolderCrypto | EncryptedNodeFileCrypto | EncryptedNodeAlbumCrypto;
+
+    folder?: {
+        isImported: boolean;
+    };
+}
+
+export interface EncryptedNodeCrypto {
+    signatureEmail?: string | AnonymousUser;
+    nameSignatureEmail?: string | AnonymousUser;
+    armoredKey: string;
+    armoredNodePassphrase: string;
+    armoredNodePassphraseSignature?: string;
+    membership?: {
+        inviterEmail: string;
+        base64MemberSharePassphraseKeyPacket: string;
+        armoredInviterSharePassphraseKeyPacketSignature: string;
+        armoredInviteeSharePassphraseSessionKeySignature: string;
+    };
+}
+
+export interface EncryptedNodeFileCrypto extends EncryptedNodeCrypto {
+    file: {
+        base64ContentKeyPacket: string;
+        armoredContentKeyPacketSignature?: string;
+    };
+    activeRevision: EncryptedRevision;
+}
+
+export interface EncryptedNodeFolderCrypto extends EncryptedNodeCrypto {
+    folder: {
+        armoredExtendedAttributes?: string;
+        armoredHashKey: string;
+    };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface EncryptedNodeAlbumCrypto extends EncryptedNodeCrypto {}
+
+export type NodeSigningKeys =
+    | {
+          type: 'userAddress';
+          email: string;
+          addressId: string;
+          key: PrivateKey;
+      }
+    | {
+          type: 'nodeKey';
+          nodeKey?: PrivateKey;
+          parentNodeKey?: PrivateKey;
+      };
+
+/**
+ * Interface used only internally in the nodes module.
+ *
+ * Outside of the module, the decrypted node interface should be used.
+ *
+ * This interface is holding decrypted node metadata that is not yet parsed,
+ * such as extended attributes.
+ */
+export interface DecryptedUnparsedNode extends Omit<BaseNode, 'membership'> {
+    keyAuthor: Author;
+    nameAuthor: Author;
+    membership?: {
+        role: MemberRole;
+        inviteTime: Date;
+        sharedBy: Author;
+    };
+    name: Result<string, Error>;
+    activeRevision?: DecryptedUnparsedRevision;
+    folder?: {
+        extendedAttributes?: string;
+        isImported: boolean;
+    };
+    errors?: unknown[];
+}
+
+/**
+ * Interface holding decrypted node metadata.
+ */
+export interface DecryptedNode
+    extends Omit<DecryptedUnparsedNode, 'name' | 'activeRevision' | 'folder'>,
+        Omit<NodeEntity, 'name' | 'activeRevision'> {
+    // Internal metadata
+    isStale: boolean;
+    name: Result<string, Error | InvalidNameError>;
+
+    activeRevision?: DecryptedRevision;
+    folder?: {
+        claimedModificationTime?: Date;
+        isImported: boolean;
+    };
+}
+
+/**
+ * Interface holding decrypted node key, including session key, and hash key.
+ *
+ * These keys are cached as they are needed for various actions on the node.
+ *
+ * Passphrase, for example, might be removed at some point. It is needed as
+ * at this moment the move requires both node key passphrase and the session
+ * key.
+ */
+export interface DecryptedNodeKeys {
+    passphrase: string;
+    key: PrivateKey;
+    passphraseSessionKey: SessionKey;
+    contentKeyPacket?: Uint8Array<ArrayBuffer>;
+    contentKeyPacketSessionKey?: SessionKey;
+    hashKey?: Uint8Array<ArrayBuffer>;
+}
+
+interface BaseRevision {
+    uid: string;
+    state: RevisionState;
+    creationTime: Date; // created on the server
+    storageSize: number;
+    thumbnails: Thumbnail[];
+    thirdParty?: boolean;
+    sdk?: boolean;
+}
+
+export type Thumbnail = {
+    uid: string;
+    type: ThumbnailType;
+};
+
+export interface EncryptedRevision extends BaseRevision {
+    signatureEmail?: string;
+    armoredExtendedAttributes?: string;
+    sha1Verified?: boolean;
+    isImported: boolean;
+}
+
+export interface DecryptedUnparsedRevision extends BaseRevision {
+    contentAuthor: Author;
+    extendedAttributes?: string;
+    sha1Verified?: boolean;
+    isImported: boolean;
+}
+
+export interface DecryptedRevision extends Revision {
+    thumbnails?: Thumbnail[];
+    claimedBlockSizes?: number[];
+}
+
+/**
+ * Interface describing the dependencies to the shares module.
+ */
+export interface SharesService {
+    getRootIDs(): Promise<{ volumeId: string; rootNodeId: string }>;
+    getSharePrivateKey(shareId: string): Promise<PrivateKey>;
+    getMyFilesShareMemberEmailKey(): Promise<{
+        email: string;
+    }>;
+    getContextShareMemberEmailKey(shareId: string): Promise<{
+        email: string;
+        addressId: string;
+        addressKey: PrivateKey;
+        addressKeyId: string;
+    }>;
+}

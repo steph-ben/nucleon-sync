@@ -1,0 +1,180 @@
+import { describe, expect, test } from 'bun:test';
+
+import { Engine } from '../src/core/engine';
+import { ROOT } from '../src/core/types';
+import { Hub, MemStore, SimLocal, SimRemote } from './sim';
+
+function device(tag: string, hub: Hub) {
+    const local = new SimLocal(tag);
+    const remote = new SimRemote(hub, local);
+    const store = new MemStore();
+    let k = 0;
+    const engine = new Engine(local, remote, store, {
+        deviceName: tag,
+        caseInsensitive: false,
+        maxDeletes: 20,
+        newKey: () => `${tag}k${++k}`,
+        today: () => '2026-11-05',
+    });
+    return { local, remote, store, engine };
+}
+
+async function settle(...devs: ReturnType<typeof device>[]) {
+    for (let i = 0; i < 12; i++) {
+        let work = 0;
+        for (const d of devs) {
+            const r = await d.engine.cycle();
+            work += r.plan.actions.length;
+        }
+        if (work === 0) return;
+    }
+    throw new Error('ne converge pas');
+}
+
+describe('synchro de base', () => {
+    test('premier lancement : aucune suppression, appariement par contenu', async () => {
+        const hub = new Hub();
+        hub.add(ROOT, 'a.txt', 'file', 'A');
+        const m = device('M', hub);
+        m.local.add(ROOT, 'a.txt', 'file', 'A');
+        m.local.add(ROOT, 'b.txt', 'file', 'B');
+        await settle(m);
+        expect(hub.tree()).toEqual({ 'a.txt': 'A', 'b.txt': 'B' });
+        expect(m.local.tree()).toEqual({ 'a.txt': 'A', 'b.txt': 'B' });
+    });
+
+    test('renommer un gros dossier = une seule opération, zéro transfert', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        const l = device('L', hub);
+        const d = m.local.add(ROOT, 'Music', 'dir', '');
+        for (let i = 0; i < 300; i++) m.local.add(d.id, `f${i}`, 'file', `c${i}`);
+        await settle(m, l);
+        let moves = 0;
+        let transfers = 0;
+        for (const dev of [m, l]) {
+            dev.remote.chaos = dev.local.chaos = {
+                before(op) {
+                    if (op.endsWith('.move')) moves++;
+                    if (/upload|download|write/.test(op)) transfers++;
+                },
+            };
+        }
+        d.name = 'Musique';
+        await settle(m, l);
+        expect(moves).toBe(2); // Drive + autre machine
+        expect(transfers).toBe(0);
+        expect(Object.keys(l.local.tree())).toContain('Musique/f299');
+        expect(Object.keys(l.local.tree())).not.toContain('Music/f0');
+    });
+});
+
+describe('conflits : rien ne se perd', () => {
+    async function pair() {
+        const hub = new Hub();
+        const m = device('M', hub);
+        m.local.add(ROOT, 'doc.txt', 'file', 'v1');
+        await settle(m);
+        return { hub, m, f: m.local.find('doc.txt')! };
+    }
+
+    test('modifié des deux côtés : deux versions gardées', async () => {
+        const { hub, m, f } = await pair();
+        f.content = 'local';
+        hub.edit([...hub.nodes.values()][0]!.id, 'distant');
+        await settle(m);
+        const t = hub.tree();
+        expect(t['doc.txt']).toBe('distant');
+        expect(t['doc (conflit M 2026-11-05).txt']).toBe('local');
+        expect(m.local.tree()).toEqual(t);
+    });
+
+    test('supprimé en local, modifié sur le Drive : le fichier revient', async () => {
+        const { hub, m, f } = await pair();
+        m.local.nodes.delete(f.id);
+        hub.edit([...hub.nodes.values()][0]!.id, 'v2');
+        await settle(m);
+        expect(m.local.tree()).toEqual({ 'doc.txt': 'v2' });
+    });
+
+    test('supprimé sur le Drive, modifié en local : renvoyé', async () => {
+        const { hub, m, f } = await pair();
+        f.content = 'v2';
+        hub.trash([...hub.nodes.values()][0]!.id);
+        await settle(m);
+        expect(hub.tree()).toEqual({ 'doc.txt': 'v2' });
+    });
+
+    test('suppression distante : le local passe en quarantaine', async () => {
+        const { hub, m } = await pair();
+        hub.trash([...hub.nodes.values()][0]!.id);
+        await settle(m);
+        expect(m.local.tree()).toEqual({});
+        expect(m.local.quarantined).toEqual(['v1']);
+    });
+
+    test('dossier supprimé mais contenu ajouté de l’autre côté : conservé', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        const d = m.local.add(ROOT, 'D', 'dir', '');
+        m.local.add(d.id, 'x', 'file', 'X');
+        await settle(m);
+        const rd = [...hub.nodes.values()].find((n) => n.name === 'D')!;
+        hub.trash(rd.id);
+        m.local.add(d.id, 'neuf', 'file', 'N');
+        await settle(m);
+        expect(hub.tree()['D/neuf']).toBe('N');
+        expect(m.local.tree()['D/neuf']).toBe('N');
+    });
+});
+
+describe('garde-fous', () => {
+    test('doc Proton jamais touché : son dossier n’est pas mis à la corbeille', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        const rd = hub.add(ROOT, 'Reloger', 'dir', '');
+        const doc = hub.add(rd.id, 'Meublingo', 'file', '', true);
+        hub.add(rd.id, 'plan.pdf', 'file', 'P');
+        await settle(m);
+        expect(m.local.tree()).toEqual({ Reloger: '<dir>', 'Reloger/plan.pdf': 'P' });
+        const ld = m.local.find('Reloger')!;
+        m.local.nodes.delete(ld.id);
+        m.local.nodes.delete(m.local.find('Reloger/plan.pdf')?.id ?? '');
+        for (const n of m.local.nodes.values()) if (n.parent === ld.id) m.local.nodes.delete(n.id);
+        await settle(m);
+        expect(doc.trashed).toBe(false);
+        expect(rd.trashed).toBe(false);
+        expect(hub.alive(doc)).toBe(true);
+    });
+
+    test('grosse suppression : retenue jusqu’à approbation', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        for (let i = 0; i < 30; i++) m.local.add(ROOT, `f${i}`, 'file', `c${i}`);
+        await settle(m);
+        for (const n of [...m.local.nodes.values()]) m.local.nodes.delete(n.id);
+        m.local.add(ROOT, 'reste', 'file', 'r');
+        const r = await m.engine.cycle();
+        expect(r.plan.held.length).toBeGreaterThan(0);
+        expect(Object.keys(hub.tree()).length).toBe(31);
+        await m.engine.cycle(true);
+        expect(Object.keys(hub.tree())).toEqual(['reste']);
+    });
+
+    test('dossier local vidé d’un coup : arrêt', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        for (const n of ['a', 'b', 'c', 'd', 'e']) m.local.add(ROOT, n, 'file', n);
+        await settle(m);
+        m.local.nodes.clear();
+        await expect(m.engine.cycle()).rejects.toThrow('vide');
+        expect(Object.keys(hub.tree()).length).toBe(5);
+    });
+
+    test('racine absente : arrêt', async () => {
+        const hub = new Hub();
+        const m = device('M', hub);
+        m.local.rootOk = false;
+        await expect(m.engine.cycle()).rejects.toThrow('racine');
+    });
+});

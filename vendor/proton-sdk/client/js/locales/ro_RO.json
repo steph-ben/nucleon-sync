@@ -1,0 +1,289 @@
+{
+  "headers": {
+    "plural-forms": "nplurals=3; plural=(n==1 ? 0 : (n==0 || (n%100 > 0 && n%100 < 20)) ? 1 : 2);",
+    "language": "ro_RO"
+  },
+  "contexts": {
+    "Error": {
+      "A message is required when reporting copyright infringement or stolen data": [
+        "Este necesar un mesaj atunci când se raportează încălcarea drepturilor de autor sau furtul de date."
+      ],
+      "Bookmark password is not available": [
+        "Parola semnului de carte nu este disponibilă."
+      ],
+      "Cannot add photo to album without a valid name": [
+        "Nu se poate adăuga o fotografie în album fără un nume valid."
+      ],
+      "Cannot download a folder": [
+        "Nu se poate descărca un folder."
+      ],
+      "Cannot move item without a valid name, please rename the item first": [
+        "Nu se poate muta articolul fără un nume valid. Redenumiți mai întâi articolul."
+      ],
+      "Cannot share root folder": [
+        "Nu se poate partaja folderul rădăcină."
+      ],
+      "Cannot verify the author of this file": [
+        "Nu se poate verifica autorul acestui fișier."
+      ],
+      "Cannot verify who uploaded this file": [
+        "Nu s-a putut verifica autorul fișierului încărcat."
+      ],
+      "Copy operation aborted": [
+        "Copierea a fost anulată."
+      ],
+      "Copying item to a non-folder is not allowed": [
+        "Copierea articolului în alt loc decât un folder nu este permisă."
+      ],
+      "Could not find an available name": [
+        "Nu s-a găsit un nume disponibil."
+      ],
+      "Could not load sharing details": [
+        "Nu s-au putut încărca detaliile de partajare."
+      ],
+      "Could not load the image preview: ${ message }": [
+        "Nu s-a putut încărca previzualizarea imaginii: ${ message }"
+      ],
+      "Could not read part of this file: ${ message }": [
+        "Nu s-a putut citi o parte din acest fișier: ${ message }"
+      ],
+      "Could not unlock the parent folder": [
+        "Nu s-a putut debloca folderul părinte."
+      ],
+      "Could not unlock this item": [
+        "Nu s-a putut debloca acest articol."
+      ],
+      "Creating documents in non-folders is not allowed": [
+        "Crearea documentelor în afara folderelor nu este permisă."
+      ],
+      "Creating files in non-folders is not allowed": [
+        "Crearea fișierelor în non-foldere nu este permisă."
+      ],
+      "Creating folders in non-folders is not allowed": [
+        "Crearea folderelor în non-foldere nu este permisă."
+      ],
+      "Device not found": [
+        "Dispozitivul nu a fost găsit."
+      ],
+      "Expiration date cannot be in the past": [
+        "Data de expirare nu poate fi în trecut."
+      ],
+      "Failed to decrypt bookmark key: ${ message }": [
+        "Nu s-a reușit decriptarea cheii semnului de carte: ${ message }"
+      ],
+      "Failed to decrypt bookmark name: ${ message }": [
+        "Nu s-a reușit decriptarea numelui semnului de carte: ${ message }"
+      ],
+      "Failed to decrypt bookmark password: ${ message }": [
+        "Nu s-a reușit decriptarea parolei semnului de carte: ${ message }"
+      ],
+      "Failed to decrypt content key: ${ message }": [
+        "Nu s-a reușit decriptarea cheii de conținut: ${ message }"
+      ],
+      "Failed to decrypt item name: ${ message }": [
+        "Nu s-a reușit decriptarea numelui elementului: ${ message }"
+      ],
+      "Failed to decrypt node key: ${ message }": [
+        "Nu s-a reușit decriptarea cheii nodului: ${ message }"
+      ],
+      "Failed to decrypt revision metadata": [
+        "Nu s-au putut decripta metadatele reviziei."
+      ],
+      "Failed to get inviter keys": [
+        "Preluarea cheilor de invitare a eșuat."
+      ],
+      "Failed to verify invitation": [
+        "Eșuare verificare invitație."
+      ],
+      "File download failed due to empty response": [
+        "Descărcarea fișierului a eșuat din cauza unui răspuns gol."
+      ],
+      "File has no revision": [
+        "Fișierul nu are nicio revizie."
+      ],
+      "Image preview not found": [
+        "Previzualizarea imaginii nu a fost găsită."
+      ],
+      "Invalid URL": [
+        "Adresă URL nevalidă."
+      ],
+      "Invitation not found": [
+        "Invitația nu a fost găsită."
+      ],
+      "Item not found": [
+        "Articolul nu a fost găsit."
+      ],
+      "Legacy public link cannot be updated. Please re-create a new public link.": [
+        "Vechea legătură web publică nu poate fi actualizată. Recreați o nouă legătură web publică."
+      ],
+      "Missing inviter email": [
+        "Adresa de e-mail al invitantului lipsește."
+      ],
+      "Missing signature": [
+        "Semnătură lipsă."
+      ],
+      "Missing signature for ${ signatureType }": [
+        "Semnătură lipsă pentru ${ signatureType }"
+      ],
+      "Move operation aborted": [
+        "Mutarea a fost anulată."
+      ],
+      "Moving item to a non-folder is not allowed": [
+        "Mutarea elementului într-un non-folder nu este permisă."
+      ],
+      "Moving root item is not allowed": [
+        "Mutarea rădăcinii nu este permisă."
+      ],
+      "Name must be ${ MAX_NODE_NAME_LENGTH } character long at most": [
+        "Numele trebuie să aibă cel mult ${ MAX_NODE_NAME_LENGTH } caracter.",
+        "Numele trebuie să aibă cel mult ${ MAX_NODE_NAME_LENGTH } caractere.",
+        "Numele trebuie să aibă cel mult ${ MAX_NODE_NAME_LENGTH } de caractere."
+      ],
+      "Name must not be empty": [
+        "Numele nu poate fi gol."
+      ],
+      "No file data was received. Please try again.": [
+        "Nu s-au primit date despre fișier. Reîncercați."
+      ],
+      "Only admins can convert external invitations": [
+        "Doar administratorii pot converti invitațiile externe."
+      ],
+      "Operation aborted": [
+        "Operație anulată"
+      ],
+      "Operation failed, try again later": [
+        "Operațiunea a eșuat. Reîncercați mai târziu."
+      ],
+      "Part of the file appears to be corrupted": [
+        "O parte a fișierului pare a fi coruptă."
+      ],
+      "Photo is already in the target album": [
+        "Fotografia există deja în albumul țintă."
+      ],
+      "Photo not found": [
+        "Fotografia nu a fost găsită"
+      ],
+      "Renaming root item is not allowed": [
+        "Redenumirea rădăcinii nu este permisă."
+      ],
+      "Request aborted": [
+        "Solicitare anulată."
+      ],
+      "Search index reached its storage quota": [
+        "Indexul de căutare și-a atins cota de stocare."
+      ],
+      "Signature is missing": [
+        "Semnătura lipsește"
+      ],
+      "Signature verification failed": [
+        "Eșuare verificare semnătură."
+      ],
+      "Signature verification failed: ${ errorMessage }": [
+        "Verificarea semnăturii a eșuat: ${ errorMessage }"
+      ],
+      "Signature verification for ${ signatureType } failed": [
+        "Verificarea semnăturii pentru ${ signatureType } a eșuat."
+      ],
+      "Signature verification for ${ signatureType } failed: ${ errorMessage }": [
+        "Verificarea semnăturii pentru ${ signatureType } a eșuat: ${ errorMessage }"
+      ],
+      "Some file data failed to upload. Please try again.": [
+        "Unele date de fișier nu au putut fi încărcate. Reîncercați."
+      ],
+      "Some file parts failed to upload. Please try again.": [
+        "Unele părți ale fișierului nu au putut fi încărcate. Reîncercați."
+      ],
+      "Some items could not be loaded": [
+        "Unele articole nu au putut fi încărcate."
+      ],
+      "Something went wrong": [
+        "Ceva nu a funcționat corect."
+      ],
+      "Something went wrong. Please try again.": [
+        "Ceva nu a funcționat bine. Reîncercați."
+      ],
+      "The uploaded file does not match the original. Please try again.": [
+        "Fișierul încărcat nu corespunde cu originalul. Reîncercați."
+      ],
+      "This file has missing crypto material": [
+        "Acest fișier are materiale criptografice lipsă."
+      ],
+      "This file has no version available to download": [
+        "Acest fișier nu are nicio versiune disponibilă pentru descărcare."
+      ],
+      "This file version could not be uploaded": [
+        "Această versiune de fișier nu a putut fi încărcată."
+      ],
+      "This item has no image preview": [
+        "Acest articol nu are imagine de examinare."
+      ],
+      "This item is no longer shared": [
+        "Acest articol nu mai este partajat."
+      ],
+      "This item is not shared": [
+        "Acest articol nu este partajat."
+      ],
+      "Too many server errors, please try again later": [
+        "Prea multe erori de server. Reîncercați mai târziu."
+      ],
+      "Too many server requests, please try again later": [
+        "Prea multe solicitări de server. Reîncercați mai târziu."
+      ],
+      "Unknown error": [
+        "Eroare necunoscută."
+      ],
+      "Verification keys are not available": [
+        "Cheile de verificare nu sunt disponibile"
+      ],
+      "Verification keys for ${ signatureType } are not available": [
+        "Cheile de verificare pentru ${ signatureType } nu sunt disponibile."
+      ],
+      "You can create public links for your own files only": [
+        "Puteți crea legături web publice doar pentru propriile fișiere."
+      ],
+      "You can only leave items that are shared with you": [
+        "Puteți părăsi doar articolele care vi s-au partajat."
+      ],
+      "You can only upload a new version to a file": [
+        "Puteți încărca doar o versiune nouă la un fișier."
+      ],
+      "You can update a public link for your own files only": [
+        "Puteți actualiza o legătură web publică doar pentru propriile fișiere."
+      ],
+      "You do not have access to this item": [
+        "Nu aveți acces la acest articol."
+      ],
+      "You do not have access to this shared item": [
+        "Nu aveți acces la acest articol partajat."
+      ],
+      "Your browser does not support features required for the search.": [
+        "Navigatorul web nu suportă funcțiile necesare pentru căutare."
+      ]
+    },
+    "Info": {
+      "Author is not provided on public link": [
+        "Autorul nu este furnizat pentru legătura publică."
+      ]
+    },
+    "Property": {
+      "attributes": [
+        "atribute"
+      ],
+      "content key": [
+        "cheie de conținut"
+      ],
+      "hash key": [
+        "cheie criptată"
+      ],
+      "key": [
+        "cheie"
+      ],
+      "membership": [
+        "apartenență"
+      ],
+      "name": [
+        "nume"
+      ]
+    }
+  }
+}

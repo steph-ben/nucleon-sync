@@ -1,0 +1,1036 @@
+import { NodeWithSameNameExistsValidationError, ValidationError } from '../../errors';
+import { MemberRole, NodeType } from '../../interface';
+import { getMockLogger } from '../../tests/logger';
+import { APICodeError, DriveAPIService, ErrorCode, InvalidRequirementsAPIError } from '../apiService';
+import { groupNodeUidsByVolumeAndIteratePerBatch, NodeAPIService } from './apiService';
+import { NodeOutOfSyncError } from './errors';
+
+function generateAPIFileNode(linkOverrides = {}, overrides = {}, fileOverrides = {}) {
+    const node = generateAPINode();
+    return {
+        Link: {
+            ...node.Link,
+            Type: 2,
+            ...linkOverrides,
+        },
+        File: {
+            MediaType: 'text',
+            ContentKeyPacket: 'contentKeyPacket',
+            ContentKeyPacketSignature: 'contentKeyPacketSig',
+            TotalEncryptedSize: 42,
+            ActiveRevision: {
+                RevisionID: 'revisionId',
+                CreateTime: 1234567890,
+                SignatureEmail: 'revSigEmail',
+                XAttr: '{file}',
+                EncryptedSize: 12,
+                IsImported: false,
+                ThirdParty: true,
+                Sdk: true,
+            },
+            ...fileOverrides,
+        },
+        ...overrides,
+    };
+}
+
+function generateAPIFolderNode(linkOverrides = {}, overrides = {}) {
+    const node = generateAPINode();
+    return {
+        Link: {
+            ...node.Link,
+            Type: 1,
+            ...linkOverrides,
+        },
+        Folder: {
+            XAttr: '{folder}',
+            NodeHashKey: 'nodeHashKey',
+            IsImported: false,
+        },
+        ...overrides,
+    };
+}
+
+function generateAPIAlbumNode(linkOverrides = {}, overrides = {}) {
+    const node = generateAPINode();
+    return {
+        Link: {
+            ...node.Link,
+            Type: 3,
+            ...linkOverrides,
+        },
+        ...overrides,
+    };
+}
+
+function generateAPINode() {
+    return {
+        Link: {
+            LinkID: 'linkId',
+            ParentLinkID: 'parentLinkId',
+            NameHash: 'nameHash',
+            CreateTime: 123456789,
+            ModifyTime: 1234567890,
+            TrashTime: 0,
+
+            Name: 'encName',
+            SignatureEmail: 'sigEmail',
+            NameSignatureEmail: 'nameSigEmail',
+            NodeKey: 'nodeKey',
+            NodePassphrase: 'nodePass',
+            NodePassphraseSignature: 'nodePassSig',
+
+            OwnedBy: {
+                Email: 'ownerByEmail',
+                Organization: null,
+            },
+            ThirdParty: true,
+            Sdk: false,
+        },
+        SharingSummary: null,
+    };
+}
+
+function generateFileNode(overrides = {}, encryptedCryptoOverrides = {}) {
+    const node = generateNode();
+    return {
+        ...node,
+        type: NodeType.File,
+        mediaType: 'text',
+        totalStorageSize: 42,
+        encryptedCrypto: {
+            ...node.encryptedCrypto,
+            file: {
+                base64ContentKeyPacket: 'contentKeyPacket',
+                armoredContentKeyPacketSignature: 'contentKeyPacketSig',
+            },
+            activeRevision: {
+                uid: 'volumeId~linkId~revisionId',
+                state: 'active',
+                creationTime: new Date(1234567890000),
+                thirdParty: true,
+                sdk: true,
+                storageSize: 12,
+                signatureEmail: 'revSigEmail',
+                armoredExtendedAttributes: '{file}',
+                isImported: false,
+                thumbnails: [],
+            },
+            ...encryptedCryptoOverrides,
+        },
+        ...overrides,
+    };
+}
+
+function generateFolderNode(overrides = {}, encryptedCryptoOverrides = {}) {
+    const node = generateNode();
+    return {
+        ...node,
+        type: NodeType.Folder,
+        folder: {
+            isImported: false,
+        },
+        encryptedCrypto: {
+            ...node.encryptedCrypto,
+            folder: {
+                armoredHashKey: 'nodeHashKey',
+                armoredExtendedAttributes: '{folder}',
+            },
+            ...encryptedCryptoOverrides,
+        },
+        ...overrides,
+    };
+}
+
+function generateAlbumNode(overrides = {}) {
+    const node = generateNode();
+    return {
+        ...node,
+        type: NodeType.Album,
+        ...overrides,
+    };
+}
+
+function generateNode() {
+    return {
+        hash: 'nameHash',
+        thirdParty: true,
+        sdk: false,
+        encryptedName: 'encName',
+
+        uid: 'volumeId~linkId',
+        parentUid: 'volumeId~parentLinkId',
+        creationTime: new Date(123456789000),
+        modificationTime: new Date(1234567890000),
+        trashTime: undefined,
+
+        shareId: undefined,
+        isShared: false,
+        isSharedByUrl: false,
+        directRole: MemberRole.Admin,
+        membership: undefined,
+        ownedBy: {
+            email: 'ownerByEmail',
+            organization: undefined,
+        },
+
+        encryptedCrypto: {
+            armoredKey: 'nodeKey',
+            armoredNodePassphrase: 'nodePass',
+            armoredNodePassphraseSignature: 'nodePassSig',
+            nameSignatureEmail: 'nameSigEmail',
+            signatureEmail: 'sigEmail',
+            membership: undefined,
+        },
+    };
+}
+
+describe('nodeAPIService', () => {
+    let apiMock: DriveAPIService;
+    let api: NodeAPIService;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+
+        // @ts-expect-error Mocking for testing purposes
+        apiMock = {
+            get: jest.fn(),
+            post: jest.fn(),
+            put: jest.fn(),
+        };
+
+        api = new NodeAPIService(getMockLogger(), apiMock, 'clientUid');
+    });
+
+    describe('getNode', () => {
+        it('should get node', async () => {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.post = jest.fn(async () =>
+                Promise.resolve({
+                    Links: [generateAPIFolderNode()],
+                }),
+            );
+
+            const node = await api.getNode('volumeId~nodeId', 'volumeId');
+
+            expect(node).toStrictEqual(generateFolderNode());
+        });
+
+        it('should throw error if node is not found', async () => {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.post = jest.fn(async () =>
+                Promise.resolve({
+                    Links: [],
+                }),
+            );
+
+            const promise = api.getNode('volumeId~nodeId', 'volumeId');
+
+            await expect(promise).rejects.toThrow('Item not found');
+        });
+    });
+
+    describe('iterateNodes', () => {
+        async function testIterateNodes(mockedLink: any, expectedNode: any, ownVolumeId = 'volumeId') {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.post = jest.fn(async () =>
+                Promise.resolve({
+                    Links: [mockedLink],
+                }),
+            );
+
+            const nodes = await Array.fromAsync(api.iterateNodes(['volumeId~nodeId'], ownVolumeId));
+            expect(nodes).toStrictEqual(expectedNode ? [expectedNode] : []);
+        }
+
+        it('should get folder node', async () => {
+            await testIterateNodes(generateAPIFolderNode(), generateFolderNode());
+        });
+
+        it('should get root folder node', async () => {
+            await testIterateNodes(
+                generateAPIFolderNode({ ParentLinkID: null }),
+                generateFolderNode({ parentUid: undefined }),
+            );
+        });
+
+        it('should get file node', async () => {
+            await testIterateNodes(generateAPIFileNode(), generateFileNode());
+        });
+
+        it('should skip file draft node without an error', async () => {
+            await testIterateNodes(generateAPIFileNode({}, {}, { ActiveRevision: null }), undefined);
+        });
+
+        it('should get album node', async () => {
+            await testIterateNodes(generateAPIAlbumNode(), generateAlbumNode());
+        });
+
+        it('should get shared node', async () => {
+            await testIterateNodes(
+                generateAPIFolderNode(
+                    {},
+                    {
+                        Sharing: {
+                            ShareID: 'shareId',
+                        },
+                        Membership: {
+                            Permissions: 22,
+                            InviteTime: 1234567890,
+                            InviterEmail: 'inviterEmail',
+                            MemberSharePassphraseKeyPacket: 'memberSharePassphraseKeyPacket',
+                            InviterSharePassphraseKeyPacketSignature: 'inviterSharePassphraseKeyPacketSignature',
+                            InviteeSharePassphraseSessionKeySignature: 'inviteeSharePassphraseSessionKeySignature',
+                        },
+                    },
+                ),
+                generateFolderNode(
+                    {
+                        isShared: true,
+                        isSharedByUrl: false,
+                        shareId: 'shareId',
+                        directRole: MemberRole.Admin,
+                        membership: {
+                            role: MemberRole.Admin,
+                            inviteTime: new Date(1234567890000),
+                        },
+                    },
+                    {
+                        membership: {
+                            inviterEmail: 'inviterEmail',
+                            base64MemberSharePassphraseKeyPacket: 'memberSharePassphraseKeyPacket',
+                            armoredInviterSharePassphraseKeyPacketSignature: 'inviterSharePassphraseKeyPacketSignature',
+                            armoredInviteeSharePassphraseSessionKeySignature:
+                                'inviteeSharePassphraseSessionKeySignature',
+                        },
+                    },
+                ),
+            );
+        });
+
+        it('should get shared node with unknown permissions', async () => {
+            await testIterateNodes(
+                generateAPIFolderNode(
+                    {},
+                    {
+                        Sharing: {
+                            ShareID: 'shareId',
+                        },
+                        Membership: {
+                            Permissions: 42,
+                            InviteTime: 1234567890,
+                            InviterEmail: 'inviterEmail',
+                            MemberSharePassphraseKeyPacket: 'memberSharePassphraseKeyPacket',
+                            InviterSharePassphraseKeyPacketSignature: 'inviterSharePassphraseKeyPacketSignature',
+                            InviteeSharePassphraseSessionKeySignature: 'inviteeSharePassphraseSessionKeySignature',
+                        },
+                    },
+                ),
+                generateFolderNode(
+                    {
+                        isShared: true,
+                        isSharedByUrl: false,
+                        shareId: 'shareId',
+                        directRole: MemberRole.Viewer,
+                        membership: {
+                            role: MemberRole.Viewer,
+                            inviteTime: new Date(1234567890000),
+                        },
+                    },
+                    {
+                        membership: {
+                            inviterEmail: 'inviterEmail',
+                            base64MemberSharePassphraseKeyPacket: 'memberSharePassphraseKeyPacket',
+                            armoredInviterSharePassphraseKeyPacketSignature: 'inviterSharePassphraseKeyPacketSignature',
+                            armoredInviteeSharePassphraseSessionKeySignature:
+                                'inviteeSharePassphraseSessionKeySignature',
+                        },
+                    },
+                ),
+                'myVolumeId',
+            );
+        });
+
+        it('should get publicly shared node', async () => {
+            await testIterateNodes(
+                generateAPIFolderNode(
+                    {},
+                    {
+                        Sharing: {
+                            ShareID: 'shareId',
+                            ShareURLID: 'shareUrlId',
+                        },
+                    },
+                ),
+                generateFolderNode({
+                    isShared: true,
+                    isSharedByUrl: true,
+                    shareId: 'shareId',
+                    directRole: MemberRole.Admin,
+                }),
+            );
+        });
+
+        it('should get trashed file node', async () => {
+            await testIterateNodes(
+                generateAPIFileNode({
+                    TrashTime: 123456,
+                }),
+                generateFileNode({
+                    trashTime: new Date(123456000),
+                }),
+            );
+        });
+
+        it('should get all recognised nodes before throwing error', async () => {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.post = jest.fn(async () =>
+                Promise.resolve({
+                    Links: [
+                        generateAPIFolderNode(),
+                        // Type 42 is not recognised - should throw error.
+                        generateAPIFolderNode({ Type: 42 }),
+                        // Type 43 is not recognised - should throw error.
+                        generateAPIFileNode({ Type: 43 }),
+                        generateAPIFileNode(),
+                    ],
+                }),
+            );
+
+            const generator = api.iterateNodes(['volumeId~nodeId'], 'volumeId');
+
+            const node1 = await generator.next();
+            expect(node1.value).toStrictEqual(generateFolderNode());
+
+            // Second node is actually third, second is skipped and throwed at the end.
+            const node2 = await generator.next();
+            expect(node2.value).toStrictEqual(generateFileNode());
+
+            const node3 = generator.next();
+            await expect(node3).rejects.toThrow('Some items could not be loaded');
+            try {
+                await node3;
+            } catch (error: any) {
+                expect(error.cause).toEqual([new Error('Unknown node type: 42'), new Error('Unknown node type: 43')]);
+            }
+        });
+
+        it('should get all recognised nodes before API throws an error', async () => {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.post = jest.fn(async (url) => {
+                if (url.includes('volumeId1')) {
+                    return { Links: [generateAPIFolderNode({ LinkID: 'nodeId1' })] };
+                }
+                if (url.includes('volumeId3')) {
+                    return { Links: [generateAPIFolderNode({ LinkID: 'nodeId3' })] };
+                }
+                throw new Error(url.split('/')[3]);
+            });
+
+            const generator = api.iterateNodes(
+                [
+                    'volumeId0~nodeId0',
+                    'volumeId1~nodeId1',
+                    'volumeId2~nodeId2',
+                    'volumeId3~nodeId3',
+                    'volumeId4~nodeId4',
+                ],
+                'volumeId1',
+            );
+
+            const node1 = await generator.next();
+            expect(node1.value).toStrictEqual(
+                generateFolderNode({ uid: 'volumeId1~nodeId1', parentUid: 'volumeId1~parentLinkId' }),
+            );
+
+            // Second node is actually third, second is skipped and throwed at the end.
+            const node2 = await generator.next();
+            expect(node2.value).toStrictEqual(
+                generateFolderNode({
+                    uid: 'volumeId3~nodeId3',
+                    parentUid: 'volumeId3~parentLinkId',
+                    directRole: MemberRole.Inherited,
+                }),
+            );
+
+            const node3 = generator.next();
+            await expect(node3).rejects.toThrow();
+            try {
+                await node3;
+            } catch (error: any) {
+                expect(error.cause).toEqual([new Error('volumeId0'), new Error('volumeId2'), new Error('volumeId4')]);
+            }
+        });
+
+        it('should get nodes across various volumes', async () => {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.post = jest.fn(async (url) =>
+                Promise.resolve({
+                    Links: [
+                        generateAPIFolderNode({
+                            LinkID: url.includes('volumeId1') ? 'nodeId1' : 'nodeId2',
+                            ParentLinkID: url.includes('volumeId1') ? 'parentNodeId1' : 'parentNodeId2',
+                        }),
+                    ],
+                }),
+            );
+
+            const nodes = await Array.fromAsync(
+                api.iterateNodes(['volumeId1~nodeId1', 'volumeId2~nodeId2'], 'volumeId1'),
+            );
+            expect(nodes).toStrictEqual([
+                generateFolderNode({
+                    uid: 'volumeId1~nodeId1',
+                    parentUid: 'volumeId1~parentNodeId1',
+                    directRole: MemberRole.Admin,
+                }),
+                generateFolderNode({
+                    uid: 'volumeId2~nodeId2',
+                    parentUid: 'volumeId2~parentNodeId2',
+                    directRole: MemberRole.Inherited,
+                }),
+            ]);
+        });
+
+        it('should get nodes in batches', async () => {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.post = jest.fn(async (_, { LinkIDs }) =>
+                Promise.resolve({
+                    Links: LinkIDs.map((linkId: string) => generateAPIFolderNode({ LinkID: linkId })),
+                }),
+            );
+
+            const nodeUids = Array.from({ length: 250 }, (_, i) => `volumeId1~nodeId${i}`);
+            const nodeIds = nodeUids.map((uid) => uid.split('~')[1]);
+
+            const nodes = await Array.fromAsync(api.iterateNodes(nodeUids, 'volumeId1'));
+            expect(nodes).toHaveLength(nodeUids.length);
+
+            expect(apiMock.post).toHaveBeenCalledTimes(3);
+            expect(apiMock.post).toHaveBeenCalledWith(
+                'drive/v2/volumes/volumeId1/links',
+                { LinkIDs: nodeIds.slice(0, 100) },
+                undefined,
+            );
+            expect(apiMock.post).toHaveBeenCalledWith(
+                'drive/v2/volumes/volumeId1/links',
+                { LinkIDs: nodeIds.slice(100, 200) },
+                undefined,
+            );
+            expect(apiMock.post).toHaveBeenCalledWith(
+                'drive/v2/volumes/volumeId1/links',
+                { LinkIDs: nodeIds.slice(200, 250) },
+                undefined,
+            );
+        });
+    });
+
+    describe('trashNodes', () => {
+        it('should trash nodes', async () => {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.post = jest.fn(async () =>
+                Promise.resolve({
+                    Responses: [
+                        {
+                            LinkID: 'nodeId1',
+                            Response: {
+                                Code: ErrorCode.OK,
+                            },
+                        },
+                        {
+                            LinkID: 'nodeId2',
+                            Response: {
+                                Code: 2011,
+                                Error: 'not enough permissions',
+                            },
+                        },
+                    ],
+                }),
+            );
+
+            const result = await Array.fromAsync(api.trashNodes(['volumeId~nodeId1', 'volumeId~nodeId2']));
+            expect(result).toEqual([
+                { uid: 'volumeId~nodeId1', ok: true },
+                { uid: 'volumeId~nodeId2', ok: false, error: new ValidationError('not enough permissions') },
+            ]);
+        });
+
+        it('should trash nodes in batches', async () => {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.post = jest.fn(async (_, { LinkIDs }) =>
+                Promise.resolve({
+                    Responses: LinkIDs.map((linkId: string) => ({
+                        LinkID: linkId,
+                        Response: {
+                            Code: ErrorCode.OK,
+                        },
+                    })),
+                }),
+            );
+
+            const nodeUids = Array.from({ length: 250 }, (_, i) => `volumeId1~nodeId${i}`);
+            const nodeIds = nodeUids.map((uid) => uid.split('~')[1]);
+
+            const results = await Array.fromAsync(api.trashNodes(nodeUids));
+            expect(results).toHaveLength(nodeUids.length);
+            expect(results.every((result) => result.ok)).toBe(true);
+
+            expect(apiMock.post).toHaveBeenCalledTimes(3);
+            expect(apiMock.post).toHaveBeenCalledWith(
+                'drive/v2/volumes/volumeId1/trash_multiple',
+                { LinkIDs: nodeIds.slice(0, 100) },
+                undefined,
+            );
+            expect(apiMock.post).toHaveBeenCalledWith(
+                'drive/v2/volumes/volumeId1/trash_multiple',
+                { LinkIDs: nodeIds.slice(100, 200) },
+                undefined,
+            );
+            expect(apiMock.post).toHaveBeenCalledWith(
+                'drive/v2/volumes/volumeId1/trash_multiple',
+                { LinkIDs: nodeIds.slice(200, 250) },
+                undefined,
+            );
+        });
+    });
+
+    describe('restoreNodes', () => {
+        it('should restore nodes', async () => {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.put = jest.fn(async () =>
+                Promise.resolve({
+                    Responses: [
+                        {
+                            LinkID: 'nodeId1',
+                            Response: {
+                                Code: ErrorCode.OK,
+                            },
+                        },
+                        {
+                            LinkID: 'nodeId2',
+                            Response: {
+                                Code: 2011,
+                                Error: 'not enough permissions',
+                            },
+                        },
+                        {
+                            LinkID: 'nodeId3',
+                            Response: {
+                                Code: 123456,
+                            },
+                        },
+                    ],
+                }),
+            );
+
+            const result = await Array.fromAsync(
+                api.restoreNodes(['volumeId~nodeId1', 'volumeId~nodeId2', 'volumeId~nodeId3']),
+            );
+            expect(result).toEqual([
+                { uid: 'volumeId~nodeId1', ok: true },
+                { uid: 'volumeId~nodeId2', ok: false, error: new ValidationError('not enough permissions') },
+                { uid: 'volumeId~nodeId3', ok: false, error: new APICodeError('Something went wrong', 123456) },
+            ]);
+        });
+
+        it('should restore nodes from multiple volumes', async () => {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.put = jest.fn(async (_, { LinkIDs }) =>
+                Promise.resolve({
+                    Responses: LinkIDs.map((linkId: string) => ({
+                        LinkID: linkId,
+                        Response: {
+                            Code: ErrorCode.OK,
+                        },
+                    })),
+                }),
+            );
+
+            const result = await Array.fromAsync(api.restoreNodes(['volumeId1~nodeId1', 'volumeId2~nodeId2']));
+            expect(result).toEqual([
+                { uid: 'volumeId1~nodeId1', ok: true },
+                { uid: 'volumeId2~nodeId2', ok: true },
+            ]);
+        });
+    });
+
+    describe('deleteTrashedNodes', () => {
+        it('should delete trashed nodes', async () => {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.post = jest.fn(async () =>
+                Promise.resolve({
+                    Responses: [
+                        {
+                            LinkID: 'nodeId1',
+                            Response: {
+                                Code: ErrorCode.OK,
+                            },
+                        },
+                        {
+                            LinkID: 'nodeId2',
+                            Response: {
+                                Code: 2011,
+                                Error: 'not enough permissions',
+                            },
+                        },
+                    ],
+                }),
+            );
+
+            const result = await Array.fromAsync(api.deleteTrashedNodes(['volumeId~nodeId1', 'volumeId~nodeId2']));
+            expect(result).toEqual([
+                { uid: 'volumeId~nodeId1', ok: true },
+                { uid: 'volumeId~nodeId2', ok: false, error: new ValidationError('not enough permissions') },
+            ]);
+        });
+
+        it('should delete trashed nodes from multiple volumes', async () => {
+            // @ts-expect-error Mocking for testing purposes
+            apiMock.post = jest.fn(async (_, { LinkIDs }) =>
+                Promise.resolve({
+                    Responses: LinkIDs.map((linkId: string) => ({
+                        LinkID: linkId,
+                        Response: {
+                            Code: ErrorCode.OK,
+                        },
+                    })),
+                }),
+            );
+
+            const result = await Array.fromAsync(api.deleteTrashedNodes(['volumeId1~nodeId1', 'volumeId2~nodeId2']));
+            expect(result).toEqual([
+                { uid: 'volumeId1~nodeId1', ok: true },
+                { uid: 'volumeId2~nodeId2', ok: true },
+            ]);
+        });
+    });
+
+    describe('createFolder', () => {
+        it('should create folder', async () => {
+            apiMock.post = jest.fn().mockResolvedValue({
+                Code: ErrorCode.OK,
+                Folder: {
+                    ID: 'newNodeId',
+                },
+            });
+
+            const result = await api.createFolder('volumeId~parentNodeId', {
+                armoredKey: 'armoredKey',
+                armoredHashKey: 'armoredHashKey',
+                armoredNodePassphrase: 'armoredNodePassphrase',
+                armoredNodePassphraseSignature: 'armoredNodePassphraseSignature',
+                signatureEmail: 'signatureEmail',
+                encryptedName: 'encryptedName',
+                hash: 'hash',
+                armoredExtendedAttributes: 'armoredExtendedAttributes',
+            });
+
+            expect(result).toEqual('volumeId~newNodeId');
+            expect(apiMock.post).toHaveBeenCalledWith('drive/v2/volumes/volumeId/folders', {
+                ParentLinkID: 'parentNodeId',
+                NodeKey: 'armoredKey',
+                NodeHashKey: 'armoredHashKey',
+                NodePassphrase: 'armoredNodePassphrase',
+                NodePassphraseSignature: 'armoredNodePassphraseSignature',
+                SignatureEmail: 'signatureEmail',
+                Name: 'encryptedName',
+                Hash: 'hash',
+                XAttr: 'armoredExtendedAttributes',
+            });
+        });
+
+        it('should throw NodeWithSameNameExistsValidationError if node already exists', async () => {
+            apiMock.post = jest.fn().mockRejectedValue(
+                new ValidationError('Node already exists', ErrorCode.ALREADY_EXISTS, {
+                    ConflictLinkID: 'existingNodeId',
+                }),
+            );
+
+            try {
+                await api.createFolder('volumeId~parentNodeId', {
+                    armoredKey: 'armoredKey',
+                    armoredHashKey: 'armoredHashKey',
+                    armoredNodePassphrase: 'armoredNodePassphrase',
+                    armoredNodePassphraseSignature: 'armoredNodePassphraseSignature',
+                    signatureEmail: 'signatureEmail',
+                    encryptedName: 'encryptedName',
+                    hash: 'hash',
+                    armoredExtendedAttributes: 'armoredExtendedAttributes',
+                });
+                expect(false).toBeTruthy();
+            } catch (error: unknown) {
+                expect(error).toBeInstanceOf(NodeWithSameNameExistsValidationError);
+                if (error instanceof NodeWithSameNameExistsValidationError) {
+                    expect(error.code).toEqual(ErrorCode.ALREADY_EXISTS);
+                    expect(error.existingNodeUid).toEqual('volumeId~existingNodeId');
+                }
+            }
+        });
+    });
+
+    describe('getFolderSize', () => {
+        it('should get folder size', async () => {
+            apiMock.get = jest.fn().mockResolvedValue({
+                Code: ErrorCode.OK,
+                VolumeID: 'volumeId',
+                LinkID: 'nodeId',
+                DescendentsSize: 12345,
+                DescendentsCount: 42,
+            });
+
+            const result = await api.getFolderSize('volumeId~nodeId');
+
+            expect(result).toEqual({
+                size: 12345,
+                numberOfDescendants: 42,
+            });
+            expect(apiMock.get).toHaveBeenCalledWith(
+                'drive/volumes/volumeId/folders/nodeId/calculate-descendents-size',
+                undefined,
+            );
+        });
+    });
+
+    describe('renameNode', () => {
+        it('should rename node', async () => {
+            await api.renameNode(
+                'volumeId~nodeId1',
+                { hash: 'originalHash' },
+                { encryptedName: 'encryptedName1', nameSignatureEmail: 'nameSignatureEmail1', hash: 'newHash' },
+            );
+
+            expect(apiMock.put).toHaveBeenCalledWith(
+                'drive/v2/volumes/volumeId/links/nodeId1/rename',
+                {
+                    Name: 'encryptedName1',
+                    NameSignatureEmail: 'nameSignatureEmail1',
+                    Hash: 'newHash',
+                    OriginalHash: 'originalHash',
+                },
+                undefined,
+            );
+        });
+
+        it('should throw error if node is out of sync', async () => {
+            apiMock.put = jest.fn().mockRejectedValue(new InvalidRequirementsAPIError('Node is out of sync'));
+
+            await expect(
+                api.renameNode(
+                    'volumeId~nodeId1',
+                    { hash: 'originalHash' },
+                    { encryptedName: 'encryptedName1', nameSignatureEmail: 'nameSignatureEmail1', hash: 'newHash' },
+                ),
+            ).rejects.toThrow(new NodeOutOfSyncError('Node is out of sync'));
+        });
+    });
+
+    describe('reportRecentlyAccessed', () => {
+        describe('batching', () => {
+            const makeItems = (count: number) =>
+                Array.from({ length: count }, (_, i) => ({
+                    nodeUid: `volumeId~nodeId${i}`,
+                    accessTime: new Date(1700000000000 + i * 1000),
+                }));
+            const getSentLinkIds = () =>
+                (apiMock.post as jest.Mock).mock.calls.map(([, body]) =>
+                    body.RecentlyAccessedItems.map((item: { LinkID: string }) => item.LinkID),
+                );
+
+            beforeEach(() => {
+                apiMock.post = jest.fn().mockResolvedValue({ Code: 1000 });
+            });
+
+            it('should not call the API when there are no items', async () => {
+                await api.reportRecentlyAccessed([]);
+
+                expect(apiMock.post).not.toHaveBeenCalled();
+            });
+
+            it('should send exactly 50 items in one request', async () => {
+                await api.reportRecentlyAccessed(makeItems(50));
+
+                expect(getSentLinkIds().map((ids) => ids.length)).toEqual([50]);
+            });
+
+            it('should send 51 items in two requests', async () => {
+                await api.reportRecentlyAccessed(makeItems(51));
+
+                expect(getSentLinkIds().map((ids) => ids.length)).toEqual([50, 1]);
+            });
+
+            it('should split many items into requests of at most 50', async () => {
+                await api.reportRecentlyAccessed(makeItems(120));
+
+                expect(getSentLinkIds().map((ids) => ids.length)).toEqual([50, 50, 20]);
+            });
+
+            it('should keep item order across requests', async () => {
+                await api.reportRecentlyAccessed(makeItems(51));
+
+                const [firstBatch, secondBatch] = getSentLinkIds();
+                expect(firstBatch[0]).toBe('nodeId0');
+                expect(firstBatch[49]).toBe('nodeId49');
+                expect(secondBatch).toEqual(['nodeId50']);
+            });
+
+            it('should throw the API error and stop sending remaining requests', async () => {
+                const error = new Error('API failure');
+                apiMock.post = jest
+                    .fn()
+                    .mockResolvedValueOnce({ Code: 1000 })
+                    .mockRejectedValueOnce(error)
+                    .mockResolvedValueOnce({ Code: 1000 });
+
+                await expect(api.reportRecentlyAccessed(makeItems(130))).rejects.toBe(error);
+                expect(apiMock.post).toHaveBeenCalledTimes(2);
+            });
+        });
+
+        it('should report recently accessed nodes in one request', async () => {
+            apiMock.post = jest.fn().mockResolvedValue({ Code: ErrorCode.OK });
+
+            await api.reportRecentlyAccessed([
+                { nodeUid: 'volumeId~nodeId1', accessTime: new Date(1700000000000) },
+                { nodeUid: 'volumeId2~nodeId12', accessTime: new Date(1700000100500) },
+            ]);
+
+            expect(apiMock.post).toHaveBeenCalledWith('drive/recently-accessed-items', {
+                RecentlyAccessedItems: [
+                    {
+                        VolumeID: 'volumeId',
+                        LinkID: 'nodeId1',
+                        AccessTime: 1700000000,
+                    },
+                    {
+                        VolumeID: 'volumeId2',
+                        LinkID: 'nodeId12',
+                        AccessTime: 1700000100,
+                    },
+                ],
+            });
+        });
+    });
+});
+
+describe('groupNodeUidsByVolumeAndIteratePerBatch', () => {
+    it('should handle empty array', () => {
+        const result = Array.from(groupNodeUidsByVolumeAndIteratePerBatch([]));
+        expect(result).toEqual([]);
+    });
+
+    it('should handle single volume with nodes that fit in one batch', () => {
+        const nodeUids = ['volumeId1~nodeId1', 'volumeId1~nodeId2', 'volumeId1~nodeId3'];
+
+        const result = Array.from(groupNodeUidsByVolumeAndIteratePerBatch(nodeUids));
+
+        expect(result).toEqual([
+            {
+                volumeId: 'volumeId1',
+                batchNodeIds: ['nodeId1', 'nodeId2', 'nodeId3'],
+                batchNodeUids: ['volumeId1~nodeId1', 'volumeId1~nodeId2', 'volumeId1~nodeId3'],
+            },
+        ]);
+    });
+
+    it('should handle single volume with nodes that require multiple batches', () => {
+        // Create 250 node UIDs to test batching (API_NODES_BATCH_SIZE = 100)
+        const nodeUids = Array.from({ length: 250 }, (_, i) => `volumeId1~nodeId${i}`);
+
+        const result = Array.from(groupNodeUidsByVolumeAndIteratePerBatch(nodeUids));
+
+        expect(result).toHaveLength(3); // 100 + 100 + 50
+
+        // First batch
+        expect(result[0]).toEqual({
+            volumeId: 'volumeId1',
+            batchNodeIds: Array.from({ length: 100 }, (_, i) => `nodeId${i}`),
+            batchNodeUids: Array.from({ length: 100 }, (_, i) => `volumeId1~nodeId${i}`),
+        });
+
+        // Second batch
+        expect(result[1]).toEqual({
+            volumeId: 'volumeId1',
+            batchNodeIds: Array.from({ length: 100 }, (_, i) => `nodeId${i + 100}`),
+            batchNodeUids: Array.from({ length: 100 }, (_, i) => `volumeId1~nodeId${i + 100}`),
+        });
+
+        // Third batch
+        expect(result[2]).toEqual({
+            volumeId: 'volumeId1',
+            batchNodeIds: Array.from({ length: 50 }, (_, i) => `nodeId${i + 200}`),
+            batchNodeUids: Array.from({ length: 50 }, (_, i) => `volumeId1~nodeId${i + 200}`),
+        });
+    });
+
+    it('should handle multiple volumes with nodes distributed across them', () => {
+        const nodeUids = [
+            'volumeId1~nodeId1',
+            'volumeId2~nodeId2',
+            'volumeId1~nodeId3',
+            'volumeId3~nodeId4',
+            'volumeId2~nodeId5',
+        ];
+
+        const result = Array.from(groupNodeUidsByVolumeAndIteratePerBatch(nodeUids));
+
+        expect(result).toHaveLength(3); // One batch per volume
+
+        // Results should be grouped by volume
+        const volumeId1Batch = result.find((batch) => batch.volumeId === 'volumeId1');
+        const volumeId2Batch = result.find((batch) => batch.volumeId === 'volumeId2');
+        const volumeId3Batch = result.find((batch) => batch.volumeId === 'volumeId3');
+
+        expect(volumeId1Batch).toEqual({
+            volumeId: 'volumeId1',
+            batchNodeIds: ['nodeId1', 'nodeId3'],
+            batchNodeUids: ['volumeId1~nodeId1', 'volumeId1~nodeId3'],
+        });
+
+        expect(volumeId2Batch).toEqual({
+            volumeId: 'volumeId2',
+            batchNodeIds: ['nodeId2', 'nodeId5'],
+            batchNodeUids: ['volumeId2~nodeId2', 'volumeId2~nodeId5'],
+        });
+
+        expect(volumeId3Batch).toEqual({
+            volumeId: 'volumeId3',
+            batchNodeIds: ['nodeId4'],
+            batchNodeUids: ['volumeId3~nodeId4'],
+        });
+    });
+
+    it('should handle multiple volumes where some require multiple batches', () => {
+        // Volume 1: 150 nodes (2 batches)
+        // Volume 2: 50 nodes (1 batch)
+        // Volume 3: 200 nodes (2 batches)
+        const volume1Nodes = Array.from({ length: 150 }, (_, i) => `volumeId1~nodeId${i}`);
+        const volume2Nodes = Array.from({ length: 50 }, (_, i) => `volumeId2~nodeId${i}`);
+        const volume3Nodes = Array.from({ length: 200 }, (_, i) => `volumeId3~nodeId${i}`);
+
+        const nodeUids = [...volume1Nodes, ...volume2Nodes, ...volume3Nodes];
+
+        const result = Array.from(groupNodeUidsByVolumeAndIteratePerBatch(nodeUids));
+
+        expect(result).toHaveLength(5); // 2 + 1 + 2 batches
+
+        // Group results by volume
+        const volume1Batches = result.filter((batch) => batch.volumeId === 'volumeId1');
+        const volume2Batches = result.filter((batch) => batch.volumeId === 'volumeId2');
+        const volume3Batches = result.filter((batch) => batch.volumeId === 'volumeId3');
+
+        expect(volume1Batches).toHaveLength(2);
+        expect(volume2Batches).toHaveLength(1);
+        expect(volume3Batches).toHaveLength(2);
+
+        // Verify volume 1 batches
+        expect(volume1Batches[0].batchNodeIds).toHaveLength(100);
+        expect(volume1Batches[1].batchNodeIds).toHaveLength(50);
+
+        // Verify volume 2 batch
+        expect(volume2Batches[0].batchNodeIds).toHaveLength(50);
+
+        // Verify volume 3 batches
+        expect(volume3Batches[0].batchNodeIds).toHaveLength(100);
+        expect(volume3Batches[1].batchNodeIds).toHaveLength(100);
+    });
+});

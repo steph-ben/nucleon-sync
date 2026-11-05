@@ -1,0 +1,64 @@
+import { wireOk } from '@boltffi/runtime';
+
+import type { Node, NodeUid } from '../vendor/proton_drive_sdk_search.js';
+import { type NodeSource, SearchDriveSdkClient } from './searchDriveSdkClient';
+
+const uid = (nodeId: string): NodeUid => ({ volumeId: 'volume', nodeId });
+const node = (nodeId: string) => ({ uid: uid(nodeId) }) as Node;
+
+const sourceOf = (nodes: Node[]): NodeSource =>
+    async function* (nodeUids: NodeUid[]) {
+        const wanted = new Set(nodeUids.map(({ nodeId }) => nodeId));
+        yield* nodes.filter((n) => wanted.has(n.uid.nodeId));
+    };
+
+describe('SearchDriveSdkClient', () => {
+    it('streams the requested nodes one by one, then null', async () => {
+        const client = new SearchDriveSdkClient(sourceOf([node('a'), node('b'), node('c')]));
+
+        const { value: token } = await client.openNodeStream([uid('a'), uid('c')]);
+
+        expect(await client.nextNode(token)).toEqual(wireOk(node('a')));
+        expect(await client.nextNode(token)).toEqual(wireOk(node('c')));
+        expect(await client.nextNode(token)).toEqual(wireOk(null));
+    });
+
+    it('streams nodes in batches, then null', async () => {
+        const client = new SearchDriveSdkClient(sourceOf([node('a'), node('b')]));
+
+        const { value: token } = await client.openNodeStream([uid('a'), uid('b')]);
+
+        expect(await client.nextNodeBatch(token)).toEqual(wireOk([node('a'), node('b')]));
+        expect(await client.nextNodeBatch(token)).toEqual(wireOk(null));
+    });
+
+    it('keeps concurrent streams independent', async () => {
+        const client = new SearchDriveSdkClient(sourceOf([node('a'), node('b')]));
+
+        const { value: first } = await client.openNodeStream([uid('a')]);
+        const { value: second } = await client.openNodeStream([uid('b')]);
+
+        expect(await client.nextNode(second)).toEqual(wireOk(node('b')));
+        expect(await client.nextNode(first)).toEqual(wireOk(node('a')));
+    });
+
+    it('rejects reads from a closed stream and stops the source', async () => {
+        let finished = false;
+        const client = new SearchDriveSdkClient(async function* () {
+            try {
+                yield node('a');
+                yield node('b');
+            } finally {
+                finished = true;
+            }
+        });
+
+        const { value: token } = await client.openNodeStream([]);
+        await client.nextNode(token);
+        client.closeNodeStream(token);
+
+        await expect(client.nextNode(token)).rejects.toThrow('Unknown node stream');
+        await new Promise((resolve) => setTimeout(resolve));
+        expect(finished).toBe(true);
+    });
+});

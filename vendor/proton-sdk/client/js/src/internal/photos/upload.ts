@@ -1,0 +1,278 @@
+import { DriveCrypto } from '../../crypto';
+import {
+    AnonymousUser,
+    PhotoTag,
+    ProtonDriveTelemetry,
+    Thumbnail,
+    UploadMetadata,
+} from '../../interface';
+import { DriveAPIService, drivePaths } from '../apiService';
+import { generateFileExtendedAttributes } from '../nodes';
+import { splitNodeRevisionUid, splitNodeUid } from '../uids';
+import { UploadAPIService } from '../upload/apiService';
+import { BlockVerifier } from '../upload/blockVerifier';
+import { UploadController } from '../upload/controller';
+import { UploadCryptoService } from '../upload/cryptoService';
+import { FileUploader } from '../upload/fileUploader';
+import { NodeRevisionDraft, NodesService } from '../upload/interface';
+import { UploadManager } from '../upload/manager';
+import { StreamUploader } from '../upload/streamUploader';
+import { UploadTelemetry } from '../upload/telemetry';
+
+type PostCommitRevisionRequest = Extract<
+    drivePaths['/drive/v2/volumes/{volumeID}/files/{linkID}/revisions/{revisionID}']['put']['requestBody'],
+    { content: object }
+>['content']['application/json'];
+type PostCommitRevisionResponse =
+    drivePaths['/drive/v2/volumes/{volumeID}/files/{linkID}/revisions/{revisionID}']['put']['responses']['200']['content']['application/json'];
+
+export type PhotoUploadMetadata = UploadMetadata & {
+    captureTime?: Date;
+    mainPhotoNodeUid?: string;
+    tags?: PhotoTag[];
+};
+
+export class PhotoFileUploader extends FileUploader {
+    private photoApiService: PhotoUploadAPIService;
+    private photoManager: PhotoUploadManager;
+    private photoMetadata: PhotoUploadMetadata;
+
+    constructor(
+        telemetry: UploadTelemetry,
+        apiService: PhotoUploadAPIService,
+        cryptoService: UploadCryptoService,
+        manager: PhotoUploadManager,
+        parentFolderUid: string,
+        name: string,
+        metadata: PhotoUploadMetadata,
+        onFinish: () => void,
+        shouldUseSmallFileUpload: (expectedSize: number) => Promise<boolean>,
+        signal?: AbortSignal,
+    ) {
+        super(
+            telemetry,
+            apiService,
+            cryptoService,
+            manager,
+            parentFolderUid,
+            name,
+            metadata,
+            onFinish,
+            shouldUseSmallFileUpload,
+            signal,
+        );
+        this.photoApiService = apiService;
+        this.photoManager = manager;
+        this.photoMetadata = metadata;
+    }
+
+    protected async newStreamUploader(
+        blockVerifier: BlockVerifier,
+        revisionDraft: NodeRevisionDraft,
+        onFinish: (failure: boolean) => Promise<void>,
+    ): Promise<StreamUploader> {
+        return new PhotoStreamUploader(
+            this.telemetry,
+            this.photoApiService,
+            this.cryptoService,
+            this.photoManager,
+            blockVerifier,
+            revisionDraft,
+            this.photoMetadata,
+            onFinish,
+            this.controller,
+            this.signal,
+        );
+    }
+}
+
+export class PhotoStreamUploader extends StreamUploader {
+    private photoUploadManager: PhotoUploadManager;
+    private photoMetadata: PhotoUploadMetadata;
+
+    constructor(
+        telemetry: UploadTelemetry,
+        apiService: PhotoUploadAPIService,
+        cryptoService: UploadCryptoService,
+        uploadManager: PhotoUploadManager,
+        blockVerifier: BlockVerifier,
+        revisionDraft: NodeRevisionDraft,
+        metadata: PhotoUploadMetadata,
+        onFinish: (failure: boolean) => Promise<void>,
+        controller: UploadController,
+        signal?: AbortSignal,
+    ) {
+        const abortController = new AbortController();
+        if (signal) {
+            signal.addEventListener('abort', () => {
+                abortController.abort();
+            });
+        }
+
+        super(
+            telemetry,
+            apiService,
+            cryptoService,
+            uploadManager,
+            blockVerifier,
+            revisionDraft,
+            metadata,
+            onFinish,
+            controller,
+            abortController,
+        );
+        this.photoUploadManager = uploadManager;
+        this.photoMetadata = metadata;
+    }
+
+    async commitFile(thumbnails: Thumbnail[]) {
+        const digests = this.digests.digests();
+        const integrityInfo = this.verifyIntegrity(thumbnails, digests);
+
+        const extendedAttributes = {
+            modificationTime: this.metadata.modificationTime,
+            size: this.uploadedOriginalFileSize,
+            blockSizes: this.uploadedBlockSizes,
+            digests,
+        };
+
+        await this.photoUploadManager.commitDraftPhoto(
+            this.revisionDraft,
+            await this.getManifest(),
+            extendedAttributes,
+            this.photoMetadata,
+            integrityInfo,
+        );
+    }
+}
+
+export class PhotoUploadManager extends UploadManager {
+    private photoApiService: PhotoUploadAPIService;
+    private photoCryptoService: PhotoUploadCryptoService;
+
+    constructor(
+        telemetry: ProtonDriveTelemetry,
+        apiService: PhotoUploadAPIService,
+        cryptoService: PhotoUploadCryptoService,
+        nodesService: NodesService,
+        clientUid: string | undefined,
+    ) {
+        super(telemetry, apiService, cryptoService, nodesService, clientUid);
+        this.photoApiService = apiService;
+        this.photoCryptoService = cryptoService;
+    }
+
+    async commitDraftPhoto(
+        nodeRevisionDraft: NodeRevisionDraft,
+        manifest: Uint8Array<ArrayBuffer>,
+        extendedAttributes: {
+            modificationTime?: Date;
+            size: number;
+            blockSizes: number[];
+            digests: {
+                sha1: string;
+            };
+        },
+        uploadMetadata: PhotoUploadMetadata,
+        integrityInfo: { checksumVerified: boolean },
+    ): Promise<void> {
+        if (!nodeRevisionDraft.parentNodeKeys) {
+            throw new Error('Parent node keys are required for photo upload');
+        }
+
+        // TODO: handle photo extended attributes in the SDK - now it must be passed from the client
+        const generatedExtendedAttributes = generateFileExtendedAttributes(
+            extendedAttributes,
+            uploadMetadata.additionalMetadata,
+        );
+        const nodeCommitCrypto = await this.cryptoService.commitFile(
+            nodeRevisionDraft.nodeKeys,
+            manifest,
+            generatedExtendedAttributes,
+        );
+
+        const sha1 = extendedAttributes.digests.sha1;
+        const contentHash = await this.photoCryptoService.generateContentHash(
+            sha1,
+            nodeRevisionDraft.parentNodeKeys?.hashKey,
+        );
+        const photo = {
+            contentHash,
+            captureTime: uploadMetadata.captureTime || extendedAttributes.modificationTime,
+            mainPhotoNodeUid: uploadMetadata.mainPhotoNodeUid,
+            tags: uploadMetadata.tags,
+        };
+        await this.photoApiService.commitDraftPhoto(
+            nodeRevisionDraft.nodeRevisionUid,
+            {
+                ...nodeCommitCrypto,
+                ...integrityInfo,
+            },
+            photo,
+        );
+        await this.notifyNodeUploaded(nodeRevisionDraft);
+    }
+}
+
+export class PhotoUploadCryptoService extends UploadCryptoService {
+    constructor(
+        telemetry: ProtonDriveTelemetry,
+        driveCrypto: DriveCrypto,
+        nodesService: NodesService,
+    ) {
+        super(telemetry, driveCrypto, nodesService);
+    }
+
+    async generateContentHash(sha1: string, parentHashKey: Uint8Array<ArrayBuffer>): Promise<string> {
+        return this.driveCrypto.generateLookupHash(sha1, parentHashKey);
+    }
+}
+
+export class PhotoUploadAPIService extends UploadAPIService {
+    constructor(apiService: DriveAPIService, clientUid: string | undefined) {
+        super(apiService, clientUid);
+    }
+
+    async commitDraftPhoto(
+        draftNodeRevisionUid: string,
+        options: {
+            armoredManifestSignature: string;
+            signatureEmail: string | AnonymousUser;
+            armoredExtendedAttributes?: string;
+            checksumVerified?: boolean;
+        },
+        photo: {
+            contentHash: string;
+            captureTime?: Date;
+            mainPhotoNodeUid?: string;
+            tags?: PhotoTag[];
+        },
+    ): Promise<void> {
+        const { volumeId, nodeId, revisionId } = splitNodeRevisionUid(draftNodeRevisionUid);
+        const { volumeId: mainPhotoVolumeId, nodeId: mainPhotoNodeId } = photo.mainPhotoNodeUid
+            ? splitNodeUid(photo.mainPhotoNodeUid)
+            : { volumeId: null, nodeId: null };
+
+        if (mainPhotoVolumeId !== null && mainPhotoVolumeId !== volumeId) {
+            throw new Error('mainPhotoNodeUid must belong to the same volume as the draft');
+        }
+
+        await this.apiService.put<
+            // TODO: Deprected fields but not properly marked in the types.
+            Omit<PostCommitRevisionRequest, 'BlockNumber' | 'BlockList' | 'ThumbnailToken' | 'State'>,
+            PostCommitRevisionResponse
+        >(`drive/v2/volumes/${volumeId}/files/${nodeId}/revisions/${revisionId}`, {
+            ManifestSignature: options.armoredManifestSignature,
+            SignatureAddress: options.signatureEmail,
+            XAttr: options.armoredExtendedAttributes || null,
+            ChecksumVerified: options.checksumVerified || false,
+            Photo: {
+                ContentHash: photo.contentHash,
+                CaptureTime: photo.captureTime ? Math.floor(photo.captureTime?.getTime() / 1000) : 0,
+                MainPhotoLinkID: mainPhotoNodeId,
+                Tags: photo.tags || [],
+                Exif: null, // Deprecated field, not used.
+            },
+        });
+    }
+}
