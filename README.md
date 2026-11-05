@@ -42,7 +42,12 @@ No access to Proton, the keychain or the network is needed. To reproduce locally
 - `once`: a single sync pass.
 - `run`: daemon, continuous sync.
 - `approve`: approves the large deletions that were held back.
-- `status`: state of the last pass.
+- `status`: readable state, and whether the daemon is running.
+- `pause` / `resume`: suspends and resumes the sync.
+- `seen`: acknowledges the files recently sent to the trash or quarantine.
+- `exclude list|add <pattern>|remove <pattern>`: name patterns never synced (`*`, `?`, trailing `/` for folders). Excluded items stay where they are.
+- `setup`: guided first configuration, shows the plan and changes nothing.
+- `update`: installs a new `main` if CI is green, otherwise only notifies. Also runs every day from the daemon.
 - `version`: version.
 
 ## Configuration

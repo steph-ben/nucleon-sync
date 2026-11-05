@@ -39,7 +39,7 @@ jobs:
           bash scripts/patch-crypto.sh
 
       - name: Main tests
-        run: bun test test/local.test.ts test/scenarios.test.ts test/integration.test.ts test/proton-adapter.test.ts test/journal.test.ts test/watch-real.test.ts
+        run: bun test test/local.test.ts test/scenarios.test.ts test/integration.test.ts test/proton-adapter.test.ts test/journal.test.ts test/watch-real.test.ts test/desktop.test.ts
 
       - name: Catalogue
         run: |

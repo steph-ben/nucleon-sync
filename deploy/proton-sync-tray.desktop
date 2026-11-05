@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=proton-sync
+Comment=Icône de synchro Proton Drive
+Exec=python3 __ROOT__/desktop/linux/proton-sync-tray.py __HOME__/.local/bin/proton-sync __DATA__
+Terminal=false
+X-GNOME-Autostart-enabled=true

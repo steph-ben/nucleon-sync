@@ -7,6 +7,8 @@ import { type DesktopState, notificationsFor, render, writeState } from '../src/
 import { makeIgnore } from '../src/desktop/exclude';
 import { DesktopTracker } from '../src/desktop/tracker';
 import { noteCommand } from '../src/desktop/notify';
+import { buildConfig } from '../src/desktop/setup';
+import { decideUpdate } from '../src/desktop/update';
 import { cleanWorlds, machine, settle, tree } from './lib/world';
 import { Hub } from './sim';
 
@@ -221,4 +223,47 @@ describe('commands', () => {
         await cli(h, 'exclude', 'remove', '*.tmp');
         expect(await cli(h, 'exclude', 'list')).not.toContain('*.tmp');
     });
+});
+
+describe('setup assistant', () => {
+    test('a test space needs no confirmation', () => {
+        const c = buildConfig({ folder: '/home/s/Proton', target: 'test', confirmed: false, deviceName: 'fedora' });
+        expect(c.remote).toBe('device:proton-sync-test/sandbox-fedora');
+        expect(c.allowDriveRoot).toBeUndefined();
+    });
+    test('My files only with an explicit confirmation', () => {
+        expect(() => buildConfig({ folder: '/x', target: 'myfiles', confirmed: false, deviceName: 'd' })).toThrow('confirm');
+        const c = buildConfig({ folder: '/x', target: 'myfiles', confirmed: true, deviceName: 'd' });
+        expect(c.remote).toBe('root');
+        expect(c.allowDriveRoot).toBe(true);
+    });
+});
+
+describe('update decision', () => {
+    const base = { branch: 'main', behind: 2, clean: true, ci: 'success' as const };
+    test('installed only when CI is green on a clean main', () => {
+        expect(decideUpdate(base)).toBe('install');
+    });
+    test('otherwise only signalled', () => {
+        expect(decideUpdate({ ...base, ci: 'failure' })).toBe('signal');
+        expect(decideUpdate({ ...base, ci: 'unknown' })).toBe('signal');
+        expect(decideUpdate({ ...base, clean: false })).toBe('signal');
+    });
+    test('nothing to do when up to date or on another branch', () => {
+        expect(decideUpdate({ ...base, behind: 0 })).toBe('none');
+        expect(decideUpdate({ ...base, branch: 'reliability' })).toBe('none');
+    });
+});
+
+const hasPython = Bun.which('python3') !== null;
+test.skipIf(!hasPython)('Linux icon: a stale, broken or missing state means stopped', async () => {
+    const h = mkdtempSync(path.join(tmpdir(), 'proton-sync-py-'));
+    const script = path.join(import.meta.dir, '../desktop/linux/proton-sync-tray.py');
+    const code = `import importlib.util,sys
+s=importlib.util.spec_from_file_location("t",sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+print(m.read_state(sys.argv[2],1000)["level"]);print(m.read_state(sys.argv[2],99999)["level"]);print(m.read_state("/nonexistent",1000)["level"])`;
+    writeState(path.join(h, 'desktop.json'), { ...idle, heartbeatAt: 1000 * 1000 }, 1000 * 1000);
+    const p = Bun.spawn(['python3', '-I', '-c', code, script, h], { stdout: 'pipe', stderr: 'pipe' });
+    const out = await new Response(p.stdout).text();
+    expect(out.trim().split('\n')).toEqual(['ok', 'stopped', 'stopped']);
 });

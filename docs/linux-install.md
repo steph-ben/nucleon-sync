@@ -11,7 +11,7 @@ It installs bun 1.4.2, the dependencies, the `proton-sync` command and the servi
 temporary folders. It starts nothing. Expected end: `ALL GREEN`. If not, do not go further.
 
 Needs `npm`, `curl`, `unzip`, and libsecret with a running keyring for the session
-(Debian, Ubuntu: `sudo apt install npm curl unzip libsecret-1-0 gnome-keyring`).
+(Fedora: `sudo dnf install nodejs-npm curl unzip libsecret gnome-keyring`).
 Without a desktop keyring, use `pass`: `export PROTON_DRIVE_CREDENTIALS_STORE=pass` for `login`, and add
 `Environment=PROTON_DRIVE_CREDENTIALS_STORE=pass` to the service. Avoid `unsafe_file`: it stores the session in clear.
 
@@ -36,6 +36,20 @@ Then `unset PROTON_SYNC_HOME`.
 
 Only once the Mac daemons run the same code as the laptop. Follow `docs/migration.md`, steps 2 to 7, Linux side:
 stop rclone first, and read `plan` before the first `once`. Anything other than `link` actions needs an explanation.
+
+## Tray icon on Fedora GNOME
+
+GNOME shows no tray icon on its own. Once:
+
+    sudo dnf install gnome-shell-extension-appindicator libayatana-appindicator-gtk3 python3-gobject libnotify
+
+Log out and in, then:
+
+    gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com
+
+The icon then starts at each login. To start it now:
+
+    python3 ~/dev/proton-sync/desktop/linux/proton-sync-tray.py ~/.local/bin/proton-sync ~/.local/share/proton-sync &
 
 ## Troubleshooting
 
