@@ -220,7 +220,9 @@ export class Engine {
                 const rec = this.recs.get(a.key)!;
                 const l = this.currentLocal(rec);
                 const r = this.currentRemote(rec);
-                const position = { ...rec, parent: this.parentKey(l.parent), name: r.name, localId: l.id, remoteId: r.id };
+                // Un nom temporaire ne doit jamais entrer dans la base.
+                const name = r.name.startsWith(SWAP_PREFIX) || l.name.startsWith(SWAP_PREFIX) ? rec.name : r.name;
+                const position = { ...rec, parent: this.parentKey(l.parent), name, localId: l.id, remoteId: r.id };
                 this.save(a.content ? { ...position, hash: l.hash, size: l.size, localMtime: l.mtime, rev: r.rev } : position);
                 return true;
             }

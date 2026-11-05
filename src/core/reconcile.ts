@@ -20,6 +20,8 @@ interface State {
     rMod: boolean;
     /** Nom temporaire laissé sur le Drive par cet appareil lors d'une coupure : à réparer. */
     ownSwap: boolean;
+    /** Même chose côté local : l'élément reprend sa place. */
+    lSwap: boolean;
 }
 
 /** Fonction pure : aucune entrée/sortie. La seule décision sur le contenu vient de hash et rev. */
@@ -82,7 +84,8 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
             rec,
             l,
             r,
-            lMoved: !!l && movedFrom(l, rec, recOfL),
+            lMoved: !!l && movedFrom(l, rec, recOfL) && !l.name.startsWith(SWAP_PREFIX),
+            lSwap: !!l && l.name.startsWith(SWAP_PREFIX),
             // Un nom transitoire laissé par une coupure n'est pas un choix de l'utilisateur.
             rMoved: !!r && movedFrom(r, rec, recOfR) && !r.name.startsWith(SWAP_PREFIX),
             ownSwap: !!r && r.name.startsWith(`${SWAP_PREFIX}${o.deviceName}-`),
@@ -158,6 +161,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
     /** Éléments promis à la suppression : ni neufs, ni à réapparier. */
     const doomedL = new Set<string>();
     const doomedR = new Set<string>();
+    const swapRepairs: State[] = [];
 
     /** L'enregistrement est oublié : ce qui reste de chaque côté redevient un élément neuf. */
     const release = (s: State) => {
@@ -179,6 +183,11 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
                 recOfL.delete(s.l.id);
                 doomedL.add(s.l.id);
             }
+        } else if (s.r && !s.l && s.ownSwap) {
+            // D'abord rendre son vrai nom à l'élément ; les règles normales jouent à la passe suivante.
+            swapRepairs.push(s);
+            states.delete(s.rec.key);
+            doomedR.add(s.r.id);
         } else if (s.r && !s.l) {
             if (keepR(s)) release(s);
             else {
@@ -260,7 +269,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
     const targets = new Map<string, Target>();
     for (const s of states.values()) {
         const lWins = (s.lMoved && !s.rMoved) || s.ownSwap;
-        const e = lWins ? s.l! : s.rMoved ? s.r! : undefined;
+        const e = lWins ? (s.lSwap ? undefined : s.l!) : s.rMoved ? s.r! : undefined;
         targets.set(s.rec.key, {
             s,
             lWins,
@@ -300,6 +309,8 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
     const newRemoteDirs: { d: number; a: Action }[] = [];
     for (const e of R.values()) {
         if (recOfR.has(e.id) || doomedR.has(e.id) || e.protected || linkedRev.has(e.id)) continue;
+        // Nom temporaire d'un autre appareil en plein travail : on attend qu'il ait fini.
+        if (e.name.startsWith(SWAP_PREFIX)) continue;
         // Un enfant de dossier ignoré ou d'un dossier indéchiffrable reste côté distant.
         const parent = e.parent === ROOT ? undefined : R.get(e.parent);
         if (parent?.protected) continue;
@@ -357,7 +368,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
             }
             occ.add(slot(t.parent, name));
             moves.push({ t: 'remoteMove', key: s.rec.key, parent: refOfCanon(t.parent, s.l, true), name });
-        } else if (s.rMoved || s.lMoved) {
+        } else if (s.rMoved || s.lMoved || s.lSwap) {
             // Le distant gagne, ou la position distante a été conservée après un conflit.
             const here = s.l!;
             const samePlace = canonL(here.parent) === t.parent && nfc(here.name) === nfc(t.name);
@@ -367,6 +378,13 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
                 moves.push({ t: 'localMove', key: s.rec.key, parent, name: t.name });
             } else refreshes.push({ t: 'refresh', key: s.rec.key, content: false });
         }
+    }
+
+    for (const s of swapRepairs) {
+        const parent = s.rec.parent !== ROOT && states.has(s.rec.parent) ? `rec:${s.rec.parent}` : ROOT;
+        const name = occ.has(slot(parent, s.rec.name)) ? freeName(parent, s.rec.name) : s.rec.name;
+        occ.add(slot(parent, name));
+        moves.push({ t: 'remoteMove', key: s.rec.key, parent: parent === ROOT ? { t: 'root' } : { t: 'rec', key: s.rec.parent }, name });
     }
 
     // 7. Contenu des éléments survivants.
