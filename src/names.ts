@@ -7,7 +7,7 @@ export const CHANNEL = 'beta';
 /** Sent to Proton in the x-pm-appversion header, in the shape the SDK asks for. */
 export const APP_VERSION = `external-drive-nucleon_sync@${VERSION}-${CHANNEL}`;
 
-export const THIRD_PARTY_NOTICE = 'nucleon-sync is an independent project. It is not made, endorsed or supported by Proton AG. Proton is a trademark of Proton AG.';
+export const THIRD_PARTY_NOTICE = 'This is a third-party application not officially supported by Proton.';
 
 /** Data folder: NUCLEON_SYNC_HOME, else the deprecated PROTON_SYNC_HOME, else ~/.local/share/nucleon-sync. */
 export function dataDir(env: Record<string, string | undefined>, home: string): string {

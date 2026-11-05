@@ -10,6 +10,7 @@ import { Engine, SafetyStop } from './core/engine';
 import type { Logger, Plan } from './core/types';
 import { recentActivity } from './desktop/activity';
 import { makeIgnore } from './desktop/exclude';
+import { isOutdatedClient, retryDelaySeconds, signIn } from './desktop/signin';
 import { sendNote } from './desktop/notify';
 import { buildConfig } from './desktop/setup';
 import type { View } from './desktop/state';
@@ -233,6 +234,7 @@ async function daemon(cfg: Config) {
     log('INFO', `daemon started: version=${APP_VERSION} pid=${process.pid} root=${cfg.localRoot} target=${cfg.remote} device=${cfg.deviceName} maxDeletes=${cfg.maxDeletes} poll=${POLL_SECONDS} s verbose=${verbose}`);
 
     let failures = 0;
+    let outdated = false;
     let pass = 0;
     let lastHeld = -1;
     let lastWarnings = new Set<string>();
@@ -275,6 +277,7 @@ async function daemon(cfg: Config) {
             }
             if (r.errors.length) beat.withErrors++;
             failures = r.errors.length ? failures + 1 : 0;
+            outdated = false;
             // Work was done: run again soon to confirm the state is stable.
             if (r.plan.actions.length) delay = 2000;
         } catch (e) {
@@ -283,14 +286,20 @@ async function daemon(cfg: Config) {
             const safety = e instanceof SafetyStop;
             view.passFailed(e, safety);
             const message = e instanceof Error ? e.message : String(e);
-            log('ERROR', `${safety ? 'safety stop (no file was touched)' : `pass ${pass} failed`}: ${message}`);
+            if (isOutdatedClient(message)) {
+                if (!outdated) log('ERROR', `Proton no longer accepts this version: run nucleon-sync update. Checking again every hour. (${message})`);
+                outdated = true;
+            } else {
+                outdated = false;
+                log('ERROR', `${safety ? 'safety stop (no file was touched)' : `pass ${pass} failed`}: ${message}`);
+            }
             store.setKv('status', JSON.stringify({ at: new Date().toISOString(), error: String(e) }));
         } finally {
             running = false;
         }
         if (failures) {
-            delay = Math.min(POLL_SECONDS * 1000 * 2 ** Math.min(failures, 4), 15 * 60 * 1000);
-            log('WARN', `retrying in ${Math.round(delay / 1000)} s (consecutive failed passes: ${failures})`);
+            delay = retryDelaySeconds(failures, outdated, POLL_SECONDS) * 1000;
+            if (!outdated) log('WARN', `retrying in ${Math.round(delay / 1000)} s (consecutive failed passes: ${failures})`);
         } else if (tracker.hasPending()) {
             // The user changed something while the pass was running: do not wait for the next poll.
             delay = DEBOUNCE_MS;
@@ -338,7 +347,7 @@ async function main() {
         }
         case 'login': {
             const ctx = await sdkContext();
-            await ctx.auth.authViaWeb((url: string) => console.log(`Open this address to log in:\n${url}`));
+            await signIn(ctx.auth, console.log);
             console.log('logged in');
             await ctx.dispose();
             return;
@@ -407,7 +416,7 @@ async function main() {
             createRootMarker(folder);
             saveConfig(cfg);
             const ctx = await sdkContext();
-            if (!ctx.auth.isLoggedIn()) await ctx.auth.authViaWeb((url: string) => console.log(`Open this address to log in:\n${url}`));
+            if (!ctx.auth.isLoggedIn()) await signIn(ctx.auth, console.log);
             const log = logger(false);
             const { engine } = await buildEngine(cfg, ctx, log);
             const plan = await engine.planOnly();
