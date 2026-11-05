@@ -33,7 +33,7 @@ export async function run(seed: number, crashRate: number, midOps: boolean) {
         const remote = new SimRemote(hub, local);
         const store = new MemStore();
         let k = 0;
-        const engine = new Engine(local, remote, store, { deviceName: tag, caseInsensitive: false, maxDeletes: 1e9, isFatal: (e) => e instanceof Crash, newKey: () => `${tag}k${++k}`, today: () => '2026-11-05' });
+        const engine = new Engine(local, remote, store, { deviceName: tag, caseInsensitive: false, maxDeletes: 1e9, emptyGuardMin: 1e9, isFatal: (e) => e instanceof Crash, newKey: () => `${tag}k${++k}`, today: () => '2026-11-05' });
         return { tag, local, remote, store, engine };
     };
     const devs = [mk('M'), mk('L')];

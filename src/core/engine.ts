@@ -11,8 +11,6 @@ export interface CycleResult {
 
 export class SafetyStop extends Error {}
 
-/** En dessous, vider un tout petit dossier est un geste normal, pas une panne. */
-const EMPTY_GUARD_MIN = 5;
 
 export class Engine {
     private recs = new Map<string, BaseRec>();
@@ -26,7 +24,7 @@ export class Engine {
         private local: LocalFs,
         private remote: RemoteFs,
         private store: Store,
-        private options: Omit<ReconcileOptions, 'today'> & { newKey: () => string; today: () => string; log?: (s: string) => void; isFatal?: (e: unknown) => boolean },
+        private options: Omit<ReconcileOptions, 'today'> & { newKey: () => string; today: () => string; log?: (s: string) => void; isFatal?: (e: unknown) => boolean; emptyGuardMin?: number },
     ) {}
 
     async planOnly(approveDeletes = false): Promise<Plan> {
@@ -90,6 +88,8 @@ export class Engine {
         const base = this.store.all();
         this.recs = new Map(base.map((r) => [r.key, { ...r }]));
         const byLocal = new Map(base.map((r) => [r.localId, r]));
+        // En dessous, vider un tout petit dossier est un geste normal, pas une panne.
+        const EMPTY_GUARD_MIN = this.options.emptyGuardMin ?? 5;
         this.L = await this.local.scan(byLocal);
         this.R = await this.remote.snapshot();
         if (base.length >= EMPTY_GUARD_MIN && this.L.size === 0) throw new SafetyStop('dossier local vide alors que la base ne l’est pas');
@@ -339,11 +339,12 @@ export class Engine {
             const p = this.resolve(a.parent);
             const blocker = occupied(a, p);
             if (!blocker) throw new PathBusy(`déplacement impossible pour l'instant : ${a.name}`);
-            const tmp = `${SWAP_PREFIX}${++this.seq}`;
-            const blockerAction = pending.find((m) => (m.t === 'remoteMove' ? this.recs.get(m.key)!.remoteId : this.recs.get(m.key)!.localId) === blocker.id);
+            const blockerMoves = pending.some((x) => (x.t === 'remoteMove' ? this.recs.get(x.key)!.remoteId : this.recs.get(x.key)!.localId) === blocker.id);
             // Occupée par un élément qui ne bouge pas : souvent une suppression à venir, à reprendre ensuite.
-            if (!blockerAction) throw new PathBusy(`destination occupée : ${a.name}`);
-            await this.applyMove({ ...blockerAction, name: tmp }, this.resolve(blockerAction.parent));
+            if (!blockerMoves) throw new PathBusy(`destination occupée : ${a.name}`);
+            // Le temporaire reste dans le dossier actuel : la cible peut être sous l'élément lui-même.
+            if (a.t === 'remoteMove') await this.vacateRemote(p.remoteId, a.name);
+            else await this.vacateLocal(p.localId, a.name);
         }
     }
 
