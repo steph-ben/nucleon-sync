@@ -47,8 +47,26 @@ function runChecked(run: (cmd: string[]) => number, cmd: string[]) {
     if (run(cmd) !== 0) throw new Error(`${cmd[0]} failed: ${cmd.join(' ')}`);
 }
 
+const realSleep = (ms: number) => Bun.sleepSync(ms);
+
+/**
+ * Loads a launchd agent, replacing the one that is loaded. "launchctl bootout" returns before launchd has finished unloading
+ * the job, and a bootstrap in that window fails with "Input/output error": the old job is gone and the new one never loads.
+ * So this waits until the job is really gone, then tries the bootstrap again a few times. True when it is loaded.
+ */
+export function loadAgent(run: (cmd: string[]) => number, domain: string, label: string, file: string, sleep: (ms: number) => void = realSleep): boolean {
+    const target = `${domain}/${label}`;
+    run(['launchctl', 'bootout', target]);
+    for (let i = 0; i < 100 && run(['launchctl', 'print', target]) === 0; i++) sleep(100);
+    for (let i = 0; i < 10; i++) {
+        if (run(['launchctl', 'bootstrap', domain, file]) === 0) return true;
+        sleep(500);
+    }
+    return false;
+}
+
 /** Writes the service file, then starts it now and at every login. */
-export function installService(os: string, o: ServiceOptions, run: (cmd: string[]) => number): void {
+export function installService(os: string, o: ServiceOptions, run: (cmd: string[]) => number, sleep: (ms: number) => void = realSleep): void {
     const problem = serviceProblem(os);
     if (problem) throw new Error(problem);
     if (os === 'linux') {
@@ -65,9 +83,8 @@ export function installService(os: string, o: ServiceOptions, run: (cmd: string[
         mkdirSync(path.join(o.home, 'Library/Logs'), { recursive: true });
         writeFileSync(file, renderService('darwin', o));
         const domain = `gui/${process.getuid?.() ?? 501}`;
-        // On a rerun bootstrap fails while the old job is loaded. No job loaded is fine.
-        run(['launchctl', 'bootout', `${domain}/org.nucleonsync.daemon`]);
-        runChecked(run, ['launchctl', 'bootstrap', domain, file]);
+        // On a rerun the old job is replaced. No job loaded is fine.
+        if (!loadAgent(run, domain, 'org.nucleonsync.daemon', file, sleep)) throw new Error(`launchctl failed: launchctl bootstrap ${domain} ${file}`);
     }
 }
 
@@ -116,7 +133,7 @@ const MAC_TRAY_LABEL = 'org.nucleonsync.tray';
  * Builds the menu bar icon with the Swift compiler of the Mac (one file, no download), then loads it as a login agent.
  * Returns a line for the summary. Never installs the command line tools: it says how.
  */
-export function installMacTray(o: Pick<ServiceOptions, 'home' | 'dataDir' | 'command'>, run: (cmd: string[]) => number, uid: number = process.getuid?.() ?? 501): string {
+export function installMacTray(o: Pick<ServiceOptions, 'home' | 'dataDir' | 'command'>, run: (cmd: string[]) => number, uid: number = process.getuid?.() ?? 501, sleep: (ms: number) => void = realSleep): string {
     // Through "current", so an update brings the new source.
     const source = path.join(o.home, '.local/share/nucleon-sync/app/current/desktop/macos/NucleonSyncTray.swift');
     if (!existsSync(source)) return `not started: ${source} is missing`;
@@ -127,9 +144,7 @@ export function installMacTray(o: Pick<ServiceOptions, 'home' | 'dataDir' | 'com
     const file = path.join(o.home, `Library/LaunchAgents/${MAC_TRAY_LABEL}.plist`);
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, template.replaceAll('__HOME__', xmlEscape(o.home)).replaceAll('__DATA__', xmlEscape(o.dataDir)));
-    const domain = `gui/${uid}`;
     // A rerun or an update must load the new build, and never leave two icons.
-    run(['launchctl', 'bootout', `${domain}/${MAC_TRAY_LABEL}`]);
-    if (run(['launchctl', 'bootstrap', domain, file]) !== 0) return `not started: launchctl could not load ${file}`;
+    if (!loadAgent(run, `gui/${uid}`, MAC_TRAY_LABEL, file, sleep)) return `not started: launchctl could not load ${file}`;
     return 'started, and starts at every login';
 }

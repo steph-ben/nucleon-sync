@@ -194,7 +194,7 @@ main() {
     install_bun
     install_version
     if [ "${NUCLEON_SWITCH:-1}" = 0 ]; then
-        done_step "nucleon-sync $RELEASE is unpacked, not switched on."
+        done_step "nucleon-sync $RELEASE is unpacked. The update switches to it now."
         return
     fi
     switch_to_version

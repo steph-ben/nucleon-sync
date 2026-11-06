@@ -12,7 +12,7 @@ import { recentActivity } from './desktop/activity';
 import { makeIgnore } from './desktop/exclude';
 import { anyOutdatedClient, isOutdatedClient, retryDelaySeconds, signIn } from './desktop/signin';
 import { sendNote } from './desktop/notify';
-import { buildConfig, expandHome, finalSummary, planRows, REMOVING_ACTIONS, yesNo, folderProblem, isYes, moveStateAside, orphanDatabaseProblem, sessionStoreProblem } from './desktop/setup';
+import { askYesNo, buildConfig, expandHome, finalSummary, planRows, REMOVING_ACTIONS, yesNo, folderProblem, isYes, moveStateAside, orphanDatabaseProblem, sessionStoreProblem } from './desktop/setup';
 import { installMacTray, installService, installTray, serviceIsUp, serviceProblem, TRAY_NAMESPACES, type TrayChecks } from './service';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
@@ -139,7 +139,7 @@ function openInBrowser(url: string) {
 
 async function startSyncing(command: string, removing = false) {
     // Enter starts the sync, unless the first sync would remove something: then it must be typed.
-    if (!yesNo(prompt(`${mark.ask()} ${bold('Start syncing now?')} ${removing ? '[y/N]' : '[Y/n]'}`), !removing)) {
+    if (!(await askYesNo(`${mark.ask()} ${bold('Start syncing now?')} ${removing ? '[y/N]' : '[Y/n]'}`, !removing))) {
         console.log('');
         console.log(`  ${mark.warn()} Nothing was started. Your settings are saved: run ${bold('nucleon-sync setup')} to finish.`);
         return;

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { installMacTray, installTray, type TrayChecks } from '../src/service';
 import { buildConfig, describePlan, expandHome, finalSummary, folderProblem, isYes, planRows, yesNo, sessionStoreProblem } from '../src/desktop/setup';
-import { findDeployDir, installService, launchdJobRunning, renderService, serviceIsUp, serviceProblem } from '../src/service';
+import { findDeployDir, installService, launchdJobRunning, loadAgent, renderService, serviceIsUp, serviceProblem } from '../src/service';
 
 function tempHome(): string {
     return mkdtempSync(path.join(tmpdir(), 'setup-home-'));
@@ -16,6 +16,38 @@ function touch(file: string) {
 }
 
 /** Answers like systemctl and launchctl: `live` maps "command args" to its output, anything else fails. */
+/** A launchd that behaves like the real one: bootout returns at once but the job stays for a while, and bootstrap fails while it is there. */
+function fakeLaunchd(opts: { loaded: boolean; unloadingFor?: number; bootstrapFailures?: number }) {
+    const calls: string[][] = [];
+    let loaded = opts.loaded;
+    let unloading = 0;
+    let failures = opts.bootstrapFailures ?? 0;
+    const run = (cmd: string[]) => {
+        calls.push(cmd);
+        const verb = cmd[1];
+        if (verb === 'bootout') {
+            if (!loaded) return 3;
+            unloading = opts.unloadingFor ?? 0;
+            if (unloading === 0) loaded = false;
+            return 0;
+        }
+        if (verb === 'print') {
+            if (loaded && unloading > 0 && --unloading === 0) loaded = false;
+            return loaded ? 0 : 113;
+        }
+        if (verb === 'bootstrap') {
+            if (loaded || unloading > 0 || failures > 0) {
+                failures--;
+                return 5;
+            }
+            loaded = true;
+            return 0;
+        }
+        return 0;
+    };
+    return { run, calls, verbs: () => calls.map((c) => c[1]), loaded: () => loaded };
+}
+
 describe('session store', () => {
     test('no keyring gives a clear message', async () => {
         const message = await sessionStoreProblem(async () => {
@@ -83,20 +115,36 @@ describe('service files', () => {
     });
     test('installing on macOS removes a previous job, then bootstraps the plist', () => {
         const home = tempHome();
-        const calls: string[][] = [];
-        installService('darwin', { ...o, home }, (cmd) => (calls.push(cmd), 0));
+        const launchd = fakeLaunchd({ loaded: true });
+        installService('darwin', { ...o, home }, launchd.run, () => {});
         const file = path.join(home, 'Library/LaunchAgents/org.nucleonsync.daemon.plist');
         expect(existsSync(file)).toBe(true);
         expect(existsSync(path.join(home, 'Library/Logs'))).toBe(true);
-        expect(calls).toHaveLength(2);
-        expect(calls[0]!.slice(0, 2)).toEqual(['launchctl', 'bootout']);
-        expect(calls[0]![2]).toEndWith('/org.nucleonsync.daemon');
-        expect(calls[1]!.slice(0, 2)).toEqual(['launchctl', 'bootstrap']);
-        expect(calls[1]![3]).toBe(file);
+        expect(launchd.verbs()).toEqual(['bootout', 'print', 'bootstrap']);
+        expect(launchd.calls[0]![2]).toEndWith('/org.nucleonsync.daemon');
+        expect(launchd.calls.at(-1)![3]).toBe(file);
+        expect(launchd.loaded()).toBe(true);
     });
     test('a macOS rerun does not fail when no previous job was loaded', () => {
-        const run = (cmd: string[]) => (cmd[1] === 'bootout' ? 3 : 0);
-        expect(() => installService('darwin', { ...o, home: tempHome() }, run)).not.toThrow();
+        const launchd = fakeLaunchd({ loaded: false });
+        expect(() => installService('darwin', { ...o, home: tempHome() }, launchd.run, () => {})).not.toThrow();
+        expect(launchd.loaded()).toBe(true);
+    });
+    test('a macOS rerun waits for launchd to finish unloading: the bootstrap right after the bootout fails', () => {
+        const launchd = fakeLaunchd({ loaded: true, unloadingFor: 7 });
+        installService('darwin', { ...o, home: tempHome() }, launchd.run, () => {});
+        expect(launchd.loaded()).toBe(true);
+        expect(launchd.verbs().filter((v) => v === 'bootstrap')).toHaveLength(1);
+    });
+    test('a bootstrap that fails a few times is tried again, then the service is loaded', () => {
+        const launchd = fakeLaunchd({ loaded: false, bootstrapFailures: 3 });
+        loadAgent(launchd.run, 'gui/501', 'org.nucleonsync.daemon', '/x.plist', () => {});
+        expect(launchd.loaded()).toBe(true);
+        expect(launchd.verbs().filter((v) => v === 'bootstrap')).toHaveLength(4);
+    });
+    test('a bootstrap that never works is reported, not hidden', () => {
+        const launchd = fakeLaunchd({ loaded: false, bootstrapFailures: 99 });
+        expect(() => installService('darwin', { ...o, home: tempHome() }, launchd.run, () => {})).toThrow('launchctl');
     });
     test('a failing command is reported', () => {
         expect(() => installService('linux', { ...o, home: tempHome() }, () => 1)).toThrow('systemctl');
@@ -300,12 +348,12 @@ describe('tray on macOS', () => {
     };
     const runner = (failOn?: string) => {
         const calls: string[][] = [];
-        return { calls, run: (cmd: string[]) => (calls.push(cmd), failOn && cmd[0] === failOn ? 1 : 0) };
+        return { calls, run: (cmd: string[]) => (calls.push(cmd), failOn && cmd[0] === failOn ? 1 : cmd[1] === 'print' ? 113 : 0) };
     };
     test('it builds the icon, writes the login agent and loads it', () => {
         const o = installedMac();
         const r = runner();
-        expect(installMacTray(o, r.run, 501)).toContain('starts at every login');
+        expect(installMacTray(o, r.run, 501, () => {})).toContain('starts at every login');
         expect(r.calls[0]![0]).toBe('swiftc');
         expect(r.calls[0]).toContain(path.join(o.home, '.local/bin/nucleon-sync-tray'));
         const plist = readFileSync(path.join(o.home, 'Library/LaunchAgents/org.nucleonsync.tray.plist'), 'utf8');
@@ -317,14 +365,14 @@ describe('tray on macOS', () => {
     test('a Mac without the compiler is told what to install, and nothing is loaded', () => {
         const o = installedMac();
         const r = runner('swiftc');
-        const line = installMacTray(o, r.run, 501);
+        const line = installMacTray(o, r.run, 501, () => {});
         expect(line).toContain('xcode-select --install');
         expect(r.calls.some((c) => c[0] === 'launchctl')).toBe(false);
     });
     test('a missing source is named', () => {
         const o = installedMac();
         rmSync(path.join(o.home, '.local/share/nucleon-sync/app/current/desktop/macos/NucleonSyncTray.swift'));
-        expect(installMacTray(o, runner().run, 501)).toContain('is missing');
+        expect(installMacTray(o, runner().run, 501, () => {})).toContain('is missing');
     });
 });
 

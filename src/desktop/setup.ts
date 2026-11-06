@@ -1,3 +1,4 @@
+import { createInterface } from 'node:readline';
 import { existsSync, mkdirSync, realpathSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import { DATABASE_FILES } from '../migrate';
@@ -134,6 +135,30 @@ export function yesNo(answer: string | null | undefined, defaultYes: boolean): b
     if (answer === null || answer === undefined) return false;
     if (answer.trim() === '') return defaultYes;
     return isYes(answer);
+}
+
+/** One line typed by the user: "" for a bare Enter, null when the input is closed before any answer. */
+export function readAnswer(question: string): Promise<string | null> {
+    return new Promise((resolve) => {
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        let answered = false;
+        rl.question(`${question} `, (answer) => {
+            answered = true;
+            rl.close();
+            resolve(answer);
+        });
+        rl.on('close', () => {
+            if (!answered) resolve(null);
+        });
+    });
+}
+
+/**
+ * Asks a yes/no question: Enter takes the default answer, a closed input is always no.
+ * Not Bun's prompt(): it answers null on a bare Enter, the same as a closed input, so Enter did nothing.
+ */
+export async function askYesNo(question: string, defaultYes: boolean, ask: (question: string) => Promise<string | null> = readAnswer): Promise<boolean> {
+    return yesNo(await ask(question), defaultYes);
 }
 
 export function isYes(answer: string | null | undefined): boolean {
