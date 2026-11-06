@@ -181,7 +181,7 @@ describe('setup --reset', () => {
         expect(r.out).toContain('Moved aside');
         expect(existsSync(path.join(data, 'state.sqlite'))).toBe(false);
         // The closed input answers no to the folder question: setup itself ran, and stopped there.
-        expect(r.err).toContain('Folder not confirmed');
+        expect(r.err).toContain('No answer, nothing was done');
     });
 
     test('setup --reset refuses while the daemon runs', () => {

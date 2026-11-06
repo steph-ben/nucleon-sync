@@ -568,7 +568,9 @@ async function main() {
             if (orphan) throw new Error(orphan);
             const storeProblem = await sessionStoreProblem(probeSessionStore);
             if (storeProblem) throw new Error(storeProblem);
-            const folder = path.resolve(expandHome(prompt('Folder to sync', path.join(homedir(), 'Proton')) ?? '', homedir()));
+            const answer = prompt('Folder to sync', path.join(homedir(), 'Proton'));
+            if (answer === null) throw new Error('No answer, nothing was done. Run nucleon-sync setup in a terminal.');
+            const folder = path.resolve(expandHome(answer, homedir()));
             const badFolder = folderProblem(folder, homedir(), DATA);
             if (badFolder) throw new Error(badFolder);
             // A hidden way to try safely. Everyone else syncs their real Drive, so the question is about that.
