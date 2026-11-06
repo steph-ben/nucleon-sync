@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { releaseAppVersion } from '../src/names';
 import { planUninstall, runUninstall } from '../src/uninstall';
-import { checkForUpdate, compareVersions, decideUpdate, fetchLatest, isInstalledLayout, runningVersion, runUpdate, switchVersion } from '../src/desktop/update';
+import { checkForUpdate, compareVersions, decideUpdate, fetchLatest, isInstalledLayout, runningVersion, runUpdate, switchVersion, updateFailed } from '../src/desktop/update';
 
 const tempHome = () => mkdtempSync(path.join(tmpdir(), 'nucleon-update-'));
 
@@ -223,6 +223,15 @@ describe('runUpdate', () => {
         const message = await runUpdate({ ...deps, codeDir: '/home/dev/nucleon-sync/src' });
         expect(message).toContain('not installed');
         expect(calls).toEqual([]);
+    });
+});
+
+describe('update exit code', () => {
+    test('only real failures count', () => {
+        expect(updateFailed('update failed: could not download x')).toBe(true);
+        expect(updateFailed('no update check')).toBe(true);
+        expect(updateFailed('updated to 0.3.0')).toBe(false);
+        expect(updateFailed('up to date')).toBe(false);
     });
 });
 

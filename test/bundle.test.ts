@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { APP_VERSION, RELEASE_VERSION, VERSION } from '../src/names';
@@ -71,6 +71,7 @@ describe('release bundle', () => {
         expect(setup.stderr.toString()).toBe('');
         const service = process.platform === 'darwin' ? 'Library/LaunchAgents/org.nucleonsync.daemon.plist' : '.config/systemd/user/nucleon-sync.service';
         expect(existsSync(path.join(home, service))).toBe(true);
+        rmSync(home, { recursive: true, force: true });
     }, 30_000);
 
     test('SHA256SUMS lists the archive', async () => {

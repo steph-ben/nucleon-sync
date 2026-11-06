@@ -37,6 +37,16 @@ jobs:
         run: CATALOG_OUT="$RUNNER_TEMP/catalog.jsonl" bun test test/catalog
       - name: Fuzz tests
         run: bun test test/fuzz.test.ts test/fuzz-real.test.ts
+      # Errors from node_modules/@protontech/crypto are known: only those
+      # from src/ and test/ fail the job.
+      - name: Type checking
+        run: |
+          npx tsc --noEmit > "$RUNNER_TEMP/tsc.log" 2>&1 || true
+          if grep -E "^(src|test)/" "$RUNNER_TEMP/tsc.log"; then
+            echo "Type errors in src/ or test/" >&2
+            exit 1
+          fi
+          echo "No type errors in src/ or test/."
 
   publish:
     name: Publish the release
@@ -69,8 +79,8 @@ jobs:
             exit 1
           }
 
-      # The tag is v<version>-<channel>, for example v0.2.0-beta. The archive is named
-      # after the version alone (0.2.0), which build-release.sh checks against src/names.ts.
+      # The tag is v<release>, for example v0.2.0-beta. The archive is named after the
+      # version alone (0.2.0). build-release.sh checks both against src/names.ts.
       - name: Read the version from the tag
         run: |
           VERSION="${GITHUB_REF_NAME#v}"

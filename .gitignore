@@ -4,3 +4,4 @@ vendor/proton-sdk/cli/release/
 .DS_Store
 .superpowers/
 dist/
+__pycache__/

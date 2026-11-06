@@ -20,6 +20,6 @@ Next, run `nucleon-sync setup`. It sees the migrated configuration, goes straigh
 
 The environment variables `PROTON_SYNC_HOME` and `PROTON_SYNC_CONFIG` still work but are deprecated aliases. Use `NUCLEON_SYNC_HOME` and `NUCLEON_SYNC_CONFIG` instead, and change them in any script or service file of yours.
 
-The old marker file `.proton-sync-root` and the old temporary folder `.proton-sync-tmp` are still recognised. If a crash left names like `.proton-sync-swap-*` in your synced folder, they are leftovers of the old version. Check them, then delete them by hand.
+The old marker file `.proton-sync-root` and the old temporary folder `.proton-sync-tmp` are still recognised. If a crash left names like `.proton-sync-swap-*` in your synced folder or on the Drive, they are leftovers of the old version. nucleon-sync treats them as ordinary files. Check them, on the Drive with the web app, then rename or delete them by hand.
 
 nucleon-sync cannot detect a legacy daemon that is started after it. If the old service starts again, for example at the next login, both daemons will work on the same folder. Keep the old service disabled.

@@ -30,6 +30,16 @@ describe('names', () => {
         expect(APP_NAME).toBe('nucleon-sync');
     });
 
+    test('package files carry the name and the version', () => {
+        const pkg = JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8'));
+        const lock = JSON.parse(fs.readFileSync(path.join(repo, 'package-lock.json'), 'utf8'));
+        expect(pkg.name).toBe(APP_NAME);
+        expect(pkg.version).toBe(VERSION);
+        expect(lock.name).toBe(APP_NAME);
+        expect(lock.packages[''].name).toBe(APP_NAME);
+        expect(lock.packages[''].version).toBe(VERSION);
+    });
+
     test('the data folder: new variable, deprecated alias, default', () => {
         expect(dataDir({ NUCLEON_SYNC_HOME: '/n', PROTON_SYNC_HOME: '/p' }, '/h')).toBe('/n');
         expect(dataDir({ PROTON_SYNC_HOME: '/p' }, '/h')).toBe('/p');

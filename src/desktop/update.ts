@@ -181,6 +181,11 @@ export async function runUpdate(d: UpdateDeps): Promise<string> {
     return `updated to ${latest}`;
 }
 
+/** True for the answers of runUpdate that must end the command with an error. */
+export function updateFailed(message: string): boolean {
+    return message.startsWith('update failed') || message === 'no update check';
+}
+
 async function downloadText(fetchUrl: Fetch, url: string): Promise<string | undefined> {
     try {
         const response = await withTimeout(fetchUrl(url));

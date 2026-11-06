@@ -38,3 +38,19 @@ test('publish refuses a tag that is not on main', () => {
 test('the build gets the tag as well as the version', () => {
     expect(publishSteps).toContain('build-release.sh \\"$VERSION\\" \\"$GITHUB_REF_NAME\\"');
 });
+
+test('the release type-checks like CI', () => {
+    const step = (file: string, job: string) => (Bun.YAML.parse(readFileSync(file, 'utf8')) as any).jobs[job].steps.find((s: any) => s.name === 'Type checking').run;
+    expect(step('.github/workflows/release.yml', 'test')).toBe(step('.github/workflows/ci.yml', 'test'));
+});
+
+test('CI also runs on an Intel Mac', () => {
+    const ci = Bun.YAML.parse(readFileSync('.github/workflows/ci.yml', 'utf8')) as any;
+    expect(ci.jobs.test.strategy.matrix.os).toContain('macos-15-intel');
+});
+
+test('the suite, CI and the release run the same main tests', () => {
+    const list = (file: string) => /bun test (test\/local\.test\.ts.*)/.exec(readFileSync(file, 'utf8'))?.[1];
+    expect(list('.github/workflows/ci.yml')).toBe(list('scripts/test-all.sh')!);
+    expect(list('.github/workflows/release.yml')).toBe(list('scripts/test-all.sh')!);
+});

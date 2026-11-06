@@ -6,7 +6,7 @@ Conception : `docs/design.md`. Migrations : `docs/migrating-from-rclone.md`, `do
 
 ## Règles absolues
 
-- Aucun fichier du Drive ou de `~/Proton` ne doit être perdu. Les tests vont uniquement dans `device:proton-sync-test/sandbox`.
+- Aucun fichier du Drive ou de `~/Proton` ne doit être perdu. Les tests vont uniquement dans `device:nucleon-sync-test/sandbox`.
 - Ne pas viser « Mes fichiers » (`root`, `allowDriveRoot`, ou le choix 1 de `setup`) ni couper rclone sans accord explicite de l'utilisateur.
 - Aucune suppression définitive : `DriveApi` (`src/adapters/proton.ts`) n'expose ni `deleteNodes` ni `emptyTrash`.
 - Identification honnête `external-drive-nucleon_sync@…` : ne jamais se faire passer pour une appli Proton.
@@ -25,8 +25,8 @@ Conception : `docs/design.md`. Migrations : `docs/migrating-from-rclone.md`, `do
 
 ## Environnement de test réel
 
-- Machine A : `~/.local/share/nucleon-sync` (config par défaut), dossier `~/dev/proton-sync-sandbox/a`.
-- Machine B : `NUCLEON_SYNC_HOME=~/dev/proton-sync-sandbox/home-b`, dossier `~/dev/proton-sync-sandbox/b`.
+- Machine A : `~/.local/share/nucleon-sync` (config par défaut), dossier `~/dev/nucleon-sync-sandbox/a`.
+- Machine B : `NUCLEON_SYNC_HOME=~/dev/nucleon-sync-sandbox/home-b`, dossier `~/dev/nucleon-sync-sandbox/b`.
 - Session Proton déjà ouverte, dans le trousseau (`nucleon-sync/session`).
 - Copie de sécurité : `~/proton-safety-2026-11-05` (lecture seule).
 

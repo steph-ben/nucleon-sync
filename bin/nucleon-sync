@@ -1,5 +1,5 @@
 #!/bin/bash
-# Launcher: resolves its real path (including symlinks) then starts src/main.ts with bun.
+# Launcher: resolves its real path (including symlinks), then starts with bun the bundled nucleon-sync.js, or src/main.ts in a checkout.
 set -e
 SRC="${BASH_SOURCE[0]}"
 while [ -L "$SRC" ]; do

@@ -16,7 +16,7 @@ import { buildConfig, checkOtherSyncTool, expandHome, folderProblem, isYes, move
 import { installService, serviceIsUp, serviceProblem } from './service';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
-import { checkForUpdate, isInstalledLayout, runUpdate } from './desktop/update';
+import { checkForUpdate, isInstalledLayout, runUpdate, updateFailed } from './desktop/update';
 import { activeLegacyService, afterMigration, applyMigration, findLegacy, isDaemonRunning, knownStopCommands, legacyDaemonFor, planMigration, realRun, stopCommands } from './migrate';
 import { APP_NAME, APP_VERSION, configFile, dataDir, RELEASE_VERSION, THIRD_PARTY_NOTICE } from './names';
 import { runUninstall } from './uninstall';
@@ -61,7 +61,7 @@ function configPath() {
 
 function loadConfig(): Config {
     const file = configPath();
-    if (!existsSync(file)) throw new Error(`configuration missing: ${file}. Run: nucleon-sync init <folder> <device:name/folder|root>`);
+    if (!existsSync(file)) throw new Error(`configuration missing: ${file}. Run: nucleon-sync setup`);
     return JSON.parse(readFileSync(file, 'utf8')) as Config;
 }
 
@@ -570,7 +570,9 @@ async function main() {
             const restart = () => (darwin ? quietly(['launchctl', 'kickstart', '-k', agent]) : quietly(['systemctl', '--user', 'restart', 'nucleon-sync.service']));
             const serviceIsActive = () => serviceIsUp(platform(), process.getuid?.() ?? 0, outputOf);
             const wait = () => new Promise<void>((resolve) => setTimeout(resolve, 5000));
-            console.log(await runUpdate({ appDir: INSTALLED_APP_DIR, codeDir: import.meta.dir, current: RELEASE_VERSION, fetch, run, output: outputOf, serviceInstalled, restart, serviceIsActive, wait }));
+            const result = await runUpdate({ appDir: INSTALLED_APP_DIR, codeDir: import.meta.dir, current: RELEASE_VERSION, fetch, run, output: outputOf, serviceInstalled, restart, serviceIsActive, wait });
+            if (updateFailed(result)) throw new Error(result);
+            console.log(result);
             return;
         }
         case 'uninstall': {

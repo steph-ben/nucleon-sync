@@ -30,6 +30,10 @@ describe('docs', () => {
         expect(readme).toContain('--purge-data`, which also deletes the quarantine and your saved sign-in');
     });
 
+    test('README development steps patch the crypto package', () => {
+        expect(read('README.md')).toContain('bash scripts/patch-crypto.sh');
+    });
+
     test('LICENSE is MIT with the copyright line', () => {
         const license = read('LICENSE');
         expect(license).toContain('MIT License');
@@ -44,7 +48,7 @@ describe('docs', () => {
 
     test('the migration guides exist and the old docs are gone', () => {
         const fromOld = read('docs/migrating-from-proton-sync.md');
-        for (const text of ['nucleon-sync migrate', 'PROTON_SYNC_HOME', 'PROTON_SYNC_CONFIG', '.proton-sync-swap-', 'Next, run `nucleon-sync setup`']) {
+        for (const text of ['nucleon-sync migrate', 'PROTON_SYNC_HOME', 'PROTON_SYNC_CONFIG', '.proton-sync-swap-', 'Next, run `nucleon-sync setup`', 'on the Drive']) {
             expect(fromOld).toContain(text);
         }
         const fromRclone = read('docs/migrating-from-rclone.md');

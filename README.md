@@ -58,7 +58,8 @@ The log is `~/.local/share/nucleon-sync/nucleon-sync.log`, one line per event, a
 
 ## Development
 
-    npm install
+    npm install --ignore-scripts
+    bash scripts/patch-crypto.sh
     scripts/test-all.sh
 
 The tests need no Proton account. Design notes are in `docs/design.md`, the list of tested scenarios in `docs/test-catalog.md`.

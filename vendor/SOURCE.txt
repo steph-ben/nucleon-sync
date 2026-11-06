@@ -2,5 +2,5 @@
 ProtonDriveApps/sdk main, fetched 2026-11-05, MIT
 
 Modifications locales :
-- cli/src/credentials/constants.ts : trousseau propre à proton-sync, pour ne pas partager la session du CLI officiel.
+- cli/src/credentials/constants.ts : trousseau propre à nucleon-sync, pour ne pas partager la session du CLI officiel.
 - cli/bun.lock : URL pkg.protontech.ch remplacées par registry.npmjs.org (dépôt injoignable, empreintes identiques).
