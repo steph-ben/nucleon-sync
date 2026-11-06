@@ -21,10 +21,48 @@ struct Activity {
 }
 
 let tailBytes = 256 * 1024
-// The icon in the menu bar is our logo with a small badge for the state (icons/nucleon-sync-<state>.png, drawn from the same SVGs as on Linux).
-// SF Symbols are the fallback when the program folder is not known. Names that macOS does not have give no image, never an error.
-let fallbackSymbols = ["ok": "checkmark.icloud", "syncing": "arrow.triangle.2.circlepath", "paused": "pause.circle",
-                       "attention": "exclamationmark.icloud", "stopped": "xmark.icloud"]
+// The icon in the menu bar is our logo (two rings) with a small badge for the state, drawn here as a template image:
+// one colour, so macOS paints it like the other icons of the bar, in light and in dark mode, on a transparent background.
+func statusIcon(_ level: String) -> NSImage {
+    let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+        guard let g = NSGraphicsContext.current?.cgContext else { return false }
+        g.setFillColor(NSColor.black.cgColor)
+        g.setStrokeColor(NSColor.black.cgColor)
+        g.setLineCap(.round)
+        g.setLineJoin(.round)
+        g.setLineWidth(1.5)
+        for x in [6.0, 11.4] { g.strokeEllipse(in: CGRect(x: x - 4.4, y: 10.2 - 4.4, width: 8.8, height: 8.8)) }
+        let c = CGPoint(x: 13.2, y: 4.6)
+        g.setBlendMode(.destinationOut)
+        g.fillEllipse(in: CGRect(x: c.x - 5.6, y: c.y - 5.6, width: 11.2, height: 11.2))
+        g.setBlendMode(.normal)
+        g.fillEllipse(in: CGRect(x: c.x - 4.4, y: c.y - 4.4, width: 8.8, height: 8.8))
+        g.setBlendMode(.destinationOut)
+        g.setLineWidth(1.3)
+        func at(_ x: Double, _ y: Double) -> CGPoint { CGPoint(x: c.x + x, y: c.y + y) }
+        switch level {
+        case "ok":
+            g.addLines(between: [at(-1.8, 0.1), at(-0.5, -1.3), at(1.9, 1.4)])
+            g.strokePath()
+        case "syncing":
+            g.addArc(center: c, radius: 1.9, startAngle: 0.7, endAngle: 0.7 + 5.2, clockwise: false)
+            g.strokePath()
+        case "paused":
+            g.fill(CGRect(x: c.x - 1.7, y: c.y - 1.8, width: 1.2, height: 3.6))
+            g.fill(CGRect(x: c.x + 0.5, y: c.y - 1.8, width: 1.2, height: 3.6))
+        case "attention":
+            g.fill(CGRect(x: c.x - 0.6, y: c.y - 0.6, width: 1.2, height: 2.6))
+            g.fillEllipse(in: CGRect(x: c.x - 0.7, y: c.y - 2.1, width: 1.4, height: 1.4))
+        default: // stopped
+            g.addLines(between: [at(-1.6, -1.6), at(1.6, 1.6)])
+            g.addLines(between: [at(-1.6, 1.6), at(1.6, -1.6)])
+            g.strokePath()
+        }
+        return true
+    }
+    image.isTemplate = true
+    return image
+}
 // Icons of the menu rows, the counterpart of MENU_ICONS in the Linux tray.
 let menuSymbols = ["ok": "checkmark.circle", "syncing": "arrow.triangle.2.circlepath", "paused": "pause.circle",
                    "attention": "exclamationmark.triangle", "stopped": "stop.circle"]
@@ -215,7 +253,7 @@ final class Tray: NSObject, NSApplicationDelegate {
             notify("nucleon-sync: sync stopped", "The daemon stopped responding.")
         }
         lastLevel = state.level
-        item.button?.image = picture("nucleon-sync-" + state.level) ?? symbol(fallbackSymbols[state.level]) ?? symbol("icloud")
+        item.button?.image = statusIcon(state.level)
         item.button?.toolTip = state.title
         item.menu = menu()
     }

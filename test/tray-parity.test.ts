@@ -65,9 +65,15 @@ describe('the two tray programs show the same menu', () => {
         expect(swift).toContain('/VERSION');
     });
 
-    test('every icon has a PNG for macOS, which cannot read SVG before macOS 13: run scripts/render-mac-icons.sh', () => {
-        const names = (dir: string, ext: string) => readdirSync(path.join(desktop, dir)).filter((f) => f.endsWith(ext)).map((f) => f.slice(0, -ext.length)).sort();
-        expect(names('macos/icons', '.png')).toEqual(names('linux/icons', '.svg'));
-        for (const level of ['ok', 'syncing', 'paused', 'attention', 'stopped']) expect(names('macos/icons', '.png')).toContain(`nucleon-sync-${level}`);
+    test('the same five states have an icon on both, and the logo of the menu has a transparent PNG for macOS', () => {
+        for (const level of ['ok', 'syncing', 'paused', 'attention']) {
+            expect(readdirSync(path.join(desktop, 'linux/icons'))).toContain(`nucleon-sync-${level}.svg`);
+            expect(swift).toContain(`case "${level}":`);
+        }
+        expect(readdirSync(path.join(desktop, 'linux/icons'))).toContain('nucleon-sync-stopped.svg');
+        expect(swift).toContain('default: // stopped');
+        expect(swift).toContain('image.isTemplate = true');
+        // macOS cannot read the SVG logo before macOS 13: run scripts/render-mac-icons.sh after changing it.
+        expect(readdirSync(path.join(desktop, 'macos/icons'))).toEqual(['nucleon-sync.png']);
     });
 });
