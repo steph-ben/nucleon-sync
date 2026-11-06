@@ -44,7 +44,7 @@ One command, no `sudo`, nothing to prepare. It installs under `~/.local`, then s
 
 **Your password never reaches nucleon-sync.** You sign in on Proton's web page, and the resulting session is kept in your system keyring.
 
-**Nothing is sent anywhere else.** No analytics, no crash reports, no server of ours. The only network traffic goes to Proton.
+**Nothing is sent anywhere else.** No analytics, no crash reports, no server of ours. Your files and their names go only to Proton. The one other connection is a check for new versions on GitHub, which sends nothing about you or your files.
 
 **The database holds no file content.** `state.sqlite` remembers, for each file and folder: its name, its parent, its local and Drive identifiers, a SHA-1 hash, its size and date. That is how a rename is told from a delete plus a new file. It sits in `~/.local/share/nucleon-sync`, unencrypted, readable like your files themselves. Lose it and the next run matches files again by content, without deleting anything.
 
@@ -59,7 +59,7 @@ One command, no `sudo`, nothing to prepare. It installs under `~/.local`, then s
 | The tray icon, on Linux | `~/.config/autostart`, if your desktop has the library it needs |
 | Your Proton session | your system keyring |
 
-`nucleon-sync uninstall` removes all of this. It never touches the synced folder.
+`nucleon-sync uninstall` removes the command, the program, the service and the tray icon. Your data and sign-in stay unless you add `--purge-data`. It never touches the synced folder.
 
 ## How your files are protected
 
@@ -74,7 +74,7 @@ A file you delete on your computer goes to the Proton trash, which you can resto
 | More than 20 deletions at once | It waits for `nucleon-sync approve` |
 | A file cannot be read | It is left alone, on both sides |
 | The configuration points at another Drive target | It stops before planning anything |
-| The computer crashes in the middle of a sync | It resumes without losing or redoing anything |
+| The computer crashes in the middle of a sync | It resumes without losing or duplicating anything |
 
 Each of these has automated tests: about 220 everyday and failure scenarios ([the list](docs/test-catalog.md)), a crash test at every single step, and random simulations of two machines. `DriveApi` in `src/adapters/proton.ts` exposes no permanent deletion.
 

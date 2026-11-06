@@ -135,7 +135,7 @@ async function startSyncing(command: string) {
     await Bun.sleep(SERVICE_START_WAIT_MS);
     if (serviceIsUp(platform(), process.getuid?.() ?? 0, outputOf)) {
         const cfg = loadConfig();
-        const tray = platform() === 'linux' ? installTray({ home: homedir(), dataDir: DATA, command }, trayChecks()) : 'not installed by setup on macOS yet';
+        const tray = startTray(command);
         console.log('');
         console.log('Syncing started.');
         console.log('');
@@ -217,6 +217,16 @@ function summarize(plan: Plan) {
     return [...planCounts(plan)].map(([k, v]) => `${k}=${v}`).join(' ') || 'nothing to do';
 }
 
+/** The sync already runs here: a tray problem must never fail the setup. */
+function startTray(command: string): string {
+    if (platform() !== 'linux') return 'not installed by setup on macOS yet';
+    try {
+        return installTray({ home: homedir(), dataDir: DATA, command }, trayChecks());
+    } catch (e) {
+        return `not started: ${(e as Error).message}`;
+    }
+}
+
 function trayChecks(): TrayChecks {
     const quietly = (cmd: string[]) => Bun.spawnSync(cmd, { stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
     return {
@@ -226,6 +236,7 @@ function trayChecks(): TrayChecks {
             if (!/gnome/i.test(desktop)) return false;
             return !/appindicator/i.test(outputOf(['gnome-extensions', 'list', '--enabled']));
         },
+        stopRunning: () => quietly(['pkill', '-u', String(process.getuid?.() ?? ''), '-f', 'python3 .*nucleon-sync-tray\\.py']),
         start: (cmd) => Bun.spawn(cmd, { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' }).unref(),
     };
 }

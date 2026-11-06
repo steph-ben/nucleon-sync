@@ -264,7 +264,7 @@ describe('the words at the end of setup', () => {
 describe('tray', () => {
     const checks = (over: Partial<TrayChecks> = {}) => {
         const started: string[][] = [];
-        return { started, checks: { hasIndicatorLibrary: () => true, gnomeNeedsExtension: () => false, start: (cmd: string[]) => started.push(cmd), ...over } };
+        return { started, checks: { hasIndicatorLibrary: () => true, gnomeNeedsExtension: () => false, stopRunning: () => started.push(['stop']), start: (cmd: string[]) => started.push(cmd), ...over } };
     };
     const installed = () => {
         const home = tempHome();
@@ -275,7 +275,8 @@ describe('tray', () => {
         const o = installed();
         const c = checks();
         expect(installTray(o, c.checks)).toContain('starts at every login');
-        expect(c.started[0]![1]).toContain('app/current/desktop/linux/nucleon-sync-tray.py');
+        expect(c.started[0]).toEqual(['stop']);
+        expect(c.started[1]![1]).toContain('app/current/desktop/linux/nucleon-sync-tray.py');
         const entry = readFileSync(path.join(o.home, '.config/autostart/nucleon-sync-tray.desktop'), 'utf8');
         expect(entry).toContain(`${o.home}/.local/share/nucleon-sync/app/current/desktop/linux/nucleon-sync-tray.py`);
         expect(entry).not.toContain('__');

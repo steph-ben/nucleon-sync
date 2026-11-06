@@ -88,6 +88,8 @@ export interface TrayChecks {
     hasIndicatorLibrary: () => boolean;
     /** GNOME without the AppIndicator extension hides every tray icon. */
     gnomeNeedsExtension: () => boolean;
+    /** A rerun must not leave two icons, and an update must load the new script. */
+    stopRunning: () => void;
     start: (cmd: string[]) => void;
 }
 
@@ -102,6 +104,7 @@ export function installTray(o: Pick<ServiceOptions, 'home' | 'dataDir' | 'comman
     const file = path.join(o.home, '.config/autostart/nucleon-sync-tray.desktop');
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, entry.replaceAll('__ROOT__', root).replaceAll('__HOME__', o.home).replaceAll('__DATA__', o.dataDir));
+    checks.stopRunning();
     checks.start(['python3', script, o.command, o.dataDir]);
     if (checks.gnomeNeedsExtension()) return 'started, but GNOME hides it until you enable the AppIndicator extension (gnome-shell-extension-appindicator)';
     return 'started, and starts at every login';
