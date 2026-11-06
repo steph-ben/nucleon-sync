@@ -28,7 +28,10 @@ describe('release bundle', () => {
         for (const needed of ['nucleon-sync.js', 'bin/nucleon-sync', 'LICENSE', 'THIRD-PARTY-NOTICES', 'VERSION']) expect(listing).toContain(needed);
         expect(listing.some((e) => e.startsWith('deploy/'))).toBe(true);
         expect(listing).toContain('desktop/linux/nucleon-sync-tray.py');
-        const allowed = (e: string) => ['nucleon-sync.js', 'LICENSE', 'THIRD-PARTY-NOTICES', 'VERSION', 'bin/nucleon-sync'].includes(e) || e === 'bin/' || e === 'deploy/' || e.startsWith('deploy/') || ['desktop/', 'desktop/linux/', 'desktop/linux/icons/', 'desktop/linux/nucleon-sync-tray.py'].includes(e) || e.startsWith('desktop/linux/icons/nucleon-sync');
+        // The Mac builds its menu bar icon from this source, and shows this logo in the menu.
+        expect(listing).toContain('desktop/macos/NucleonSyncTray.swift');
+        expect(listing).toContain('desktop/macos/icons/nucleon-sync.png');
+        const allowed = (e: string) => ['nucleon-sync.js', 'LICENSE', 'THIRD-PARTY-NOTICES', 'VERSION', 'bin/nucleon-sync'].includes(e) || e === 'bin/' || e === 'deploy/' || e.startsWith('deploy/') || ['desktop/', 'desktop/linux/', 'desktop/linux/icons/', 'desktop/linux/nucleon-sync-tray.py', 'desktop/macos/', 'desktop/macos/icons/', 'desktop/macos/NucleonSyncTray.swift', 'desktop/macos/icons/nucleon-sync.png'].includes(e) || e.startsWith('desktop/linux/icons/nucleon-sync');
         expect(listing.filter((e) => !allowed(e))).toEqual([]);
         expect(statSync(archive).size).toBeLessThan(MAX_ARCHIVE_BYTES);
     });
