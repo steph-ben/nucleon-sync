@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { RELEASE_VERSION, THIRD_PARTY_NOTICE } from '../src/names';
+import { THIRD_PARTY_NOTICE } from '../src/names';
 
 const repo = path.join(import.meta.dir, '..');
 const read = (file: string) => fs.readFileSync(path.join(repo, file), 'utf8');
@@ -13,14 +13,18 @@ describe('docs', () => {
         for (const text of ['unofficial', THIRD_PARTY_NOTICE, 'beta', 'Linux x64', 'macOS Intel', 'personal, non-commercial', 'end of 2026', 'nucleon-sync uninstall', 'nucleon-sync setup', 'Proton AG', 'backup']) {
             expect(readme).toContain(text);
         }
-        expect(readme.split('\n').length).toBeLessThan(120);
+        expect(readme.split('\n').length).toBeLessThan(150);
     });
 
-    test('the first install command works: it names this release, never the latest link', () => {
+    test('the install command is the short address, served from the website', () => {
         const readme = read('README.md');
-        const first = /curl -fsSL (\S+) \| sh/.exec(readme)?.[1];
-        expect(first).toBe(`https://github.com/steph-ben/nucleon-sync/releases/download/v${RELEASE_VERSION}/install.sh`);
-        expect(readme).not.toContain('latest/download');
+        expect(/curl -fsSL (\S+) \| sh/.exec(readme)?.[1]).toBe('https://steph-ben.github.io/nucleon-sync/install.sh');
+        expect(read('site/index.html')).toContain('https://steph-ben.github.io/nucleon-sync/install.sh');
+    });
+
+    test('README explains what is installed and how the SDK is used', () => {
+        const readme = read('README.md');
+        for (const text of ['Proton Drive SDK', 'state.sqlite', '~/.local/share/nucleon-sync/app', 'system keyring', 'no crypto of its own']) expect(readme).toContain(text);
     });
 
     test('README says where deleted files can be recovered', () => {
@@ -40,10 +44,12 @@ describe('docs', () => {
         expect(license).toContain('steph-ben');
     });
 
-    test('README has no Proton logo or image', () => {
+    test('images are our own assets or badges: no Proton logo', () => {
         const readme = read('README.md');
-        expect(readme).not.toMatch(/<img|!\[/i);
-        expect(readme).not.toMatch(/\blogos?\b/i);
+        const sources = [...readme.matchAll(/<img[^>]*src="([^"]+)"/g)].map((m) => m[1]!);
+        expect(sources.length).toBeGreaterThan(0);
+        for (const source of sources) expect(source.startsWith('assets/') || source.startsWith('https://img.shields.io/')).toBe(true);
+        expect(read('assets/logo.svg').toLowerCase()).not.toContain('#6d4aff');
     });
 
     test('the migration guides exist and the old docs are gone', () => {
@@ -52,7 +58,7 @@ describe('docs', () => {
             expect(fromOld).toContain(text);
         }
         const fromRclone = read('docs/migrating-from-rclone.md');
-        for (const text of ['--resync', 'plan', 'link', 'setup --reset', 'scratch folder', 'type `yes`', 'launchctl disable']) expect(fromRclone).toContain(text);
+        for (const text of ['--resync', 'plan', 'link', 'setup --reset', 'scratch folder', '--test-space', 'launchctl disable']) expect(fromRclone).toContain(text);
         expect(fs.existsSync(path.join(repo, 'docs/linux-install.md'))).toBe(false);
         expect(fs.existsSync(path.join(repo, 'docs/migration.md'))).toBe(false);
     });

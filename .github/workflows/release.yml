@@ -102,3 +102,28 @@ jobs:
           # shellcheck disable=SC2086
           gh release create "$GITHUB_REF_NAME" $PRERELEASE --title "$GITHUB_REF_NAME" --generate-notes \
             "dist/nucleon-sync-$VERSION.tar.gz" dist/SHA256SUMS dist/install.sh
+
+      # https://steph-ben.github.io/nucleon-sync/install.sh always serves the latest release.
+      - name: Prepare the website
+        run: |
+          mkdir _site
+          cp site/index.html assets/logo.svg dist/install.sh _site/
+
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: _site
+
+  website:
+    name: Publish the website
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

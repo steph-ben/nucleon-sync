@@ -21,6 +21,12 @@ test('only publish can write', () => {
     expect(workflow.permissions).toEqual({ contents: 'read' });
     expect(jobs.publish.permissions).toEqual({ contents: 'write' });
     expect(jobs.test.permissions).toBeUndefined();
+    expect(jobs.website.permissions).toEqual({ pages: 'write', 'id-token': 'write' });
+});
+
+test('the website serves the installer of the release, after it is published', () => {
+    expect([jobs.website.needs].flat()).toContain('publish');
+    expect(publishSteps).toContain('dist/install.sh _site/');
 });
 
 test('publishes the three assets, beta as prerelease', () => {
