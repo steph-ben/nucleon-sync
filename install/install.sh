@@ -10,8 +10,9 @@
 #   NUCLEON_UNAME_S / NUCLEON_UNAME_M   pretend to be another platform
 
 # Filled in by scripts/build-release.sh.
+# VERSION names the archive. RELEASE (0.3.0-beta, or 0.3.0) names the tag and the folder in versions/.
 VERSION="@VERSION@"
-TAG="@TAG@"
+RELEASE="@RELEASE@"
 ARCHIVE_SHA256="@ARCHIVE_SHA256@"
 
 BUN_VERSION="1.4.2"
@@ -83,7 +84,7 @@ install_bun() {
     echo "Downloading bun $BUN_VERSION..."
     curl -fsSL "${NUCLEON_BUN_URL:-$BUN_BASE_URL/$BUN_FILE}" -o "$TMP/bun.zip" || fail "could not download bun."
     verify "$TMP/bun.zip" "${NUCLEON_BUN_SHA256:-$BUN_SHA256}"
-    unzip -q "$TMP/bun.zip" -d "$TMP/bun-unzipped" || fail "could not unzip bun."
+    unzip -oq "$TMP/bun.zip" -d "$TMP/bun-unzipped" </dev/null || fail "could not unzip bun."
     mkdir "$TMP/bun-new"
     cp "$TMP"/bun-unzipped/*/bun "$TMP/bun-new/bun" || fail "the bun zip has no bun program."
     chmod +x "$TMP/bun-new/bun" || fail "could not make bun executable."
@@ -98,40 +99,49 @@ install_bun() {
     fi
 }
 
-# Unpacks nucleon-sync $VERSION into $APP/versions/$VERSION unless it is already there.
-install_version() {
-    if [ -d "$APP/versions/$VERSION" ]; then
+# Downloads and checks the archive, unless this release is already there. Comes before anything is changed.
+fetch_archive() {
+    if [ -d "$APP/versions/$RELEASE" ]; then
+        [ -x "$APP/versions/$RELEASE/bin/nucleon-sync" ] || fail "$APP/versions/$RELEASE is incomplete. Move it away and run the installer again."
+        echo "nucleon-sync $RELEASE was already there: it was not downloaded or checked again."
         return
     fi
-    echo "Downloading nucleon-sync $VERSION..."
-    curl -fsSL "${NUCLEON_BASE_URL:-https://github.com/steph-ben/nucleon-sync/releases/download/$TAG}/nucleon-sync-$VERSION.tar.gz" -o "$TMP/app.tar.gz" || fail "could not download nucleon-sync $VERSION."
+    echo "Downloading nucleon-sync $RELEASE..."
+    curl -fsSL "${NUCLEON_BASE_URL:-https://github.com/steph-ben/nucleon-sync/releases/download/v$RELEASE}/nucleon-sync-$VERSION.tar.gz" -o "$TMP/app.tar.gz" || fail "could not download nucleon-sync $RELEASE."
     verify "$TMP/app.tar.gz" "$ARCHIVE_SHA256"
+}
+
+# Unpacks the archive fetched above into $APP/versions/$RELEASE.
+install_version() {
+    [ -f "$TMP/app.tar.gz" ] || return 0
     mkdir "$TMP/version"
     tar -xzf "$TMP/app.tar.gz" -C "$TMP/version" || fail "could not unpack the archive."
     mkdir -p "$APP/versions" || fail "could not create $APP/versions."
     # Without this check, mv would put the folder inside an existing one.
-    [ ! -e "$APP/versions/$VERSION" ] || fail "$APP/versions/$VERSION appeared during the install. Run the installer again."
-    mv "$TMP/version" "$APP/versions/$VERSION" || fail "could not move nucleon-sync $VERSION into place."
-    [ -x "$APP/versions/$VERSION/bin/nucleon-sync" ] || fail "nucleon-sync $VERSION is incomplete after unpacking."
+    [ ! -e "$APP/versions/$RELEASE" ] || fail "$APP/versions/$RELEASE appeared during the install. Run the installer again."
+    mv "$TMP/version" "$APP/versions/$RELEASE" || fail "could not move nucleon-sync $RELEASE into place."
+    [ -x "$APP/versions/$RELEASE/bin/nucleon-sync" ] || fail "nucleon-sync $RELEASE is incomplete after unpacking."
 }
 
 switch_to_version() {
-    [ -x "$APP/versions/$VERSION/bin/nucleon-sync" ] || fail "nucleon-sync $VERSION is missing. Nothing was switched."
-    ln -sfn "versions/$VERSION" "$APP/current" || fail "could not switch to nucleon-sync $VERSION."
+    [ -x "$APP/versions/$RELEASE/bin/nucleon-sync" ] || fail "nucleon-sync $RELEASE is missing. Nothing was switched."
+    ln -sfn "versions/$RELEASE" "$APP/current" || fail "could not switch to nucleon-sync $RELEASE."
     mkdir -p "$HOME/.local/bin" || fail "could not create ~/.local/bin."
     ln -sfn "$APP/current/bin/nucleon-sync" "$HOME/.local/bin/nucleon-sync" || fail "could not link the command."
 }
 
 print_next_steps() {
-    echo "nucleon-sync $VERSION is installed."
+    echo "nucleon-sync $RELEASE is installed."
     case ":$PATH:" in
-        *":$HOME/.local/bin:"*) ;;
+        *":$HOME/.local/bin:"*)
+            echo "Next step: nucleon-sync setup"
+            ;;
         *)
             echo "Add the command to your PATH (put this line in your shell profile):"
             echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+            echo "Next step: $HOME/.local/bin/nucleon-sync setup"
             ;;
     esac
-    echo "Next step: nucleon-sync setup"
 }
 
 main() {
@@ -147,10 +157,11 @@ main() {
     trap 'rm -rf "$TMP"; rmdir "$DATA/.tmp" 2>/dev/null || true' EXIT
     trap 'exit 1' HUP INT TERM
 
+    fetch_archive
     install_bun
     install_version
     if [ "${NUCLEON_SWITCH:-1}" = 0 ]; then
-        echo "nucleon-sync $VERSION is unpacked, not switched on."
+        echo "nucleon-sync $RELEASE is unpacked, not switched on."
         return
     fi
     switch_to_version

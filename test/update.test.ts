@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { releaseAppVersion } from '../src/names';
 import { planUninstall, runUninstall } from '../src/uninstall';
-import { checkForUpdate, compareVersions, decideUpdate, fetchLatest, isInstalledLayout, runningVersion, runUpdate, switchVersion, versionFolder } from '../src/desktop/update';
+import { checkForUpdate, compareVersions, decideUpdate, fetchLatest, isInstalledLayout, runningVersion, runUpdate, switchVersion } from '../src/desktop/update';
 
 const tempHome = () => mkdtempSync(path.join(tmpdir(), 'nucleon-update-'));
 
@@ -136,22 +136,23 @@ describe('runUpdate', () => {
         expect(calls).not.toContain('restart');
         expect(existsSync(path.join(app, 'versions/0.3.0'))).toBe(false);
     });
-    test('a beta release unpacks into the numeric folder and ends there', async () => {
-        const { app, deps } = setup(['0.1.0', '0.2.0'], '0.2.0');
+    test('a beta release goes in a folder of its full name and ends there', async () => {
+        const { app, deps } = setup(['0.1.0-beta', '0.2.0-beta'], '0.2.0-beta');
         const fetch = async (url: string) => (url.endsWith('/install.sh') ? { ok: true, json: async () => ({}), text: async () => '#' } : { ok: true, json: async () => [{ tag_name: 'v0.3.0-beta' }], text: async () => '' });
-        const output = (cmd: string[]) => (cmd[0]?.includes('versions/0.3.0/') ? releaseAppVersion('0.3.0-beta') : '');
-        const message = await runUpdate({ ...deps, current: '0.2.0-beta', fetch, output });
+        const run = (cmd: string[]) => (cmd[0] === 'sh' && mkdirSync(path.join(app, 'versions/0.3.0-beta/bin'), { recursive: true }), 0);
+        const output = (cmd: string[]) => (cmd[0]?.includes('versions/0.3.0-beta/') ? releaseAppVersion('0.3.0-beta') : '');
+        const message = await runUpdate({ ...deps, current: '0.2.0-beta', fetch, run, output });
         expect(message).toBe('updated to 0.3.0-beta');
-        expect(readlinkSync(path.join(app, 'current'))).toBe('versions/0.3.0');
-        expect(existsSync(path.join(app, 'versions/0.1.0'))).toBe(false);
-        expect(versionFolder('0.3.0-beta')).toBe('0.3.0');
+        expect(readlinkSync(path.join(app, 'current'))).toBe('versions/0.3.0-beta');
+        expect(existsSync(path.join(app, 'versions/0.1.0-beta'))).toBe(false);
+        expect(existsSync(path.join(app, 'versions/0.2.0-beta'))).toBe(true);
     });
-    test('a stable release with the number of the running beta is refused and changes nothing', async () => {
-        const { app, calls, deps } = setup(['0.3.0'], '0.3.0');
-        const message = await runUpdate({ ...deps, current: '0.3.0-beta', fetch: async () => ({ ok: true, json: async () => [{ tag_name: 'v0.3.0' }], text: async () => '#' }) });
-        expect(message).toContain('update refused');
+    test('a stable release with the number of the running beta is an ordinary update', async () => {
+        const { app, deps } = setup(['0.3.0-beta'], '0.3.0-beta');
+        const fetch = async (url: string) => ({ ok: true, json: async () => [{ tag_name: 'v0.3.0' }], text: async () => (url.endsWith('/install.sh') ? '#' : '') });
+        const message = await runUpdate({ ...deps, current: '0.3.0-beta', fetch });
+        expect(message).toBe('updated to 0.3.0');
         expect(readlinkSync(path.join(app, 'current'))).toBe('versions/0.3.0');
-        expect(calls.some((c) => c.startsWith('run'))).toBe(false);
     });
     test('the version output must match exactly', async () => {
         expect(releaseAppVersion('0.3.0-beta')).toBe('external-drive-nucleon_sync@0.3.0-beta');

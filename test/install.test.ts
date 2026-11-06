@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { runUpdate } from '../src/desktop/update';
+import { releaseAppVersion } from '../src/names';
 
 const repo = path.join(import.meta.dir, '..');
 const scriptSource = path.join(repo, 'install/install.sh');
@@ -14,14 +16,15 @@ const run = (cmd: string[], cwd: string) => {
     if (r.exitCode !== 0) throw new Error(`${cmd.join(' ')}: ${r.stderr.toString()}`);
 };
 
-/** A fake release: archive for `version`, a stub bun zip, and the install.sh stamped like build-release.sh does. */
-function makeRelease(version: string) {
-    const dir = path.join(work, `release-${version}`);
+/** A fake release: archive for `release`, a stub bun zip, and the install.sh stamped like build-release.sh does. */
+function makeRelease(release: string) {
+    const version = release.split('-')[0]!;
+    const dir = path.join(work, `release-${release}`);
     const stage = path.join(dir, 'stage');
     mkdirSync(path.join(stage, 'bin'), { recursive: true });
-    writeFileSync(path.join(stage, 'nucleon-sync.js'), `// ${version}\n`);
-    writeFileSync(path.join(stage, 'bin/nucleon-sync'), '#!/bin/sh\necho stub\n', { mode: 0o755 });
-    writeFileSync(path.join(stage, 'VERSION'), version);
+    writeFileSync(path.join(stage, 'nucleon-sync.js'), `// ${release}\n`);
+    writeFileSync(path.join(stage, 'bin/nucleon-sync'), `#!/bin/sh\necho ${releaseAppVersion(release)}\n`, { mode: 0o755 });
+    writeFileSync(path.join(stage, 'VERSION'), release);
     const archive = path.join(dir, `nucleon-sync-${version}.tar.gz`);
     run(['tar', '-czf', archive, '-C', stage, 'nucleon-sync.js', 'bin', 'VERSION'], dir);
 
@@ -32,7 +35,7 @@ function makeRelease(version: string) {
     run(['zip', '-qr', bunZip, 'bun-linux-x64'], dir);
 
     const stamp = (archiveSha: string) => {
-        const text = readFileSync(scriptSource, 'utf8').replaceAll('@VERSION@', version).replaceAll('@TAG@', `v${version}`).replaceAll('@ARCHIVE_SHA256@', archiveSha);
+        const text = readFileSync(scriptSource, 'utf8').replaceAll('@VERSION@', version).replaceAll('@RELEASE@', release).replaceAll('@ARCHIVE_SHA256@', archiveSha);
         const file = path.join(dir, `install-${archiveSha.slice(0, 6)}.sh`);
         writeFileSync(file, text);
         return file;
@@ -82,13 +85,79 @@ describe('install.sh', () => {
         expect(existsSync(path.join(home, '.local/share/nucleon-sync/.tmp')) ? Bun.spawnSync(['ls', path.join(home, '.local/share/nucleon-sync/.tmp')]).stdout.toString() : '').toBe('');
     });
 
-    test('running it twice changes nothing', () => {
+    test('running it twice changes nothing, and says the version was already there', () => {
         const home = newHome();
         install(v1.script, home, v1);
         const r = install(v1.script, home, v1);
         expect(r.code).toBe(0);
+        expect(r.out).toContain('already there');
         expect(readlinkSync(path.join(app(home), 'current'))).toBe('versions/1.0.0');
         expect(readlinkSync(link(home))).toBe(path.join(app(home), 'current/bin/nucleon-sync'));
+    });
+
+    test('an existing version folder that is incomplete is reported, not trusted', () => {
+        const home = newHome();
+        mkdirSync(path.join(app(home), 'versions/1.0.0'), { recursive: true });
+        const r = install(v1.script, home, v1, { NUCLEON_SWITCH: '0' });
+        expect(r.code).toBe(1);
+        expect(r.err).toContain('incomplete');
+    });
+
+    test('a release goes in a folder named after the full release, the archive keeps the number', () => {
+        const home = newHome();
+        const beta = makeRelease('4.0.0-beta');
+        const r = install(beta.script, home, beta);
+        expect(r.code).toBe(0);
+        expect(readlinkSync(path.join(app(home), 'current'))).toBe('versions/4.0.0-beta');
+        expect(existsSync(path.join(beta.dir, 'nucleon-sync-4.0.0.tar.gz'))).toBe(true);
+        expect(r.out).toContain('nucleon-sync 4.0.0-beta is installed');
+    });
+
+    test('the archive is checked before bun is touched', () => {
+        const home = newHome();
+        install(v1.script, home, v1);
+        const bun = path.join(app(home), 'bun/bun');
+        writeFileSync(bun, '#!/bin/sh\necho 0.0.1\n', { mode: 0o755 });
+        const r = install(v2.badScript, home, v2);
+        expect(r.code).toBe(1);
+        expect(r.err).toContain('checksum');
+        expect(readFileSync(bun, 'utf8')).toContain('0.0.1');
+    });
+
+    test('unzip never waits for an answer', () => {
+        const source = readFileSync(scriptSource, 'utf8');
+        expect(source).toContain('unzip -oq "$TMP/bun.zip" -d "$TMP/bun-unzipped" </dev/null');
+    });
+
+    test('the next step uses the full path when the command is not in PATH', () => {
+        const home = newHome();
+        expect(install(v1.script, home, v1).out).toContain(`Next step: ${home}/.local/bin/nucleon-sync setup`);
+        const inPath = newHome();
+        expect(install(v1.script, inPath, v1, { PATH: `${inPath}/.local/bin:${process.env.PATH}` }).out).toContain('Next step: nucleon-sync setup');
+    });
+
+    test('a beta updates to the stable release of the same number, end to end', async () => {
+        const beta = makeRelease('3.0.0-beta');
+        const stable = makeRelease('3.0.0');
+        const home = newHome();
+        expect(install(beta.script, home, beta).code).toBe(0);
+        const env = { PATH: process.env.PATH ?? '', HOME: home, NUCLEON_BASE_URL: `file://${stable.dir}`, NUCLEON_BUN_URL: `file://${stable.bunZip}`, NUCLEON_BUN_SHA256: sha(stable.bunZip), NUCLEON_UNAME_S: 'Linux', NUCLEON_UNAME_M: 'x86_64' };
+        const message = await runUpdate({
+            appDir: app(home),
+            codeDir: path.join(app(home), 'versions/3.0.0-beta'),
+            current: '3.0.0-beta',
+            fetch: async (url) => ({ ok: true, json: async () => [{ tag_name: 'v3.0.0' }], text: async () => readFileSync(stable.script, 'utf8') }),
+            run: (cmd, extra) => Bun.spawnSync(cmd, { env: { ...env, ...extra } }).exitCode,
+            output: (cmd) => Bun.spawnSync(cmd, { env }).stdout.toString(),
+            serviceInstalled: () => false,
+            restart: () => true,
+            serviceIsActive: () => true,
+            wait: async () => {},
+        });
+        expect(message).toContain('updated to 3.0.0.');
+        expect(readlinkSync(path.join(app(home), 'current'))).toBe('versions/3.0.0');
+        expect(Bun.spawnSync([link(home)]).stdout.toString().trim()).toBe(releaseAppVersion('3.0.0'));
+        expect(existsSync(path.join(app(home), 'versions/3.0.0-beta'))).toBe(true);
     });
 
     test('a wrong checksum installs nothing', () => {
