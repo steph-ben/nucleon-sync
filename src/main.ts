@@ -13,11 +13,11 @@ import { makeIgnore } from './desktop/exclude';
 import { isOutdatedClient, retryDelaySeconds, signIn } from './desktop/signin';
 import { sendNote } from './desktop/notify';
 import { buildConfig, checkOtherSyncTool, expandHome, isYes, moveStateAside, orphanDatabaseProblem, sessionStoreProblem } from './desktop/setup';
-import { installService, serviceProblem } from './service';
+import { installService, serviceIsUp, serviceProblem } from './service';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
 import { checkForUpdate, isInstalledLayout, runUpdate } from './desktop/update';
-import { activeLegacyService, applyMigration, findLegacy, isDaemonRunning, knownStopCommands, legacyDaemonFor, planMigration, realRun, stopCommands } from './migrate';
+import { activeLegacyService, afterMigration, applyMigration, findLegacy, isDaemonRunning, knownStopCommands, legacyDaemonFor, planMigration, realRun, stopCommands } from './migrate';
 import { APP_NAME, APP_VERSION, configFile, dataDir, RELEASE_VERSION, THIRD_PARTY_NOTICE } from './names';
 import { runUninstall } from './uninstall';
 import { ChangeTracker } from './watch';
@@ -31,6 +31,7 @@ const STATE_REFRESH_MS = 30 * 1000;
 const DAEMON_GONE_MS = 3 * 60 * 1000;
 const INSTALLED_APP_DIR = path.join(homedir(), '.local/share', APP_NAME, 'app');
 const UPDATE_EVERY_MS = 24 * 60 * 60 * 1000;
+const SERVICE_START_WAIT_MS = 3000;
 const STATE_FILE = path.join(DATA, 'desktop.json');
 const PAUSE_FILE = path.join(DATA, 'paused');
 
@@ -107,8 +108,14 @@ async function probeSessionStore(): Promise<void> {
     await Bun.secrets.delete(secret);
 }
 
+/** Standard output of a command, empty if it failed. */
+function outputOf(cmd: string[]): string {
+    const r = Bun.spawnSync(cmd, { stdout: 'pipe', stderr: 'ignore' });
+    return r.exitCode === 0 ? r.stdout.toString() : '';
+}
+
 /** Last step of setup: ask, then install the service. A failure here leaves the configuration and sign-in intact. */
-function startSyncing(command: string) {
+async function startSyncing(command: string) {
     if (!isYes(prompt('Start syncing now? [y/N]'))) {
         console.log('Nothing was changed. Review it, then run nucleon-sync once, or run nucleon-sync setup again.');
         return;
@@ -116,13 +123,19 @@ function startSyncing(command: string) {
     const problem = serviceProblem(platform(), command);
     try {
         if (problem) throw new Error(problem);
-        installService(platform(), { home: homedir(), dataDir: DATA, command }, (cmd) => Bun.spawnSync(cmd).exitCode);
+        installService(platform(), { home: homedir(), dataDir: DATA, command, credentialsStore: process.env.PROTON_DRIVE_CREDENTIALS_STORE }, (cmd) => Bun.spawnSync(cmd).exitCode);
     } catch (e) {
         console.log(`The service could not be installed: ${(e as Error).message}`);
         console.log('Your configuration and sign-in are fine. To start syncing by hand: nucleon-sync run');
         return;
     }
-    console.log(`Syncing started. Log: ${path.join(DATA, 'nucleon-sync.log')}`);
+    const log = path.join(DATA, 'nucleon-sync.log');
+    await Bun.sleep(SERVICE_START_WAIT_MS);
+    if (serviceIsUp(platform(), process.getuid?.() ?? 0, outputOf)) {
+        console.log(`Syncing started. Log: ${log}`);
+        return;
+    }
+    console.log(`The service did not stay up. Look in ${log}, and in ${platform() === 'darwin' ? '~/Library/Logs/nucleon-sync.log' : 'journalctl --user -u nucleon-sync'}.`);
 }
 
 async function sdkContext() {
@@ -396,7 +409,7 @@ async function migrate(args: string[]) {
     };
     const plan = planMigration(legacyDir, DATA, isDaemonRunning, options);
     if (plan.blocked) throw new Error(plan.blocked);
-    if (!plan.steps.length) return console.log('already migrated, nothing to do');
+    if (!plan.steps.length) return console.log('already migrated, nothing to do. Next: nucleon-sync setup');
     console.log('Nothing is removed, moved or overwritten. Planned:');
     for (const step of plan.steps) console.log(`  - ${step}`);
     console.log('The files "paused" and "quarantine/" stay in the old folder: they are not copied.');
@@ -408,9 +421,7 @@ async function migrate(args: string[]) {
     });
     console.log('Done.');
     for (const warning of warnings) console.log(`warning: ${warning}`);
-    console.log('Stop and disable the old service by hand, then start this one:');
-    const commands = new Set([...found.services.flatMap(stopCommands), ...knownStopCommands()]);
-    for (const command of commands) console.log(`  ${command}`);
+    for (const line of afterMigration([...new Set([...found.services.flatMap(stopCommands), ...knownStopCommands()])])) console.log(line);
 }
 
 async function main() {
@@ -508,7 +519,7 @@ async function main() {
                 // Already configured: only the last step is left.
                 const cfg = loadConfig();
                 console.log(`Already configured: ${cfg.localRoot} <-> ${cfg.remote}. Nothing else to set up.`);
-                startSyncing(command);
+                await startSyncing(command);
                 return;
             }
             const orphan = orphanDatabaseProblem(DATA, configPath());
@@ -537,7 +548,7 @@ async function main() {
             // Saved only now: a failed sign-in or plan leaves setup ready to run again.
             mkdirSync(path.dirname(configPath()), { recursive: true });
             saveConfig(cfg);
-            startSyncing(command);
+            await startSyncing(command);
             return;
         }
         case 'update': {
@@ -546,16 +557,12 @@ async function main() {
             const run = (cmd: string[], env?: Record<string, string>) => Bun.spawnSync(cmd, { env: { ...process.env, ...env }, stdout: 'inherit', stderr: 'inherit' }).exitCode;
             const quietly = (cmd: string[]) => Bun.spawnSync(cmd, { stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
             const agent = `gui/${process.getuid?.() ?? 0}/org.nucleonsync.daemon`;
-            const output = (cmd: string[]) => {
-                const r = Bun.spawnSync(cmd, { stdout: 'pipe', stderr: 'ignore' });
-                return r.exitCode === 0 ? r.stdout.toString() : '';
-            };
             const serviceInstalled = () =>
                 darwin ? existsSync(path.join(home, 'Library/LaunchAgents/org.nucleonsync.daemon.plist')) : existsSync(path.join(home, '.config/systemd/user/nucleon-sync.service'));
             const restart = () => (darwin ? quietly(['launchctl', 'kickstart', '-k', agent]) : quietly(['systemctl', '--user', 'restart', 'nucleon-sync.service']));
-            const serviceIsActive = () => (darwin ? quietly(['launchctl', 'print', agent]) : quietly(['systemctl', '--user', 'is-active', '--quiet', 'nucleon-sync.service']));
+            const serviceIsActive = () => serviceIsUp(platform(), process.getuid?.() ?? 0, outputOf);
             const wait = () => new Promise<void>((resolve) => setTimeout(resolve, 5000));
-            console.log(await runUpdate({ appDir: INSTALLED_APP_DIR, codeDir: import.meta.dir, current: RELEASE_VERSION, fetch, run, output, serviceInstalled, restart, serviceIsActive, wait }));
+            console.log(await runUpdate({ appDir: INSTALLED_APP_DIR, codeDir: import.meta.dir, current: RELEASE_VERSION, fetch, run, output: outputOf, serviceInstalled, restart, serviceIsActive, wait }));
             return;
         }
         case 'uninstall': {

@@ -103,6 +103,11 @@ export function stopCommands(service: string): string[] {
     return [`launchctl bootout gui/$(id -u)/${service}`, `launchctl disable gui/$(id -u)/${service}`];
 }
 
+/** What the user reads at the end of a migration. */
+export function afterMigration(commands: string[]): string[] {
+    return ['Stop and disable the old service by hand, if it is still there:', ...commands.map((command) => `  ${command}`), 'Next: nucleon-sync setup'];
+}
+
 function lockPid(dir: string): number | undefined {
     try {
         return Number(fs.readFileSync(path.join(dir, 'daemon.lock'), 'utf8')) || undefined;

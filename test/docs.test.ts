@@ -39,7 +39,7 @@ describe('docs', () => {
 
     test('the migration guides exist and the old docs are gone', () => {
         const fromOld = read('docs/migrating-from-proton-sync.md');
-        for (const text of ['nucleon-sync migrate', 'PROTON_SYNC_HOME', 'PROTON_SYNC_CONFIG', '.proton-sync-swap-']) {
+        for (const text of ['nucleon-sync migrate', 'PROTON_SYNC_HOME', 'PROTON_SYNC_CONFIG', '.proton-sync-swap-', 'Next, run `nucleon-sync setup`']) {
             expect(fromOld).toContain(text);
         }
         const fromRclone = read('docs/migrating-from-rclone.md');

@@ -27,6 +27,7 @@
         <string>__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>NUCLEON_SYNC_HOME</key>
         <string>__DATA__</string>
+        <key>PROTON_DRIVE_CREDENTIALS_STORE</key><string>__CREDENTIALS_STORE__</string>
     </dict>
 </dict>
 </plist>

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildConfig, checkOtherSyncTool, expandHome, isYes, leftoverRcloneFile, liveRcloneUnit, sessionStoreProblem } from '../src/desktop/setup';
 import type { RunCommand } from '../src/migrate';
-import { findDeployDir, installService, renderService, serviceProblem } from '../src/service';
+import { findDeployDir, installService, launchdJobRunning, renderService, serviceIsUp, serviceProblem } from '../src/service';
 
 function tempHome(): string {
     return mkdtempSync(path.join(tmpdir(), 'setup-home-'));
@@ -163,6 +163,17 @@ describe('service files', () => {
         expect(plist).toContain('<string>/home/u/.local/share/nucleon-sync</string>');
         expect(plist).not.toContain('__');
     });
+    test('the credentials store is carried into both service files when it is set', () => {
+        const withStore = { ...o, credentialsStore: 'pass' };
+        expect(renderService('linux', withStore)).toContain('Environment="PROTON_DRIVE_CREDENTIALS_STORE=pass"');
+        const plist = renderService('darwin', withStore);
+        expect(plist).toContain('<key>PROTON_DRIVE_CREDENTIALS_STORE</key>');
+        expect(plist).toContain('<string>pass</string>');
+    });
+    test('without a credentials store the variable is not in the service files', () => {
+        expect(renderService('linux', o)).not.toContain('CREDENTIALS');
+        expect(renderService('darwin', o)).not.toContain('CREDENTIALS');
+    });
     test('deploy is found in a checkout (src/) and in the installed layout (versions/<v>/)', () => {
         const root = mkdtempSync(path.join(tmpdir(), 'layout-'));
         const checkout = path.join(root, 'checkout');
@@ -185,25 +196,113 @@ describe('service files', () => {
         expect(readFileSync(file, 'utf8')).toContain(`Environment="PATH=${home}/.local/bin`);
         expect(calls).toEqual([
             ['systemctl', '--user', 'daemon-reload'],
-            ['systemctl', '--user', 'enable', '--now', 'nucleon-sync.service'],
+            ['systemctl', '--user', 'enable', 'nucleon-sync.service'],
+            ['systemctl', '--user', 'restart', 'nucleon-sync.service'],
         ]);
     });
-    test('installing on macOS writes the plist then bootstraps it', () => {
+    test('installing on macOS removes a previous job, then bootstraps the plist', () => {
         const home = tempHome();
         const calls: string[][] = [];
         installService('darwin', { ...o, home }, (cmd) => (calls.push(cmd), 0));
         const file = path.join(home, 'Library/LaunchAgents/org.nucleonsync.daemon.plist');
         expect(existsSync(file)).toBe(true);
         expect(existsSync(path.join(home, 'Library/Logs'))).toBe(true);
-        expect(calls).toHaveLength(1);
-        expect(calls[0]!.slice(0, 2)).toEqual(['launchctl', 'bootstrap']);
-        expect(calls[0]![3]).toBe(file);
+        expect(calls).toHaveLength(2);
+        expect(calls[0]!.slice(0, 2)).toEqual(['launchctl', 'bootout']);
+        expect(calls[0]![2]).toEndWith('/org.nucleonsync.daemon');
+        expect(calls[1]!.slice(0, 2)).toEqual(['launchctl', 'bootstrap']);
+        expect(calls[1]![3]).toBe(file);
+    });
+    test('a macOS rerun does not fail when no previous job was loaded', () => {
+        const run = (cmd: string[]) => (cmd[1] === 'bootout' ? 3 : 0);
+        expect(() => installService('darwin', { ...o, home: tempHome() }, run)).not.toThrow();
     });
     test('a failing command is reported', () => {
         expect(() => installService('linux', { ...o, home: tempHome() }, () => 1)).toThrow('systemctl');
     });
     test('another system is refused with a clear error', () => {
         expect(() => installService('win32', o, () => 0)).toThrow('Linux and macOS');
+    });
+});
+
+const CRASH_LOOPING = `gui/501/org.nucleonsync.daemon = {
+	active count = 0
+	state = spawn scheduled
+	program = /Users/u/.local/bin/nucleon-sync
+	last exit code = 1
+}`;
+const RUNNING = `gui/501/org.nucleonsync.daemon = {
+	active count = 1
+	state = running
+	program = /Users/u/.local/bin/nucleon-sync
+	pid = 4242
+	last exit code = (never exited)
+	endpoints = {
+		"x" = {
+			state = active
+		}
+	}
+}`;
+
+describe('is the service up', () => {
+    test('a launchd job needs state = running and a pid', () => {
+        expect(launchdJobRunning(RUNNING)).toBe(true);
+        expect(launchdJobRunning(CRASH_LOOPING)).toBe(false);
+        expect(launchdJobRunning('')).toBe(false);
+        expect(launchdJobRunning(RUNNING.replace('\tpid = 4242\n', ''))).toBe(false);
+    });
+    test('macOS asks launchctl print, not its exit code', () => {
+        expect(serviceIsUp('darwin', 501, () => CRASH_LOOPING)).toBe(false);
+        expect(serviceIsUp('darwin', 501, (cmd) => (cmd.join(' ') === 'launchctl print gui/501/org.nucleonsync.daemon' ? RUNNING : ''))).toBe(true);
+    });
+    test('Linux needs active, not activating', () => {
+        expect(serviceIsUp('linux', 501, () => 'active\n')).toBe(true);
+        expect(serviceIsUp('linux', 501, () => 'activating\n')).toBe(false);
+        expect(serviceIsUp('linux', 501, () => '')).toBe(false);
+    });
+});
+
+describe('setup with a config already there, as after a migration', () => {
+    function world(serviceState: string) {
+        const home = mkdtempSync(path.join(tmpdir(), 'setup-migrated-'));
+        const data = path.join(home, '.local/share/nucleon-sync');
+        const bin = path.join(home, 'shims');
+        mkdirSync(data, { recursive: true });
+        mkdirSync(bin);
+        touch(path.join(home, '.local/bin/nucleon-sync'));
+        writeFileSync(path.join(data, 'config.json'), JSON.stringify({ localRoot: path.join(home, 'Proton'), remote: 'root', allowDriveRoot: true, deviceName: 'x', maxDeletes: 20 }));
+        const log = path.join(home, 'calls.log');
+        const printed = serviceState === 'active' ? RUNNING : CRASH_LOOPING;
+        writeFileSync(path.join(bin, 'systemctl'), `#!/bin/sh\necho "$*" >> "${log}"\n[ "$2" = is-active ] && echo ${serviceState}\nexit 0\n`, { mode: 0o755 });
+        writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$*" >> "${log}"\n[ "$1" = print ] && cat <<'END'\n${printed}\nEND\nexit 0\n`, { mode: 0o755 });
+        const main = process.env.NUCLEON_ENTRY ?? path.join(import.meta.dir, '../src/main.ts');
+        const r = Bun.spawnSync([process.execPath, main, 'setup'], {
+            env: { PATH: `${bin}:${process.env.PATH}`, HOME: home, PROTON_DRIVE_CREDENTIALS_STORE: 'pass' },
+            cwd: home,
+            stdin: Buffer.from('y\n'),
+            stdout: 'pipe',
+            stderr: 'pipe',
+        });
+        return { home, data, log, out: r.stdout.toString(), err: r.stderr.toString(), code: r.exitCode };
+    }
+
+    test('goes straight to the start step and writes the new service', () => {
+        const w = world('active');
+        expect(w.err).toBe('');
+        expect(w.code).toBe(0);
+        expect(w.out).toContain('Already configured');
+        const service = process.platform === 'darwin' ? 'Library/LaunchAgents/org.nucleonsync.daemon.plist' : '.config/systemd/user/nucleon-sync.service';
+        const text = readFileSync(path.join(w.home, service), 'utf8');
+        expect(text).toContain(path.join(w.home, '.local/bin/nucleon-sync'));
+        expect(text).toContain('PROTON_DRIVE_CREDENTIALS_STORE');
+        expect(w.out).toContain('Syncing started');
+    });
+
+    test('a service that does not stay up is said plainly, with where to look', () => {
+        const w = world('failed');
+        expect(w.out).not.toContain('Syncing started');
+        expect(w.out).toContain('did not stay up');
+        expect(w.out).toContain(path.join(w.data, 'nucleon-sync.log'));
     });
 });
 

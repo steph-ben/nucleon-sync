@@ -14,6 +14,8 @@ Install nucleon-sync as described in the README, then run:
 
 It copies the old data folder (database, configuration and session) to the new name, and adds a `.nucleon-sync-root` marker to the synced folder. The `paused` flag and the `quarantine/` folder stay in the old data folder: check the old quarantine before you delete that folder. If your old data folder is not the default one, run `nucleon-sync migrate --from <folder>`.
 
+Next, run `nucleon-sync setup`. It sees the migrated configuration, goes straight to the last step, and installs and starts the new service.
+
 `migrate` refuses to run while the old service is active or enabled. It prints the commands to stop it. On macOS they are `launchctl bootout gui/$(id -u)/<label>` and `launchctl disable gui/$(id -u)/<label>`.
 
 The environment variables `PROTON_SYNC_HOME` and `PROTON_SYNC_CONFIG` still work but are deprecated aliases. Use `NUCLEON_SYNC_HOME` and `NUCLEON_SYNC_CONFIG` instead, and change them in any script or service file of yours.

@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { LEGACY_ROOT_MARKER, ROOT_MARKER } from '../src/names';
 import { spawnSync } from 'node:child_process';
-import { activeLegacyService, knownStopCommands, applyMigration, findLegacy, isDaemonRunning, legacyDaemonFor, planMigration, type MigrationIo } from '../src/migrate';
+import { activeLegacyService, afterMigration, knownStopCommands, applyMigration, findLegacy, isDaemonRunning, legacyDaemonFor, planMigration, type MigrationIo } from '../src/migrate';
 
 let home: string;
 let legacy: string;
@@ -275,5 +275,13 @@ describe('round 2', () => {
         fs.writeFileSync(path.join(legacy, 'daemon.lock'), '4242');
         const blocked = planMigration(legacy, fresh, (d) => d === legacy, { commands: [] }).blocked!;
         expect(blocked).toContain('if `ps -p 4242` shows proton-sync: kill 4242');
+    });
+});
+
+describe('after the migration', () => {
+    test('the last line says what to do next', () => {
+        const lines = afterMigration(['systemctl --user stop proton-sync.service']);
+        expect(lines.join('\n')).toContain('systemctl --user stop proton-sync.service');
+        expect(lines.at(-1)).toBe('Next: nucleon-sync setup');
     });
 });
