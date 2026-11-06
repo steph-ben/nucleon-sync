@@ -23,7 +23,7 @@ function makeRelease(release: string) {
     const stage = path.join(dir, 'stage');
     mkdirSync(path.join(stage, 'bin'), { recursive: true });
     writeFileSync(path.join(stage, 'nucleon-sync.js'), `// ${release}\n`);
-    writeFileSync(path.join(stage, 'bin/nucleon-sync'), `#!/bin/sh\necho ${releaseAppVersion(release)}\n`, { mode: 0o755 });
+    writeFileSync(path.join(stage, 'bin/nucleon-sync'), `#!/bin/sh\nif [ "$1" = setup ]; then echo "setup banner=$NUCLEON_BANNER_SHOWN"; else echo ${releaseAppVersion(release)}; fi\n`, { mode: 0o755 });
     writeFileSync(path.join(stage, 'VERSION'), release);
     const archive = path.join(dir, `nucleon-sync-${version}.tar.gz`);
     run(['tar', '-czf', archive, '-C', stage, 'nucleon-sync.js', 'bin', 'VERSION'], dir);
@@ -94,7 +94,7 @@ describe('install.sh', () => {
         // The stub command prints the version whatever its arguments.
         const r = install(release.script, home, release, { NUCLEON_NO_SETUP: '', NUCLEON_TTY: tty });
         expect(r.code).toBe(0);
-        expect(r.out).toContain(releaseAppVersion('7.0.0'));
+        expect(r.out).toContain('setup banner=1');
         expect(r.out).not.toContain('Next step');
     });
 

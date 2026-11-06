@@ -16,19 +16,26 @@ export function buildConfig(a: SetupAnswers): { localRoot: string; remote: strin
     return a.target === 'myfiles' ? { ...common, remote: 'root', allowDriveRoot: true } : { ...common, remote: `device:nucleon-sync-test/sandbox-${a.deviceName}` };
 }
 
-/** What the first sync would do, in plain words. Each action kind gets one line. */
+const PLAN_WORDS: Record<string, string> = {
+    link: 'already the same on both sides',
+    upload: 'to upload',
+    download: 'to download',
+    remoteMkdir: 'folders to create on the Drive',
+    localMkdir: 'folders to create here',
+    remoteTrash: 'to move to the Proton trash',
+    localQuarantine: 'to move from this folder to the quarantine',
+};
+/** Actions that remove something from one side: the first sync should not start on its own when there are any. */
+export const REMOVING_ACTIONS = ['remoteTrash', 'localQuarantine'];
+
+/** What the first sync would do, one row per kind of action. */
+export function planRows(counts: Map<string, number>): { kind: string; text: string }[] {
+    const rows = [...counts].map(([kind, n]) => ({ kind, text: `${String(n).padStart(6)}  ${PLAN_WORDS[kind] ?? kind}` }));
+    return rows.length ? rows : [{ kind: 'none', text: '     0  nothing to do' }];
+}
+
 export function describePlan(counts: Map<string, number>): string[] {
-    const words: Record<string, string> = {
-        link: 'already the same on both sides',
-        upload: 'to upload',
-        download: 'to download',
-        remoteMkdir: 'folders to create on the Drive',
-        localMkdir: 'folders to create here',
-        remoteTrash: 'to move to the Proton trash',
-        localQuarantine: 'to move from this folder to the quarantine',
-    };
-    const lines = [...counts].map(([kind, n]) => `${String(n).padStart(6)}  ${words[kind] ?? kind}`);
-    return lines.length ? lines : ['     0  nothing to do'];
+    return planRows(counts).map((row) => row.text);
 }
 
 export interface Summary {
@@ -122,6 +129,13 @@ export async function sessionStoreProblem(probe: () => Promise<void>): Promise<s
 }
 
 /** "y" or "yes", any case. Anything else is a no. */
+/** Enter alone takes the default; no answer at all (closed input) is always no. */
+export function yesNo(answer: string | null | undefined, defaultYes: boolean): boolean {
+    if (answer === null || answer === undefined) return false;
+    if (answer.trim() === '') return defaultYes;
+    return isYes(answer);
+}
+
 export function isYes(answer: string | null | undefined): boolean {
     return /^y(es)?$/i.test((answer ?? '').trim());
 }

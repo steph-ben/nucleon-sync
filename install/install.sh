@@ -27,15 +27,15 @@ SHA_DARWIN_X64_BASELINE="bad5bbd6cf14d0980d115f5954c9ff904df619d5e994d2da1ffccd3
 
 # Colours and symbols only in a real terminal, and never with NO_COLOR.
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
-    BOLD="$(printf '\033[1m')" DIM="$(printf '\033[2m')" RED="$(printf '\033[31m')" GREEN="$(printf '\033[32m')" CYAN="$(printf '\033[36m')" RESET="$(printf '\033[0m')"
+    BOLD="$(printf '\033[1m')" DIM="$(printf '\033[2m')" RED="$(printf '\033[31m')" YELLOW="$(printf '\033[33m')" GREEN="$(printf '\033[32m')" CYAN="$(printf '\033[36m')" RESET="$(printf '\033[0m')"
 else
-    BOLD="" DIM="" RED="" GREEN="" CYAN="" RESET=""
+    BOLD="" DIM="" RED="" YELLOW="" GREEN="" CYAN="" RESET=""
 fi
 
 banner() {
-    printf '%s\n' "$CYAN$BOLD" \
-        '   (+)~~(o)   nucleon-sync' \
-        "$RESET$DIM   two-way sync for Proton Drive, unofficial$RESET" ''
+    printf '\n  %s╭───────╮%s     %s╭───────╮%s\n' "$CYAN" "$RESET" "$YELLOW" "$RESET"
+    printf '  %s│ FILES │%s %s⇄⇄⇄%s %s│ DRIVE │%s     %snucleon-sync%s\n' "$CYAN" "$RESET" "$BOLD" "$RESET" "$YELLOW" "$RESET" "$BOLD" "$RESET"
+    printf '  %s╰───────╯%s     %s╰───────╯%s     %stwo-way sync for Proton Drive · unofficial%s\n\n' "$CYAN" "$RESET" "$YELLOW" "$RESET" "$DIM" "$RESET"
 }
 step() { printf '%s\n' "$CYAN>$RESET $*"; }
 done_step() { printf '%s\n' "$GREEN+$RESET $*"; }
@@ -172,7 +172,8 @@ run_setup() {
         return
     fi
     echo ""
-    "$HOME/.local/bin/nucleon-sync" setup <"$tty" || echo "The setup did not finish. Nothing is lost: run $COMMAND setup again."
+    # The banner is already on screen.
+    NUCLEON_BANNER_SHOWN=1 "$HOME/.local/bin/nucleon-sync" setup <"$tty" || echo "The setup did not finish. Nothing is lost: run $COMMAND setup again."
 }
 
 main() {

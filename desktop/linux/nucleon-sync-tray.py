@@ -12,6 +12,9 @@ import re
 import subprocess
 import sys
 import time
+import warnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)  # Gtk.ImageMenuItem still works and is the simplest way to put an icon in a menu
 
 DAEMON_GONE_SECONDS = 180
 TAIL_BYTES = 256 * 1024
@@ -25,7 +28,11 @@ LABELS = {
     "quarantine": "Moved to quarantine",
     "conflict copy": "Conflict: copy created",
 }
-ICONS = {
+ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
+# The tray icon is our logo with a small badge for the state: icons/nucleon-sync-<state>.svg.
+ICONS = {level: "nucleon-sync-" + level for level in ("ok", "syncing", "paused", "attention", "stopped")}
+# Menu icons come from the desktop theme, so they follow its look.
+MENU_ICONS = {
     "ok": "emblem-ok-symbolic",
     "syncing": "emblem-synchronizing-symbolic",
     "paused": "media-playback-pause-symbolic",
@@ -114,7 +121,10 @@ def main(binary, home):
     from gi.repository import GLib, Gtk
 
     env = dict(os.environ, NUCLEON_SYNC_HOME=home)
-    indicator = Indicator.Indicator.new("nucleon-sync", ICONS["stopped"], Indicator.IndicatorCategory.APPLICATION_STATUS)
+    if os.path.isdir(ICON_DIR):
+        indicator = Indicator.Indicator.new_with_path("nucleon-sync", ICONS["stopped"], Indicator.IndicatorCategory.APPLICATION_STATUS, ICON_DIR)
+    else:
+        indicator = Indicator.Indicator.new("nucleon-sync", MENU_ICONS["stopped"], Indicator.IndicatorCategory.APPLICATION_STATUS)
     indicator.set_status(Indicator.IndicatorStatus.ACTIVE)
     last = {"level": ""}
     window = {"open": None}
@@ -161,40 +171,57 @@ def main(binary, home):
         except (OSError, ValueError, KeyError):
             pass
 
+    def logo_picture():
+        """The logo at menu size, or nothing if the image loader cannot read SVG."""
+        try:
+            from gi.repository import GdkPixbuf
+
+            return Gtk.Image.new_from_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_size(os.path.join(ICON_DIR, "nucleon-sync.svg"), 18, 18))
+        except Exception:
+            return Gtk.Image.new_from_icon_name("folder-remote-symbolic", Gtk.IconSize.MENU)
+
     def build(state):
         menu = Gtk.Menu()
 
-        def add(label, callback=None):
-            item = Gtk.MenuItem(label=label)
+        def add(label, callback=None, icon=None, picture=None):
+            if icon or picture:
+                item = Gtk.ImageMenuItem(label=label)
+                item.set_image(picture or Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.MENU))
+                item.set_always_show_image(True)
+            else:
+                item = Gtk.MenuItem(label=label)
             item.set_sensitive(callback is not None)
             if callback:
                 item.connect("activate", callback)
             menu.append(item)
 
-        add("nucleon-sync: Proton Drive sync")
+        add("nucleon-sync: Proton Drive sync", picture=logo_picture())
         menu.append(Gtk.SeparatorMenuItem())
-        add(state["title"])
+        add(state["title"], icon=MENU_ICONS[state["level"]])
         for line in state["lines"]:
             add(line)
         menu.append(Gtk.SeparatorMenuItem())
         if state["level"] != "stopped":
-            add("Resume" if state["paused"] else "Pause", lambda _: run(binary, "resume" if state["paused"] else "pause"))
+            if state["paused"]:
+                add("Resume", lambda _: run(binary, "resume"), "media-playback-start-symbolic")
+            else:
+                add("Pause", lambda _: run(binary, "pause"), "media-playback-pause-symbolic")
         if state["held"]:
-            add(f"Approve {state['held']} deletions", lambda _: run(binary, "approve"))
+            add(f"Approve {state['held']} deletions", lambda _: run(binary, "approve"), "emblem-ok-symbolic")
         if state["unseen"]:
-            add("Mark deletions as seen", lambda _: run(binary, "seen"))
-        add("Recent activity…", show_activity)
-        add("Open folder", open_folder)
-        add("Open technical log", lambda _: run("xdg-open", os.path.join(home, "nucleon-sync.log")))
+            add("Mark deletions as seen", lambda _: run(binary, "seen"), "object-select-symbolic")
+        add("Recent activity…", show_activity, "document-open-recent-symbolic")
+        add("Open folder", open_folder, "folder-open-symbolic")
+        add("Open technical log", lambda _: run("xdg-open", os.path.join(home, "nucleon-sync.log")), "text-x-generic-symbolic")
         menu.append(Gtk.SeparatorMenuItem())
-        add("Quit icon", lambda _: Gtk.main_quit())
+        add("Quit icon", lambda _: Gtk.main_quit(), "application-exit-symbolic")
         menu.show_all()
         return menu
 
     def refresh():
         state = read_state(home, time.time())
         if state != last.get("state"):
-            indicator.set_icon_full(ICONS[state["level"]], state["title"])
+            indicator.set_icon_full(ICONS[state["level"]] if os.path.isdir(ICON_DIR) else MENU_ICONS[state["level"]], state["title"])
             indicator.set_menu(build(state))
             if state["level"] == "stopped" and last["level"] not in ("", "stopped"):
                 run("notify-send", "--app-name=nucleon-sync", "--", "nucleon-sync: sync stopped", "The daemon stopped responding.")

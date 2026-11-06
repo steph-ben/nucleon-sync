@@ -2,7 +2,7 @@
 
 Démon de synchro bidirectionnelle d'un dossier local (par défaut `~/Proton`) ↔ Proton Drive (Linux x64 et macOS Intel), pour remplacer `rclone bisync`. Anciennement `proton-sync`. Priorités : renommer un dossier sans galère et ne jamais rien perdre.
 
-Conception : `docs/design.md`. Migrations : `docs/migrating-from-rclone.md`, `docs/migrating-from-proton-sync.md`.
+Conception : `docs/design.md`. Migration : `docs/migrating-from-proton-sync.md`.
 
 ## Règles absolues
 

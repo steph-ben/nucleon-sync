@@ -63,3 +63,15 @@ describe.skipIf(!hasPython)('linux tray indicator namespace', () => {
         expect(result.err).not.toContain('Traceback');
     });
 });
+
+test('every state has its own icon, and the logo itself', () => {
+    const { existsSync, readFileSync } = require('node:fs');
+    const path = require('node:path');
+    const dir = path.join(import.meta.dir, '../desktop/linux/icons');
+    for (const name of ['ok', 'syncing', 'paused', 'attention', 'stopped']) {
+        const file = path.join(dir, `nucleon-sync-${name}.svg`);
+        expect(existsSync(file)).toBe(true);
+        expect(readFileSync(file, 'utf8')).toContain('<svg');
+    }
+    expect(existsSync(path.join(dir, 'nucleon-sync.svg'))).toBe(true);
+});

@@ -1,7 +1,7 @@
 import * as path from 'node:path';
 
 export const APP_NAME = 'nucleon-sync';
-export const VERSION = '0.2.1';
+export const VERSION = '0.2.2';
 export const CHANNEL: string = 'beta';
 
 /** Sent to Proton in the x-pm-appversion header, in the shape the SDK asks for. */

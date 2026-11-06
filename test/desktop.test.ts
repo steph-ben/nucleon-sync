@@ -50,10 +50,10 @@ describe('notifications come from transitions only', () => {
         expect(notificationsFor(idle, next)).toHaveLength(1);
         expect(notificationsFor(next, next)).toEqual([]);
     });
-    test('new held deletions, conflicts and deletions notify', () => {
+    test('held deletions and conflicts notify, a moved file does not', () => {
         expect(notificationsFor(idle, { ...idle, held: 25 })[0]!.title).toContain('25');
         expect(notificationsFor(idle, { ...idle, conflicts: 1 })[0]!.title).toContain('onflict');
-        expect(notificationsFor(idle, { ...idle, unseenDeletes: ['a'] })[0]!.body).toContain('a');
+        expect(notificationsFor(idle, { ...idle, unseenDeletes: ['a'] })).toEqual([]);
     });
     test('the first state after a start does not replay old problems', () => {
         expect(notificationsFor(undefined, { ...idle, held: 25 })).toEqual([]);
@@ -172,7 +172,7 @@ describe('DesktopTracker', () => {
         const a = tracker();
         a.t.passDone(done);
         a.t.passDone({ ...done, deleted: ['a.txt'] });
-        expect(a.notes[0]!.body).toContain('a.txt');
+        expect(a.notes).toEqual([]);
         const again = new DesktopTracker(a.file, 2, { getKv: (k) => a.kv.get(k), setKv: (k, v) => void a.kv.set(k, v) }, () => {}, () => 2000, () => false);
         again.passDone(done);
         expect(JSON.parse(readFileSync(a.file, 'utf8')).unseenDeletes).toEqual(['a.txt']);

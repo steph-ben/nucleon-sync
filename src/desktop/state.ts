@@ -66,8 +66,7 @@ export function notificationsFor(prev: DesktopState | undefined, next: DesktopSt
     if (prev.problems.length && !next.problems.length) notes.push({ title: 'nucleon-sync: sync restored', body: 'Everything works again.' });
     if (next.held > prev.held) notes.push({ title: `${plural(next.held, 'deletion')} to approve`, body: 'Review, then approve from the menu.' });
     if (next.conflicts > prev.conflicts) notes.push({ title: `Conflict: ${next.conflicts - prev.conflicts} ${next.conflicts - prev.conflicts > 1 ? 'copies' : 'copy'} created`, body: 'Both versions are kept.' });
-    const fresh = next.unseenDeletes.filter((d) => !prev.unseenDeletes.includes(d));
-    if (fresh.length) notes.push({ title: `${plural(fresh.length, 'file')} moved to trash or quarantine`, body: fresh.slice(0, 3).join(', ') });
+    // Files moved to the trash or the quarantine are not announced one by one: an editor saving a file does this all day. They show in the menu and in `nucleon-sync activity`.
     return notes;
 }
 

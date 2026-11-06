@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlink
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { installTray, type TrayChecks } from '../src/service';
-import { buildConfig, describePlan, expandHome, finalSummary, folderProblem, isYes, sessionStoreProblem } from '../src/desktop/setup';
+import { buildConfig, describePlan, expandHome, finalSummary, folderProblem, isYes, planRows, yesNo, sessionStoreProblem } from '../src/desktop/setup';
 import { findDeployDir, installService, launchdJobRunning, renderService, serviceIsUp, serviceProblem } from '../src/service';
 
 function tempHome(): string {
@@ -171,7 +171,7 @@ describe('setup with a config already there, as after a migration', () => {
         const w = world('active');
         expect(w.err).toBe('');
         expect(w.code).toBe(0);
-        expect(w.out).toContain('Already configured');
+        expect(w.out).toContain('Already set up');
         const service = process.platform === 'darwin' ? 'Library/LaunchAgents/org.nucleonsync.daemon.plist' : '.config/systemd/user/nucleon-sync.service';
         const text = readFileSync(path.join(w.home, service), 'utf8');
         expect(text).toContain(path.join(w.home, '.local/bin/nucleon-sync'));
@@ -289,5 +289,21 @@ describe('tray', () => {
     });
     test('GNOME without the extension is said plainly', () => {
         expect(installTray(installed(), checks({ gnomeNeedsExtension: () => true }).checks)).toContain('AppIndicator extension');
+    });
+});
+
+describe('answers and plan rows', () => {
+    test('Enter takes the default, a closed input is always no', () => {
+        expect(yesNo('', true)).toBe(true);
+        expect(yesNo('  ', false)).toBe(false);
+        expect(yesNo(null, true)).toBe(false);
+        expect(yesNo('y', false)).toBe(true);
+        expect(yesNo('no', true)).toBe(false);
+    });
+    test('plan rows keep the kind, so the screen can colour them', () => {
+        const rows = planRows(new Map([['link', 3], ['remoteTrash', 1]]));
+        expect(rows.map((r) => r.kind)).toEqual(['link', 'remoteTrash']);
+        expect(rows[1]!.text).toContain('to move to the Proton trash');
+        expect(planRows(new Map())[0]!.kind).toBe('none');
     });
 });

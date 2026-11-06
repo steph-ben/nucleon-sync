@@ -57,8 +57,7 @@ describe('docs', () => {
         for (const text of ['nucleon-sync migrate', 'PROTON_SYNC_HOME', 'PROTON_SYNC_CONFIG', '.proton-sync-swap-', 'Next, run `nucleon-sync setup`', 'on the Drive']) {
             expect(fromOld).toContain(text);
         }
-        const fromRclone = read('docs/migrating-from-rclone.md');
-        for (const text of ['--resync', 'plan', 'link', 'setup --reset', 'scratch folder', '--test-space', 'launchctl disable']) expect(fromRclone).toContain(text);
+        expect(fs.existsSync(path.join(repo, 'docs/migrating-from-rclone.md'))).toBe(false);
         expect(fs.existsSync(path.join(repo, 'docs/linux-install.md'))).toBe(false);
         expect(fs.existsSync(path.join(repo, 'docs/migration.md'))).toBe(false);
     });

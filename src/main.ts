@@ -12,7 +12,7 @@ import { recentActivity } from './desktop/activity';
 import { makeIgnore } from './desktop/exclude';
 import { anyOutdatedClient, isOutdatedClient, retryDelaySeconds, signIn } from './desktop/signin';
 import { sendNote } from './desktop/notify';
-import { buildConfig, describePlan, expandHome, finalSummary, folderProblem, isYes, moveStateAside, orphanDatabaseProblem, sessionStoreProblem } from './desktop/setup';
+import { buildConfig, expandHome, finalSummary, planRows, REMOVING_ACTIONS, yesNo, folderProblem, isYes, moveStateAside, orphanDatabaseProblem, sessionStoreProblem } from './desktop/setup';
 import { installService, installTray, serviceIsUp, serviceProblem, TRAY_NAMESPACES, type TrayChecks } from './service';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
@@ -21,6 +21,7 @@ import { activeLegacyService, afterMigration, applyMigration, findLegacy, isDaem
 import { APP_NAME, APP_VERSION, configFile, dataDir, RELEASE_VERSION, THIRD_PARTY_NOTICE } from './names';
 import { runUninstall } from './uninstall';
 import { ChangeTracker } from './watch';
+import { banner, bold, cyan, dim, green, mark, waiting, working, yellow } from './ui';
 import { CREDENTIALS_NAME, CREDENTIALS_SERVICE, PASS_CREDENTIALS_PATH } from '../vendor/proton-sdk/cli/src/credentials/constants';
 
 const DATA = dataDir(process.env, homedir());
@@ -91,14 +92,14 @@ function signalDaemon(signal: 'SIGUSR1' | 'SIGTERM') {
     }
 }
 
-function logger(verbose = false): Logger {
+function logger(verbose = false, echo = Boolean(process.stdout.isTTY)): Logger {
     mkdirSync(DATA, { recursive: true });
     const file = path.join(DATA, 'nucleon-sync.log');
     return (level, message) => {
         if (level === 'DEBUG' && !verbose) return;
         const line = `${new Date().toISOString()} ${level.padEnd(5)} ${message}`;
         appendFileSync(file, `${line}\n`);
-        if (process.stdout.isTTY) console.log(line);
+        if (echo) console.log(line);
     };
 }
 
@@ -117,9 +118,30 @@ function outputOf(cmd: string[]): string {
 }
 
 /** Last step of setup: ask, then install the service. A failure here leaves the configuration and sign-in intact. */
-async function startSyncing(command: string) {
-    if (!isYes(prompt('Start syncing now? [y/N]'))) {
-        console.log('Nothing was changed. Review it, then run nucleon-sync once, or run nucleon-sync setup again.');
+const SECTION_ICONS: Record<string, string> = { 'Your files': '📁', 'What was installed': '📦', 'What is running': '⚙️ ', 'Useful commands': '💡' };
+
+/** Headings with an icon, labels dimmed. The text itself comes from finalSummary. */
+function styleSummary(lines: string[]): string[] {
+    return lines.map((line) => {
+        if (line && !line.startsWith(' ')) return `  ${process.stdout.isTTY && !process.env.NO_COLOR ? (SECTION_ICONS[line] ?? '•') : '-'} ${bold(cyan(line))}`;
+        return line.startsWith('  ') && line.length > 18 && line[18] !== ' ' && !line.startsWith('  nucleon-sync') && !line.startsWith('  systemctl') ? `    ${dim(line.slice(2, 18))}${line.slice(18)}` : line ? `  ${line}` : line;
+    });
+}
+
+/** Best effort: the sign-in page opens by itself. The address is printed anyway. */
+function openInBrowser(url: string) {
+    try {
+        Bun.spawn([platform() === 'darwin' ? 'open' : 'xdg-open', url], { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' }).unref();
+    } catch {
+        /* the printed address is enough */
+    }
+}
+
+async function startSyncing(command: string, removing = false) {
+    // Enter starts the sync, unless the first sync would remove something: then it must be typed.
+    if (!yesNo(prompt(`${mark.ask()} ${bold('Start syncing now?')} ${removing ? '[y/N]' : '[Y/n]'}`), !removing)) {
+        console.log('');
+        console.log(`  ${mark.warn()} Nothing was started. Your settings are saved: run ${bold('nucleon-sync setup')} to finish.`);
         return;
     }
     const problem = serviceProblem(platform(), command);
@@ -137,11 +159,11 @@ async function startSyncing(command: string) {
         const cfg = loadConfig();
         const tray = startTray(command);
         console.log('');
-        console.log('Syncing started.');
+        console.log(`  ${mark.ok()} ${bold(green('Syncing started.'))}`);
         console.log('');
-        for (const line of finalSummary({ folder: cfg.localRoot, remote: cfg.remote, home: homedir(), dataDir: DATA, os: platform(), tray })) console.log(line);
+        for (const line of styleSummary(finalSummary({ folder: cfg.localRoot, remote: cfg.remote, home: homedir(), dataDir: DATA, os: platform(), tray }))) console.log(line);
         console.log('');
-        console.log(`Log: ${log}`);
+        console.log(dim(`  Log: ${log}`));
         return;
     }
     console.log(`The service did not stay up. Look in ${log}, and in ${platform() === 'darwin' ? '~/Library/Logs/nucleon-sync.log' : 'journalctl --user -u nucleon-sync'}.`);
@@ -419,12 +441,25 @@ async function daemon(cfg: Config) {
     }
 }
 
-function printPlan(plan: Plan) {
-    console.log(`summary: ${summarize(plan)}`);
-    for (const a of plan.actions) console.log(JSON.stringify(a));
-    if (plan.held.length) console.log(`held (${plan.held.length}):`);
-    for (const a of plan.held) console.log(JSON.stringify(a));
-    for (const w of plan.warnings) console.log(`warning: ${w}`);
+function printPlan(plan: Plan, json = false) {
+    if (json) {
+        console.log(`summary: ${summarize(plan)}`);
+        for (const a of plan.actions) console.log(JSON.stringify(a));
+        if (plan.held.length) console.log(`held (${plan.held.length}):`);
+        for (const a of plan.held) console.log(JSON.stringify(a));
+        for (const w of plan.warnings) console.log(`warning: ${w}`);
+        return;
+    }
+    printPlanRows(plan);
+    if (plan.held.length) console.log(`  ${mark.warn()} ${plan.held.length} deletions are held back. Look at them with: nucleon-sync plan --json, then nucleon-sync approve`);
+    for (const w of plan.warnings) console.log(`  ${mark.warn()} ${w}`);
+}
+
+function printPlanRows(plan: Plan) {
+    for (const row of planRows(planCounts(plan))) {
+        const colour = row.kind === 'link' ? green : REMOVING_ACTIONS.includes(row.kind) ? yellow : cyan;
+        console.log(`  ${colour(row.text)}`);
+    }
 }
 
 /** Copies the config, database and login of the old project into this one. Copy only. */
@@ -503,14 +538,14 @@ async function main() {
             const ctx = await sdkContext();
             if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run nucleon-sync login');
             const engine = await buildEngine(cfg, ctx, store, log);
-            if (cmd === 'plan') printPlan(await engine.planOnly());
+            if (cmd === 'plan') printPlan(await engine.planOnly(), args.includes('--json'));
             else {
                 const approve = store.getKv('approve-deletes') === '1';
                 const r = await engine.cycle(approve);
                 if (approve) store.setKv('approve-deletes', '0');
-                printPlan(r.plan);
-                console.log(`done=${r.done} skipped=${r.skipped} errors=${r.errors.length}`);
-                for (const e of r.errors) console.log(`error: ${e}`);
+                printPlan(r.plan, args.includes('--json'));
+                console.log(`${r.errors.length ? mark.warn() : mark.ok()} Done: ${r.done} actions${r.skipped ? `, ${r.skipped} skipped` : ''}${r.errors.length ? `, ${r.errors.length} errors` : ''}.`);
+                for (const e of r.errors) console.log(`  ${mark.fail()} ${e}`);
             }
             await ctx.dispose();
             return;
@@ -547,8 +582,9 @@ async function main() {
             return;
         }
         case 'setup': {
-            console.log(THIRD_PARTY_NOTICE);
-            console.log('A few questions first. No file moves until you say yes at the end.');
+            if (!process.env.NUCLEON_BANNER_SHOWN) for (const line of banner()) console.log(line);
+            console.log(`  ${dim(THIRD_PARTY_NOTICE)}`);
+            console.log('');
             const command = path.join(homedir(), '.local/bin', APP_NAME);
             const osProblem = serviceProblem(platform());
             if (osProblem) throw new Error(osProblem);
@@ -560,7 +596,7 @@ async function main() {
             if (existsSync(configPath())) {
                 // Already configured: only the last step is left.
                 const cfg = loadConfig();
-                console.log(`Already configured: ${cfg.localRoot} <-> ${cfg.remote}. Nothing else to set up.`);
+                console.log(`  ${mark.ok()} Already set up: ${bold(cfg.localRoot)} ${dim('⇄')} ${cfg.remote === 'root' ? 'My files' : cfg.remote}`);
                 await startSyncing(command);
                 return;
             }
@@ -568,32 +604,47 @@ async function main() {
             if (orphan) throw new Error(orphan);
             const storeProblem = await sessionStoreProblem(probeSessionStore);
             if (storeProblem) throw new Error(storeProblem);
-            const answer = prompt('Folder to sync', path.join(homedir(), 'Proton'));
+            const answer = prompt(`${mark.ask()} ${bold('Which folder should stay in sync with your Proton Drive?')}`, path.join(homedir(), 'Proton'));
             if (answer === null) throw new Error('No answer, nothing was done. Run nucleon-sync setup in a terminal.');
-            const folder = path.resolve(expandHome(answer, homedir()));
+            const folder = path.resolve(expandHome(answer || path.join(homedir(), 'Proton'), homedir()));
             const badFolder = folderProblem(folder, homedir(), DATA);
             if (badFolder) throw new Error(badFolder);
-            // A hidden way to try safely. Everyone else syncs their real Drive, so the question is about that.
+            // A hidden way to try safely. Everyone else syncs their real Drive. The yes comes at the end, with the plan in front of the user.
             const target = args.includes('--test-space') ? 'test' : 'myfiles';
-            const confirmed = target === 'myfiles' && prompt(`${folder} will stay in sync with My files on your Proton Drive. Type yes to continue`) === 'yes';
-            if (target === 'myfiles' && !confirmed) throw new Error('Not confirmed, nothing was done.');
-            const cfg = buildConfig({ folder, target, confirmed, deviceName: hostname().split('.')[0]!.replace(/[^\w-]/g, '') });
+            const cfg = buildConfig({ folder, target, confirmed: true, deviceName: hostname().split('.')[0]!.replace(/[^\w-]/g, '') });
+            console.log(`  ${dim('Both ways:')} ${bold(folder)} ${dim('⇄')} ${bold(target === 'myfiles' ? 'My files' : 'a test space')} ${dim('on your Proton Drive')}`);
+            console.log('');
             mkdirSync(folder, { recursive: true });
             await createRootMarker(folder);
             const ctx = await sdkContext();
-            if (!ctx.auth.isLoggedIn()) await signIn(ctx.auth, console.log);
-            const log = logger(false);
+            if (!ctx.auth.isLoggedIn()) {
+                console.log(`  ${dim('Sign in on Proton\'s own page. Your password never reaches nucleon-sync.')}`);
+                let stopWaiting = () => {};
+                await signIn(ctx.auth, (line) => {
+                    console.log(line.startsWith('http') || line.includes('https://') ? `\n  ${cyan(line.trim())}\n` : `  ${line}`);
+                    const url = /https:\/\/\S+/.exec(line)?.[0];
+                    if (url) {
+                        openInBrowser(url);
+                        stopWaiting = waiting('Waiting for you to sign in, in your browser');
+                    }
+                });
+                stopWaiting();
+            }
+            // Nothing from the engine's journal on screen while the animation runs.
+            const log = logger(false, false);
             // A throwaway database: a plan that fails must not leave one behind without a config.
             const engine = await buildEngine(cfg, ctx, new SqliteStore(':memory:'), log);
-            const plan = await engine.planOnly();
-            console.log('What the first sync would do:');
-            for (const line of describePlan(planCounts(plan))) console.log(line);
-            for (const w of plan.warnings) console.log(`Warning: ${w}`);
+            const plan = await working('Comparing your Drive with the folder (the first time can take a few minutes)', () => engine.planOnly(), () => 'Compared your Drive with the folder');
+            console.log('');
+            console.log(`  ${bold('What the first sync would do')}`);
+            printPlanRows(plan);
+            for (const w of plan.warnings) console.log(`  ${mark.warn()} ${w}`);
+            console.log('');
             await ctx.dispose();
             // Saved only now: a failed sign-in or plan leaves setup ready to run again.
             mkdirSync(path.dirname(configPath()), { recursive: true });
             saveConfig(cfg);
-            await startSyncing(command);
+            await startSyncing(command, plan.actions.some((a) => REMOVING_ACTIONS.includes(a.t)));
             return;
         }
         case 'update': {

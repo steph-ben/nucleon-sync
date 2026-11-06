@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" role="img" aria-label="nucleon-sync: two-way sync for Proton Drive">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" role="img" aria-label="nucleon-sync: open-source, two-way sync for Proton Drive">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b1220"/><stop offset="1" stop-color="#16233a"/></linearGradient>
     <linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient>
@@ -15,7 +15,7 @@
   </g>
   <g font-family="ui-sans-serif, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
     <text x="232" y="122" fill="#f1f5f9" font-size="58" font-weight="700" letter-spacing="-1">nucleon-sync</text>
-    <text x="234" y="162" fill="#94a3b8" font-size="23">Rename a folder. Nothing re-uploads. Nothing gets lost.</text>
-    <text x="234" y="196" fill="#64748b" font-size="17">Open-source, two-way sync for Proton Drive on Linux and macOS</text>
+    <text x="234" y="162" fill="#94a3b8" font-size="23">Open-source, two-way sync for Proton Drive</text>
+    <text x="234" y="196" fill="#64748b" font-size="17">Linux and macOS · free software · unofficial</text>
   </g>
 </svg>

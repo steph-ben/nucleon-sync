@@ -1,7 +1,7 @@
 {
     "name": "nucleon-sync",
     "private": true,
-    "version": "0.2.1",
+    "version": "0.2.2",
     "type": "module",
     "scripts": {
         "test": "bun test test/scenarios.test.ts test/fuzz.test.ts"

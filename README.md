@@ -9,7 +9,7 @@
   <img alt="Linux x64 and macOS Intel" src="https://img.shields.io/badge/platform-Linux%20x64%20%7C%20macOS%20Intel-lightgrey">
 </p>
 
-**nucleon-sync keeps a folder on your computer and your Proton Drive identical, in both directions, in the background.** Rename a folder of 5,000 photos: it is one rename on the Drive, not 5,000 uploads. Delete something by mistake: it can still be recovered.
+**Open-source, two-way sync for Proton Drive on Linux and macOS.** It keeps a folder on your computer and your Drive identical, in the background, and keeps your files safe when something goes wrong.
 
 ```sh
 curl -fsSL https://steph-ben.github.io/nucleon-sync/install.sh | sh
@@ -40,13 +40,10 @@ One command, no `sudo`, nothing to prepare. It installs under `~/.local`, then s
 └───────────────────────────────────────────────────────┘
 ```
 
-**Proton's SDK does the sensitive work.** Every Drive operation goes through the [Proton Drive SDK](https://github.com/ProtonDriveApps/sdk): listing, upload, download, move, rename, trash, and the encryption of all of it. nucleon-sync has no crypto of its own and makes no direct calls to Proton's servers. It is not the official client, but it uses the same library, and it identifies itself honestly to Proton as `external-drive-nucleon_sync`.
-
-**Your password never reaches nucleon-sync.** You sign in on Proton's web page, and the resulting session is kept in your system keyring.
-
-**Nothing is sent anywhere else.** No analytics, no crash reports, no server of ours. Your files and their names go only to Proton. The one other connection is a check for new versions on GitHub, which sends nothing about you or your files.
-
-**The database holds no file content.** `state.sqlite` remembers, for each file and folder: its name, its parent, its local and Drive identifiers, a SHA-1 hash, its size and date. That is how a rename is told from a delete plus a new file. It sits in `~/.local/share/nucleon-sync`, unencrypted, readable like your files themselves. Lose it and the next run matches files again by content, without deleting anything.
+- **Proton's own library does the sensitive work.** Every Drive operation, encryption included, goes through the [Proton Drive SDK](https://github.com/ProtonDriveApps/sdk). nucleon-sync has no crypto of its own and never calls Proton's servers directly. It is not the official client, and it says so to Proton: `external-drive-nucleon_sync`.
+- **Your password never reaches it.** You sign in on Proton's web page. Only the session is kept, in your system keyring.
+- **No telemetry.** Your files and their names go only to Proton. The one other connection is a check for new versions on GitHub.
+- **The database holds no file content.** `state.sqlite` keeps names, paths, hashes, sizes and dates, unencrypted, in `~/.local/share/nucleon-sync`. It is how a rename is told from a delete plus a new file. Lose it and the next run matches your files again by content, deleting nothing.
 
 ## What gets installed
 
@@ -100,9 +97,9 @@ This is beta software. The author uses it daily on a real Drive. The whole insta
 
 The Proton Drive SDK is meant for personal, non-commercial use for now, and Proton says it is not ready yet for third-party apps in production. Proton plans new cryptography around the end of 2026 or early 2027, and nucleon-sync will need an update by then. It tells you when that happens.
 
-On Linux you need a running keyring (libsecret, for example gnome-keyring). The tray icon needs `libayatana-appindicator-gtk3` or `libappindicator-gtk3`, and on GNOME the AppIndicator extension. Native Proton Docs and Sheets are never synced.
+On Linux you need a running keyring (libsecret, for example gnome-keyring). The tray icon needs `libayatana-appindicator-gtk3` or `libappindicator-gtk3`, and on GNOME the AppIndicator extension. 
 
-Coming from rclone? Stop it first on all your machines, and read `docs/migrating-from-rclone.md`. Never run two sync tools on the same Drive. Coming from this project's earlier name, proton-sync? Read `docs/migrating-from-proton-sync.md`.
+Do not run another sync tool on the same folder. Native Proton Docs and Sheets are never synced.
 
 ## Troubleshooting
 
