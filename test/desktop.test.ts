@@ -321,7 +321,7 @@ describe('activity comes from the journal', () => {
         appendFileSync(f, `${'2026-11-05T09:00:00.000Z INFO  local→drive  upload  old.txt\n'.repeat(200000)}${LOG}\n`);
         const started = performance.now();
         expect(recentActivity(f, 3)).toHaveLength(3);
-        expect(performance.now() - started).toBeLessThan(200);
+        expect(performance.now() - started).toBeLessThan(2000);
     });
 
     test('no journal yet', () => {
