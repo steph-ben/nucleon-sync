@@ -40,7 +40,9 @@ bun scripts/third-party-notices.ts "$STAGE/meta.json" > "$STAGE/THIRD-PARTY-NOTI
 echo "$RELEASE" > "$STAGE/VERSION"
 
 tar -czf "dist/$ARCHIVE" -C "$STAGE" nucleon-sync.js bin deploy desktop LICENSE THIRD-PARTY-NOTICES VERSION
-(cd dist && sha256sum "$ARCHIVE" > SHA256SUMS)
+# sha256sum is not on macOS: shasum prints the same "<hash>  <file>" line.
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
+(cd dist && sha256 "$ARCHIVE" > SHA256SUMS)
 # The installer carries the release and the archive checksum, so it installs exactly this release.
 ARCHIVE_SHA256="$(cut -d ' ' -f 1 "dist/SHA256SUMS")"
 sed -e "s/@VERSION@/$VERSION/" -e "s/@RELEASE@/$RELEASE/" -e "s/@ARCHIVE_SHA256@/$ARCHIVE_SHA256/" install/install.sh > dist/install.sh

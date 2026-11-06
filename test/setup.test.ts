@@ -203,7 +203,9 @@ describe('setup with a config already there, as after a migration', () => {
         const log = path.join(home, 'calls.log');
         const printed = serviceState === 'active' ? RUNNING : CRASH_LOOPING;
         writeFileSync(path.join(bin, 'systemctl'), `#!/bin/sh\necho "$*" >> "${log}"\n[ "$2" = is-active ] && echo ${serviceState}\nexit 0\n`, { mode: 0o755 });
-        writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$*" >> "${log}"\n[ "$1" = print ] && cat <<'END'\n${printed}\nEND\nexit 0\n`, { mode: 0o755 });
+        // Like launchd: bootout unloads, bootstrap loads, and print fails while nothing is loaded.
+        const loaded = path.join(home, 'launchd-loaded');
+        writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\necho "$*" >> "${log}"\ncase "$1" in\nbootout) rm -f "${loaded}" ;;\nbootstrap) touch "${loaded}" ;;\nprint) [ -f "${loaded}" ] || exit 113\ncat <<'END'\n${printed}\nEND\n;;\nesac\nexit 0\n`, { mode: 0o755 });
         const main = process.env.NUCLEON_ENTRY ?? path.join(import.meta.dir, '../src/main.ts');
         const r = Bun.spawnSync([process.execPath, main, 'setup'], {
             env: { PATH: `${bin}:${process.env.PATH}`, HOME: home, PROTON_DRIVE_CREDENTIALS_STORE: 'pass' },
