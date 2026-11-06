@@ -7,7 +7,7 @@ const repo = path.join(import.meta.dir, '..');
 const OLD_NAME = /proton[-_]?sync/i;
 
 // Test files that name the legacy on purpose.
-const LEGACY_ON_PURPOSE = ['test/names.test.ts', 'test/local.test.ts', 'test/journal.test.ts', 'test/migrate.test.ts'];
+const LEGACY_ON_PURPOSE = ['test/names.test.ts', 'test/local.test.ts', 'test/journal.test.ts', 'test/migrate.test.ts', 'test/docs.test.ts'];
 // Folders and files that must no longer carry the old name.
 const CHECKED = ['src', 'bin', 'deploy', 'desktop', 'scripts', '.github', 'vendor/proton-sdk/cli/src/credentials', 'test'];
 const ALLOWED_FILES = ['src/names.ts', 'src/migrate.ts', ...LEGACY_ON_PURPOSE];
