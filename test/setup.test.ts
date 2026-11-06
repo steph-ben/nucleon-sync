@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { buildConfig, checkOtherSyncTool, expandHome, isYes, leftoverRcloneFile, liveRcloneUnit, sessionStoreProblem } from '../src/desktop/setup';
+import { buildConfig, checkOtherSyncTool, expandHome, folderProblem, isYes, leftoverRcloneFile, liveRcloneUnit, sessionStoreProblem } from '../src/desktop/setup';
 import type { RunCommand } from '../src/migrate';
 import { findDeployDir, installService, launchdJobRunning, renderService, serviceIsUp, serviceProblem } from '../src/service';
 
@@ -303,6 +303,32 @@ describe('setup with a config already there, as after a migration', () => {
         expect(w.out).not.toContain('Syncing started');
         expect(w.out).toContain('did not stay up');
         expect(w.out).toContain(path.join(w.data, 'nucleon-sync.log'));
+    });
+});
+
+describe('folder to sync', () => {
+    const data = '/home/u/.local/share/nucleon-sync';
+    test('a normal folder is fine', () => {
+        expect(folderProblem('/home/u/Proton', '/home/u', data)).toBeUndefined();
+        expect(folderProblem('/home/u/.local/share/nucleon-sync-other', '/home/u', data)).toBeUndefined();
+    });
+    test('the home folder and / are refused', () => {
+        expect(folderProblem('/home/u', '/home/u', data)).toContain('home folder');
+        expect(folderProblem('/home/u/', '/home/u', data)).toContain('home folder');
+        expect(folderProblem('/', '/home/u', data)).toContain('root');
+    });
+    test('the data folder, a folder inside it and a folder that contains it are refused', () => {
+        expect(folderProblem(data, '/home/u', data)).toContain('data folder');
+        expect(folderProblem(`${data}/sync`, '/home/u', data)).toContain('data folder');
+        expect(folderProblem('/home/u/.local', '/home/u', data)).toContain('data folder');
+    });
+    test('a link to the data folder is seen through, also for a folder not created yet', () => {
+        const home = realpathSync(tempHome());
+        const realData = path.join(home, 'data');
+        mkdirSync(realData);
+        symlinkSync(realData, path.join(home, 'link'));
+        expect(folderProblem(path.join(home, 'link'), home, realData)).toContain('data folder');
+        expect(folderProblem(path.join(home, 'link/new/deep'), home, realData)).toContain('data folder');
     });
 });
 

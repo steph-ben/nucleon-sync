@@ -6,7 +6,7 @@ import path from 'node:path';
 import { type DesktopState, notificationsFor, render, writeState } from '../src/desktop/state';
 import { makeIgnore } from '../src/desktop/exclude';
 import { DesktopTracker } from '../src/desktop/tracker';
-import { isOutdatedClient, retryDelaySeconds, signIn } from '../src/desktop/signin';
+import { anyOutdatedClient, isOutdatedClient, retryDelaySeconds, signIn } from '../src/desktop/signin';
 import { recentActivity } from '../src/desktop/activity';
 import { noteCommand } from '../src/desktop/notify';
 import { buildConfig } from '../src/desktop/setup';
@@ -150,6 +150,17 @@ describe('DesktopTracker', () => {
         expect(t.state.problems).toHaveLength(1);
         expect(t.state.problems[0]!.kind).toBe('outdated');
         expect(notes[0]!.body).toBe('This version is no longer accepted by Proton: run nucleon-sync update');
+    });
+    test('an outdated client on single actions gives the same problem, not repeated errors', () => {
+        const { t, notes } = tracker();
+        t.passDone(done);
+        t.passDone({ ...done, errors: ['disk full', 'You need to update this app in order to perform this operation'] });
+        expect(t.state.problems.map((p) => p.kind)).toEqual(['outdated']);
+        expect(notes[0]!.body).toBe('This version is no longer accepted by Proton: run nucleon-sync update');
+        expect(anyOutdatedClient(['disk full'])).toBe(false);
+        expect(anyOutdatedClient(['disk full', 'Please upgrade the app'])).toBe(true);
+        t.passDone(done);
+        expect(t.state.problems).toEqual([]);
     });
     test('a safety stop is a problem at once', () => {
         const { t, notes } = tracker();

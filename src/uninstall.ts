@@ -5,8 +5,7 @@ import { APP_NAME } from './names';
 const SERVICES = ['nucleon-sync.service', 'org.nucleonsync.daemon', 'org.nucleonsync.tray'];
 
 /** What uninstall removes: file paths, and "service <name>" entries. Never the synced folder; the data folder only if purging. */
-export function planUninstall(home: string, keepData: boolean): string[] {
-    const data = path.join(home, '.local/share', APP_NAME);
+export function planUninstall(home: string, keepData: boolean, data: string = path.join(home, '.local/share', APP_NAME)): string[] {
     const plan = [
         ...SERVICES.map((name) => `service ${name}`),
         path.join(home, '.config/systemd/user/nucleon-sync.service'),
@@ -15,13 +14,15 @@ export function planUninstall(home: string, keepData: boolean): string[] {
         path.join(home, '.config/autostart/nucleon-sync-tray.desktop'),
         path.join(home, '.local/bin/nucleon-sync'),
         path.join(home, '.local/bin/nucleon-sync-tray'),
-        path.join(data, 'app'),
+        path.join(home, '.local/share', APP_NAME, 'app'),
     ];
     return keepData ? plan : [...plan, data];
 }
 
 export type UninstallDeps = {
     home: string;
+    /** The data folder really in use: NUCLEON_SYNC_HOME can move it. */
+    dataDir: string;
     platform: 'linux' | 'darwin';
     purgeData: boolean;
     /** Path of the synced folder, printed at the end and never touched. */
@@ -29,6 +30,8 @@ export type UninstallDeps = {
     ask: (question: string) => Promise<boolean>;
     print: (line: string) => void;
     run: (cmd: string[]) => number;
+    /** Removes the saved Proton session from this computer. */
+    deleteSession: () => Promise<void>;
 };
 
 /** True when `inner` is the same as, or inside, `outer` (symlinks resolved). */
@@ -86,13 +89,17 @@ function stopServices(d: UninstallDeps, services: string[]): string[] {
 }
 
 export async function runUninstall(d: UninstallDeps): Promise<void> {
-    const dataDir = path.join(d.home, '.local/share', APP_NAME);
-    const appDir = path.join(dataDir, 'app');
+    const { dataDir } = d;
+    const appDir = path.join(d.home, '.local/share', APP_NAME, 'app');
     if (d.purgeData && d.syncedFolder && isInside(d.syncedFolder, dataDir)) {
         d.print(`Refusing --purge-data: your synced folder ${d.syncedFolder} is inside the data folder ${dataDir}, and it would be deleted. Nothing was changed.`);
         return;
     }
-    const plan = planUninstall(d.home, !d.purgeData);
+    if (d.purgeData && isInside(d.home, dataDir)) {
+        d.print(`Refusing --purge-data: the data folder ${dataDir} holds your home folder, and it would be deleted. Nothing was changed.`);
+        return;
+    }
+    const plan = planUninstall(d.home, !d.purgeData, dataDir);
     const services = plan.filter((e) => e.startsWith('service ')).map((e) => e.slice('service '.length));
     const paths = plan
         .filter((e) => !e.startsWith('service '))
@@ -100,10 +107,11 @@ export async function runUninstall(d: UninstallDeps): Promise<void> {
 
     d.print('nucleon-sync uninstall will stop the service and remove:');
     for (const p of paths) d.print(`  ${p}`);
-    if (!d.purgeData) d.print('The data folder (settings, sign-in, history, quarantine) is kept.');
+    if (d.purgeData) d.print('Your saved sign-in on this computer is removed too.');
+    else d.print(`The data folder ${dataDir} (settings, history, quarantine) and your saved sign-in are kept.`);
     if (!(await d.ask('Remove these?'))) return d.print('Nothing was changed.');
     if (d.purgeData) {
-        const second = 'The data folder also holds the quarantine, where files removed by a sync are kept. Delete it for good?';
+        const second = `The data folder ${dataDir} also holds the quarantine, where files removed by a sync are kept. Delete it and your saved sign-in for good?`;
         if (!(await d.ask(second))) return d.print('Nothing was changed.');
     }
 
@@ -111,6 +119,9 @@ export async function runUninstall(d: UninstallDeps): Promise<void> {
     if (notStopped.length > 0) {
         d.print('The service could not be stopped, so nothing was removed. Run this by hand, then uninstall again:');
         for (const cmd of notStopped) d.print(`  ${cmd}`);
+        if (d.platform === 'linux') {
+            d.print(`If systemctl says it cannot reach the user bus, log in normally (not through su or sudo) and try again. On a system without user services, delete ${path.join(d.home, '.config/systemd/user/nucleon-sync.service')} by hand, then uninstall again.`);
+        }
         return;
     }
     const notRemoved: string[] = [];
@@ -122,6 +133,13 @@ export async function runUninstall(d: UninstallDeps): Promise<void> {
         }
     }
     if (d.platform === 'linux') d.run(['systemctl', '--user', 'daemon-reload']);
+    if (d.purgeData) {
+        try {
+            await d.deleteSession();
+        } catch (error) {
+            notRemoved.push(`your saved sign-in, entry nucleon-sync/session in the password store (${(error as Error).message})`);
+        }
+    }
     if (notRemoved.length > 0) {
         d.print('nucleon-sync is only partly uninstalled. Could not remove:');
         for (const line of notRemoved) d.print(`  ${line}`);

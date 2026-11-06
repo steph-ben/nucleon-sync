@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, renameSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, realpathSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import { DATABASE_FILES, isDisabledInLaunchctl, type RunCommand } from '../migrate';
 
@@ -70,6 +70,25 @@ export function checkOtherSyncTool(folder: string, d: SyncToolCheck): void {
     d.print(`  ${leftover}`);
     d.print('If rclone still runs some other way (cron, a script, another machine), stop it first. Two tools on one Drive lose files.');
     if (d.ask('Type yes if rclone is stopped everywhere') !== 'yes') throw new Error('rclone not confirmed as stopped, nothing was done.');
+}
+
+/** The real path, links resolved, also when the end of the path does not exist yet. */
+function realPath(p: string): string {
+    const parent = path.dirname(p);
+    if (existsSync(p) || parent === p) return realpathSync(p);
+    return path.join(realPath(parent), path.basename(p));
+}
+
+const isSameOrInside = (inner: string, outer: string) => inner === outer || inner.startsWith(outer.endsWith(path.sep) ? outer : outer + path.sep);
+
+/** Why this folder cannot be synced, or undefined. The data folder holds the database and the quarantine: syncing it would feed the sync its own files. */
+export function folderProblem(folder: string, home: string, data: string): string | undefined {
+    const chosen = realPath(path.resolve(folder));
+    const dataFolder = realPath(path.resolve(data));
+    if (chosen === path.parse(chosen).root) return 'The root of the disk cannot be synced. Choose a folder of its own, such as ~/Proton.';
+    if (chosen === realPath(path.resolve(home))) return 'Your home folder cannot be synced. Choose a folder of its own, such as ~/Proton.';
+    if (isSameOrInside(chosen, dataFolder) || isSameOrInside(dataFolder, chosen)) return `${folder} overlaps the data folder ${data}. Choose a folder of its own, such as ~/Proton.`;
+    return undefined;
 }
 
 /** A database without its config: it holds the memory of an unknown target, so setup must not reuse it. */

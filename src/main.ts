@@ -10,9 +10,9 @@ import { assertSameTarget, Engine, SafetyStop } from './core/engine';
 import type { Logger, Plan } from './core/types';
 import { recentActivity } from './desktop/activity';
 import { makeIgnore } from './desktop/exclude';
-import { isOutdatedClient, retryDelaySeconds, signIn } from './desktop/signin';
+import { anyOutdatedClient, isOutdatedClient, retryDelaySeconds, signIn } from './desktop/signin';
 import { sendNote } from './desktop/notify';
-import { buildConfig, checkOtherSyncTool, expandHome, isYes, moveStateAside, orphanDatabaseProblem, sessionStoreProblem } from './desktop/setup';
+import { buildConfig, checkOtherSyncTool, expandHome, folderProblem, isYes, moveStateAside, orphanDatabaseProblem, sessionStoreProblem } from './desktop/setup';
 import { installService, serviceIsUp, serviceProblem } from './service';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
@@ -21,6 +21,7 @@ import { activeLegacyService, afterMigration, applyMigration, findLegacy, isDaem
 import { APP_NAME, APP_VERSION, configFile, dataDir, RELEASE_VERSION, THIRD_PARTY_NOTICE } from './names';
 import { runUninstall } from './uninstall';
 import { ChangeTracker } from './watch';
+import { CREDENTIALS_NAME, CREDENTIALS_SERVICE, PASS_CREDENTIALS_PATH } from '../vendor/proton-sdk/cli/src/credentials/constants';
 
 const DATA = dataDir(process.env, homedir());
 const POLL_SECONDS = 60;
@@ -32,6 +33,7 @@ const DAEMON_GONE_MS = 3 * 60 * 1000;
 const INSTALLED_APP_DIR = path.join(homedir(), '.local/share', APP_NAME, 'app');
 const UPDATE_EVERY_MS = 24 * 60 * 60 * 1000;
 const SERVICE_START_WAIT_MS = 3000;
+const OUTDATED_LOG = 'Proton no longer accepts this version: run nucleon-sync update. Checking again every hour.';
 const STATE_FILE = path.join(DATA, 'desktop.json');
 const PAUSE_FILE = path.join(DATA, 'paused');
 
@@ -334,7 +336,9 @@ async function daemon(cfg: Config) {
             }
             if (r.errors.length) beat.withErrors++;
             failures = r.errors.length ? failures + 1 : 0;
-            outdated = false;
+            const nowOutdated = anyOutdatedClient(r.errors);
+            if (nowOutdated && !outdated) log('ERROR', `${OUTDATED_LOG} (${r.errors.find(isOutdatedClient)})`);
+            outdated = nowOutdated;
             // Work was done: run again soon to confirm the state is stable.
             if (r.plan.actions.length) delay = 2000;
         } catch (e) {
@@ -344,7 +348,7 @@ async function daemon(cfg: Config) {
             view.passFailed(e, safety);
             const message = e instanceof Error ? e.message : String(e);
             if (isOutdatedClient(message)) {
-                if (!outdated) log('ERROR', `Proton no longer accepts this version: run nucleon-sync update. Checking again every hour. (${message})`);
+                if (!outdated) log('ERROR', `${OUTDATED_LOG} (${message})`);
                 outdated = true;
             } else {
                 outdated = false;
@@ -433,6 +437,8 @@ async function main() {
             const orphan = orphanDatabaseProblem(DATA, configPath());
             if (orphan) throw new Error(orphan);
             const localRoot = path.resolve(dir);
+            const badFolder = folderProblem(localRoot, homedir(), DATA);
+            if (badFolder) throw new Error(badFolder);
             mkdirSync(path.dirname(configPath()), { recursive: true });
             await createRootMarker(localRoot);
             const cfg: Config = { localRoot, remote, deviceName: hostname().split('.')[0]!.replace(/[^\w-]/g, ''), maxDeletes: 20 };
@@ -528,6 +534,8 @@ async function main() {
             if (storeProblem) throw new Error(storeProblem);
             const folder = path.resolve(expandHome(prompt('Folder to sync', path.join(homedir(), 'Proton')) ?? '', homedir()));
             if (!isYes(prompt(`Sync the folder ${folder}? [y/N]`))) throw new Error('Folder not confirmed, nothing was done.');
+            const badFolder = folderProblem(folder, homedir(), DATA);
+            if (badFolder) throw new Error(badFolder);
             checkOtherSyncTool(folder, { home: homedir(), uid: process.getuid?.() ?? 0, run: realRun, env: process.env, print: console.log, ask: (question) => prompt(question) });
             const choice = prompt('Target: 1 = My files (your real Drive), 2 = test space', '1');
             const target = choice === '2' ? 'test' : 'myfiles';
@@ -575,7 +583,12 @@ async function main() {
             } catch {
                 /* no configuration: nothing to print */
             }
-            await runUninstall({ home: homedir(), platform: platform() === 'darwin' ? 'darwin' : 'linux', purgeData, syncedFolder, ask, print: (line) => console.log(line), run });
+            const deleteSession = async () => {
+                // In the third store, unsafe_file, the session is a file of the data folder.
+                if (process.env.PROTON_DRIVE_CREDENTIALS_STORE === 'pass') Bun.spawnSync(['pass', 'rm', '-f', PASS_CREDENTIALS_PATH]);
+                else await Bun.secrets.delete({ service: CREDENTIALS_SERVICE, name: CREDENTIALS_NAME });
+            };
+            await runUninstall({ home: homedir(), dataDir: DATA, platform: platform() === 'darwin' ? 'darwin' : 'linux', purgeData, syncedFolder, ask, print: (line) => console.log(line), run, deleteSession });
             return;
         }
         case 'activity':

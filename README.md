@@ -14,10 +14,6 @@ nucleon-sync uses the Proton Drive SDK. Proton says the SDK is for personal, non
 
 ## Install
 
-    curl -fsSL https://github.com/steph-ben/nucleon-sync/releases/latest/download/install.sh | sh
-
-GitHub's `latest` link skips prereleases. While only betas exist, use the tag link instead:
-
     curl -fsSL https://github.com/steph-ben/nucleon-sync/releases/download/v0.2.0-beta/install.sh | sh
 
 The installer needs `curl`, `unzip` and `tar`. It runs as your user, writes only under `~/.local`, and downloads bun with a checksum. If `nucleon-sync` is not found afterwards, add `~/.local/bin` to your PATH.
@@ -54,7 +50,7 @@ Tray helpers for Linux and macOS are experimental. They live in `desktop/` and a
 
     nucleon-sync uninstall
 
-This stops the service and removes the program. It keeps your data folder (`~/.local/share/nucleon-sync`) unless you add `--purge-data`, which also deletes the quarantine. It never touches the synced folder.
+This stops the service and removes the program. It keeps your data folder (`~/.local/share/nucleon-sync`) unless you add `--purge-data`, which also deletes the quarantine and your saved sign-in. It never touches the synced folder.
 
 ## Troubleshooting
 

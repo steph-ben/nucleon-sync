@@ -9,6 +9,11 @@ export function isOutdatedClient(message: string): boolean {
     return /update this app|upgrade the app/i.test(message);
 }
 
+/** Same check for the errors of single actions in a pass that otherwise went through. */
+export function anyOutdatedClient(errors: string[]): boolean {
+    return errors.some(isOutdatedClient);
+}
+
 /** Tells the user this is not a Proton app, then shows the sign-in address. */
 export async function signIn(auth: { authViaWeb(show: (url: string) => void): Promise<unknown> }, print: (line: string) => void): Promise<void> {
     print(THIRD_PARTY_NOTICE);

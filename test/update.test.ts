@@ -280,8 +280,10 @@ describe('runUninstall', () => {
         writeFileSync(path.join(home, 'Proton/a.txt'), 'mine');
         const out: string[] = [];
         const cmds: string[] = [];
-        const base = { home, platform: 'linux' as const, syncedFolder: path.join(home, 'Proton'), print: (s: string) => out.push(s), run: (c: string[]) => (cmds.push(c.join(' ')), 0) };
-        return { home, app, data, out, cmds, base };
+        const sessions: string[] = [];
+        const deleteSession = async () => void sessions.push('deleted');
+        const base = { home, dataDir: data, platform: 'linux' as const, syncedFolder: path.join(home, 'Proton'), print: (s: string) => out.push(s), run: (c: string[]) => (cmds.push(c.join(' ')), 0), deleteSession };
+        return { home, app, data, out, cmds, base, sessions };
     }
     test('without confirmation nothing happens', async () => {
         const { app, cmds, base } = setup();
@@ -356,6 +358,50 @@ describe('runUninstall', () => {
         }
         expect(cmds).toEqual([]);
         expect(out.join('\n')).toContain('Refusing --purge-data');
+    });
+    test('purge also removes the saved sign-in, and says so before asking', async () => {
+        const { sessions, base } = setup();
+        const questions: string[] = [];
+        await runUninstall({ ...base, purgeData: true, ask: async (q) => (questions.push(q), true) });
+        expect(sessions).toEqual(['deleted']);
+        expect(questions[1]).toContain('sign-in');
+    });
+    test('without purge the sign-in stays', async () => {
+        const { sessions, base } = setup();
+        await runUninstall({ ...base, purgeData: false, ask: async () => true });
+        expect(sessions).toEqual([]);
+    });
+    test('a sign-in that cannot be removed is reported and the rest goes on', async () => {
+        const { data, out, base } = setup();
+        await runUninstall({ ...base, purgeData: true, ask: async () => true, deleteSession: async () => { throw new Error('no keyring'); } });
+        expect(existsSync(data)).toBe(false);
+        expect(out.join('\n')).toContain('no keyring');
+    });
+    test('a data folder set by NUCLEON_SYNC_HOME is the one purged, and its path is printed', async () => {
+        const { home, data, out, base } = setup();
+        const custom = path.join(home, 'elsewhere');
+        mkdirSync(custom);
+        await runUninstall({ ...base, dataDir: custom, purgeData: true, ask: async () => true });
+        expect(existsSync(custom)).toBe(false);
+        expect(existsSync(data)).toBe(true);
+        expect(out.join('\n')).toContain(custom);
+    });
+    test('kept data is named by its path', async () => {
+        const { data, out, base } = setup();
+        await runUninstall({ ...base, purgeData: false, ask: async () => true });
+        expect(out.join('\n')).toContain(`The data folder ${data}`);
+    });
+    test('purge refuses a data folder that holds the home folder', async () => {
+        const { home, out, base } = setup();
+        await runUninstall({ ...base, dataDir: home, purgeData: true, ask: async () => true });
+        expect(existsSync(home)).toBe(true);
+        expect(out.join('\n')).toContain('Refusing');
+    });
+    test('with no working user systemd the message names a way out', async () => {
+        const { home, out, base } = setup();
+        await runUninstall({ ...base, purgeData: false, ask: async () => true, run: () => 1 });
+        expect(out.join('\n')).toContain(path.join(home, '.config/systemd/user/nucleon-sync.service'));
+        expect(out.join('\n')).toContain('user bus');
     });
     test('refusing the second confirmation keeps the data', async () => {
         const { data, base } = setup();
