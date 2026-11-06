@@ -116,3 +116,5 @@ The tests need no Proton account. Design notes are in `docs/design.md`.
 ## License
 
 MIT, see `LICENSE`. Bundled libraries are listed in `THIRD-PARTY-NOTICES` in each release.
+
+Made by [steph-ben](https://github.com/steph-ben).
