@@ -66,12 +66,10 @@ describe('the two tray programs show the same menu', () => {
     });
 
     test('the same five states have an icon on both, and the logo of the menu has a transparent PNG for macOS', () => {
-        for (const level of ['ok', 'syncing', 'paused', 'attention']) {
+        for (const level of ['ok', 'syncing', 'paused', 'attention', 'stopped']) {
             expect(readdirSync(path.join(desktop, 'linux/icons'))).toContain(`nucleon-sync-${level}.svg`);
             expect(swift).toContain(`case "${level}":`);
         }
-        expect(readdirSync(path.join(desktop, 'linux/icons'))).toContain('nucleon-sync-stopped.svg');
-        expect(swift).toContain('default: // stopped');
         expect(swift).toContain('image.isTemplate = true');
         // macOS cannot read the SVG logo before macOS 13: run scripts/render-mac-icons.sh after changing it.
         expect(readdirSync(path.join(desktop, 'macos/icons'))).toEqual(['nucleon-sync.png']);

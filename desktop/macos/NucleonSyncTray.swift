@@ -21,42 +21,69 @@ struct Activity {
 }
 
 let tailBytes = 256 * 1024
-// The icon in the menu bar is our logo (two rings) with a small badge for the state, drawn here as a template image:
-// one colour, so macOS paints it like the other icons of the bar, in light and in dark mode, on a transparent background.
+// The icon in the menu bar is the same drawing as on Linux (desktop/linux/icons/nucleon-sync-<state>.svg): two discs, two arrows, a badge for the state.
+// It is drawn here, with the coordinates of the SVG (a 128 x 128 box), as a template image: one colour, so macOS paints it like the other icons of the bar,
+// in light and in dark mode, on a transparent background. Where the SVG has colours, the shapes are cut out of each other instead.
 func statusIcon(_ level: String) -> NSImage {
-    let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+    let image = NSImage(size: NSSize(width: 20, height: 20), flipped: true) { _ in
         guard let g = NSGraphicsContext.current?.cgContext else { return false }
+        g.scaleBy(x: 20.0 / 128.0, y: 20.0 / 128.0)
         g.setFillColor(NSColor.black.cgColor)
         g.setStrokeColor(NSColor.black.cgColor)
         g.setLineCap(.round)
         g.setLineJoin(.round)
-        g.setLineWidth(1.5)
-        for x in [6.0, 11.4] { g.strokeEllipse(in: CGRect(x: x - 4.4, y: 10.2 - 4.4, width: 8.8, height: 8.8)) }
-        let c = CGPoint(x: 13.2, y: 4.6)
+        func disc(_ x: Double, _ y: Double, _ r: Double) { g.fillEllipse(in: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r)) }
+        func polygon(_ points: [(Double, Double)]) { g.addLines(between: points.map { CGPoint(x: $0.0, y: $0.1) }); g.closePath(); g.fillPath() }
+        func arc(_ cx: Double, _ cy: Double, _ r: Double, _ from: Double, _ to: Double, width: Double) {
+            let steps = 24
+            let points = (0...steps).map { i -> CGPoint in
+                let t = (from + (to - from) * Double(i) / Double(steps)) * Double.pi / 180
+                return CGPoint(x: cx + r * cos(t), y: cy + r * sin(t))
+            }
+            g.setLineWidth(width)
+            g.addLines(between: points)
+            g.strokePath()
+        }
+        func box(_ x: Double, _ y: Double, _ w: Double, _ h: Double, _ r: Double) {
+            g.addPath(CGPath(roundedRect: CGRect(x: x, y: y, width: w, height: h), cornerWidth: r, cornerHeight: r, transform: nil))
+            g.fillPath()
+        }
+        // The two arrows, then the two discs, the right one separated from the left one by a thin gap.
+        arc(64, 64, 54, -90, -30, width: 12)
+        polygon([(116, 22), (112, 40), (95, 33)])
+        arc(64, 64, 54, 90, 150, width: 12)
+        polygon([(12, 106), (16, 88), (33, 95)])
+        disc(50, 64, 22)
         g.setBlendMode(.destinationOut)
-        g.fillEllipse(in: CGRect(x: c.x - 5.6, y: c.y - 5.6, width: 11.2, height: 11.2))
+        disc(78, 64, 25)
         g.setBlendMode(.normal)
-        g.fillEllipse(in: CGRect(x: c.x - 4.4, y: c.y - 4.4, width: 8.8, height: 8.8))
+        disc(78, 64, 22)
+        // The badge, with a gap around it, then its sign cut out of it.
         g.setBlendMode(.destinationOut)
-        g.setLineWidth(1.3)
-        func at(_ x: Double, _ y: Double) -> CGPoint { CGPoint(x: c.x + x, y: c.y + y) }
+        disc(101, 101, 31)
+        g.setBlendMode(.normal)
+        disc(101, 101, 26)
+        g.setBlendMode(.destinationOut)
         switch level {
         case "ok":
-            g.addLines(between: [at(-1.8, 0.1), at(-0.5, -1.3), at(1.9, 1.4)])
+            g.setLineWidth(9)
+            g.addLines(between: [CGPoint(x: 88, y: 100), CGPoint(x: 97, y: 109), CGPoint(x: 114, y: 90)])
             g.strokePath()
         case "syncing":
-            g.addArc(center: c, radius: 1.9, startAngle: 0.7, endAngle: 0.7 + 5.2, clockwise: false)
-            g.strokePath()
+            arc(101.91, 101.2, 13, -156.4, -39.1, width: 6)
+            arc(102.09, 98.8, 13, 23.6, 140.9, width: 6)
+            polygon([(114, 86), (114, 95), (105, 95)])
+            polygon([(88, 114), (88, 105), (97, 105)])
         case "paused":
-            g.fill(CGRect(x: c.x - 1.7, y: c.y - 1.8, width: 1.2, height: 3.6))
-            g.fill(CGRect(x: c.x + 0.5, y: c.y - 1.8, width: 1.2, height: 3.6))
+            box(90, 90, 7, 22, 2)
+            box(104, 90, 7, 22, 2)
         case "attention":
-            g.fill(CGRect(x: c.x - 0.6, y: c.y - 0.6, width: 1.2, height: 2.6))
-            g.fillEllipse(in: CGRect(x: c.x - 0.7, y: c.y - 2.1, width: 1.4, height: 1.4))
-        default: // stopped
-            g.addLines(between: [at(-1.6, -1.6), at(1.6, 1.6)])
-            g.addLines(between: [at(-1.6, 1.6), at(1.6, -1.6)])
-            g.strokePath()
+            box(98, 88, 7, 16, 3)
+            disc(101.5, 112, 4)
+        case "stopped":
+            box(89, 89, 25, 25, 4)
+        default:
+            break
         }
         return true
     }
