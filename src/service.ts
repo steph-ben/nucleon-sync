@@ -109,3 +109,27 @@ export function installTray(o: Pick<ServiceOptions, 'home' | 'dataDir' | 'comman
     if (checks.gnomeNeedsExtension()) return 'started, but GNOME hides it until you enable the AppIndicator extension (gnome-shell-extension-appindicator)';
     return 'started, and starts at every login';
 }
+
+const MAC_TRAY_LABEL = 'org.nucleonsync.tray';
+
+/**
+ * Builds the menu bar icon with the Swift compiler of the Mac (one file, no download), then loads it as a login agent.
+ * Returns a line for the summary. Never installs the command line tools: it says how.
+ */
+export function installMacTray(o: Pick<ServiceOptions, 'home' | 'dataDir' | 'command'>, run: (cmd: string[]) => number, uid: number = process.getuid?.() ?? 501): string {
+    // Through "current", so an update brings the new source.
+    const source = path.join(o.home, '.local/share/nucleon-sync/app/current/desktop/macos/NucleonSyncTray.swift');
+    if (!existsSync(source)) return `not started: ${source} is missing`;
+    const binary = path.join(o.home, '.local/bin/nucleon-sync-tray');
+    mkdirSync(path.dirname(binary), { recursive: true });
+    if (run(['swiftc', '-O', source, '-o', binary]) !== 0) return 'not started: it needs the Apple command line tools to build (run: xcode-select --install, then nucleon-sync setup)';
+    const template = readFileSync(path.join(findDeployDir(import.meta.dir), `${MAC_TRAY_LABEL}.plist`), 'utf8');
+    const file = path.join(o.home, `Library/LaunchAgents/${MAC_TRAY_LABEL}.plist`);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, template.replaceAll('__HOME__', xmlEscape(o.home)).replaceAll('__DATA__', xmlEscape(o.dataDir)));
+    const domain = `gui/${uid}`;
+    // A rerun or an update must load the new build, and never leave two icons.
+    run(['launchctl', 'bootout', `${domain}/${MAC_TRAY_LABEL}`]);
+    if (run(['launchctl', 'bootstrap', domain, file]) !== 0) return `not started: launchctl could not load ${file}`;
+    return 'started, and starts at every login';
+}

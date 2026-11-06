@@ -54,6 +54,7 @@ One command, no `sudo`, nothing to prepare. It installs under `~/.local`, then s
 | Configuration, database, log, quarantine | `~/.local/share/nucleon-sync` |
 | The background service | systemd on Linux, launchd on macOS, in your user account |
 | The tray icon, on Linux | `~/.config/autostart`, if your desktop has the library it needs |
+| The menu bar icon, on macOS | `~/.local/bin/nucleon-sync-tray` and a launchd agent, built on your Mac with `swiftc` |
 | Your Proton session | your system keyring |
 
 `nucleon-sync uninstall` removes the command, the program, the service and the tray icon. Your data and sign-in stay unless you add `--purge-data`. It never touches the synced folder.
@@ -118,3 +119,5 @@ The tests need no Proton account. Design notes are in `docs/design.md`.
 MIT, see `LICENSE`. Bundled libraries are listed in `THIRD-PARTY-NOTICES` in each release.
 
 Made by [steph-ben](https://github.com/steph-ben).
+
+On macOS the menu bar icon is built on your Mac by `setup`, with the Apple command line tools (`xcode-select --install` if they are missing).

@@ -29,6 +29,13 @@ export function banner(): string[] {
     ];
 }
 
+/** The label cut to fit one terminal row next to the symbol and the seconds, so \r always returns to the start of the one row drawn. */
+export function fitLabel(label: string, columns: number | undefined): string {
+    const room = (columns && columns > 0 ? columns : 80) - 4 - 1 - 7; // "  ⠋ ", the cursor column, " 1234s"
+    if (room < 4 || label.length <= room) return label;
+    return `${label.slice(0, room - 1).trimEnd()}…`;
+}
+
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 /** A line with a spinner and the seconds spent, while something slow runs. Plain text in a pipe. */
@@ -39,7 +46,7 @@ export async function working<T>(label: string, task: () => Promise<T>, done?: (
     }
     const started = Date.now();
     let frame = 0;
-    const draw = () => process.stdout.write(`\r\x1b[2K  ${cyan(FRAMES[frame++ % FRAMES.length]!)} ${label} ${dim(`${Math.floor((Date.now() - started) / 1000)}s`)}`);
+    const draw = () => process.stdout.write(`\r\x1b[2K  ${cyan(FRAMES[frame++ % FRAMES.length]!)} ${fitLabel(label, process.stdout.columns)} ${dim(`${Math.floor((Date.now() - started) / 1000)}s`)}`);
     draw();
     const timer = setInterval(draw, 80);
     try {
@@ -62,7 +69,7 @@ export function waiting(label: string): () => void {
     }
     const started = Date.now();
     let frame = 0;
-    const draw = () => process.stdout.write(`\r\x1b[2K  ${cyan(FRAMES[frame++ % FRAMES.length]!)} ${label} ${dim(`${Math.floor((Date.now() - started) / 1000)}s`)}`);
+    const draw = () => process.stdout.write(`\r\x1b[2K  ${cyan(FRAMES[frame++ % FRAMES.length]!)} ${fitLabel(label, process.stdout.columns)} ${dim(`${Math.floor((Date.now() - started) / 1000)}s`)}`);
     draw();
     const timer = setInterval(draw, 80);
     return () => {

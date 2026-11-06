@@ -13,7 +13,7 @@ import { makeIgnore } from './desktop/exclude';
 import { anyOutdatedClient, isOutdatedClient, retryDelaySeconds, signIn } from './desktop/signin';
 import { sendNote } from './desktop/notify';
 import { buildConfig, expandHome, finalSummary, planRows, REMOVING_ACTIONS, yesNo, folderProblem, isYes, moveStateAside, orphanDatabaseProblem, sessionStoreProblem } from './desktop/setup';
-import { installService, installTray, serviceIsUp, serviceProblem, TRAY_NAMESPACES, type TrayChecks } from './service';
+import { installMacTray, installService, installTray, serviceIsUp, serviceProblem, TRAY_NAMESPACES, type TrayChecks } from './service';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
 import { checkForUpdate, isInstalledLayout, runUpdate, updateFailed } from './desktop/update';
@@ -241,8 +241,9 @@ function summarize(plan: Plan) {
 
 /** The sync already runs here: a tray problem must never fail the setup. */
 function startTray(command: string): string {
-    if (platform() !== 'linux') return 'not installed by setup on macOS yet';
+    if (platform() !== 'linux' && platform() !== 'darwin') return 'not available on this system';
     try {
+        if (platform() === 'darwin') return installMacTray({ home: homedir(), dataDir: DATA, command }, (cmd) => Bun.spawnSync(cmd, { stdout: 'ignore', stderr: 'ignore' }).exitCode ?? 1);
         return installTray({ home: homedir(), dataDir: DATA, command }, trayChecks());
     } catch (e) {
         return `not started: ${(e as Error).message}`;

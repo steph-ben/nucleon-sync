@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { installTray, type TrayChecks } from '../src/service';
+import { installMacTray, installTray, type TrayChecks } from '../src/service';
 import { buildConfig, describePlan, expandHome, finalSummary, folderProblem, isYes, planRows, yesNo, sessionStoreProblem } from '../src/desktop/setup';
 import { findDeployDir, installService, launchdJobRunning, renderService, serviceIsUp, serviceProblem } from '../src/service';
 
@@ -289,6 +289,42 @@ describe('tray', () => {
     });
     test('GNOME without the extension is said plainly', () => {
         expect(installTray(installed(), checks({ gnomeNeedsExtension: () => true }).checks)).toContain('AppIndicator extension');
+    });
+});
+
+describe('tray on macOS', () => {
+    const installedMac = () => {
+        const home = tempHome();
+        touch(path.join(home, '.local/share/nucleon-sync/app/current/desktop/macos/NucleonSyncTray.swift'));
+        return { home, dataDir: path.join(home, '.local/share/nucleon-sync'), command: path.join(home, '.local/bin/nucleon-sync') };
+    };
+    const runner = (failOn?: string) => {
+        const calls: string[][] = [];
+        return { calls, run: (cmd: string[]) => (calls.push(cmd), failOn && cmd[0] === failOn ? 1 : 0) };
+    };
+    test('it builds the icon, writes the login agent and loads it', () => {
+        const o = installedMac();
+        const r = runner();
+        expect(installMacTray(o, r.run, 501)).toContain('starts at every login');
+        expect(r.calls[0]![0]).toBe('swiftc');
+        expect(r.calls[0]).toContain(path.join(o.home, '.local/bin/nucleon-sync-tray'));
+        const plist = readFileSync(path.join(o.home, 'Library/LaunchAgents/org.nucleonsync.tray.plist'), 'utf8');
+        expect(plist).toContain(`${o.home}/.local/bin/nucleon-sync-tray`);
+        expect(plist).not.toContain('__');
+        expect(r.calls.map((c) => c.slice(0, 2).join(' '))).toEqual(expect.arrayContaining(['launchctl bootout', 'launchctl bootstrap']));
+        expect(r.calls.at(-1)![3]).toBe(path.join(o.home, 'Library/LaunchAgents/org.nucleonsync.tray.plist'));
+    });
+    test('a Mac without the compiler is told what to install, and nothing is loaded', () => {
+        const o = installedMac();
+        const r = runner('swiftc');
+        const line = installMacTray(o, r.run, 501);
+        expect(line).toContain('xcode-select --install');
+        expect(r.calls.some((c) => c[0] === 'launchctl')).toBe(false);
+    });
+    test('a missing source is named', () => {
+        const o = installedMac();
+        rmSync(path.join(o.home, '.local/share/nucleon-sync/app/current/desktop/macos/NucleonSyncTray.swift'));
+        expect(installMacTray(o, runner().run, 501)).toContain('is missing');
     });
 });
 
