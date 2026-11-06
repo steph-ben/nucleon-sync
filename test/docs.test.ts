@@ -43,7 +43,7 @@ describe('docs', () => {
             expect(fromOld).toContain(text);
         }
         const fromRclone = read('docs/migrating-from-rclone.md');
-        for (const text of ['--resync', 'plan', 'link']) expect(fromRclone).toContain(text);
+        for (const text of ['--resync', 'plan', 'link', 'setup --reset', 'scratch folder', 'type `yes`', 'launchctl disable']) expect(fromRclone).toContain(text);
         expect(fs.existsSync(path.join(repo, 'docs/linux-install.md'))).toBe(false);
         expect(fs.existsSync(path.join(repo, 'docs/migration.md'))).toBe(false);
     });

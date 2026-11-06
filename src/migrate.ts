@@ -9,7 +9,7 @@ const LEGACY_SECRET_SERVICE = 'proton-sync/session';
 const NEW_SECRET_SERVICE = `${APP_NAME}/session`;
 const SECRET_NAME = 'auth-session';
 /** Copied in this order; config.json goes last because its presence means "migration done". */
-const DATABASE_FILES = ['state.sqlite', 'state.sqlite-wal', 'state.sqlite-shm'];
+export const DATABASE_FILES = ['state.sqlite', 'state.sqlite-wal', 'state.sqlite-shm'];
 
 export interface MigrationPlan {
     legacyDir: string;

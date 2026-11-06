@@ -1,6 +1,6 @@
-import { readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, renameSync } from 'node:fs';
 import path from 'node:path';
-import { isDisabledInLaunchctl, type RunCommand } from '../migrate';
+import { DATABASE_FILES, isDisabledInLaunchctl, type RunCommand } from '../migrate';
 
 export interface SetupAnswers {
     folder: string;
@@ -70,6 +70,28 @@ export function checkOtherSyncTool(folder: string, d: SyncToolCheck): void {
     d.print(`  ${leftover}`);
     d.print('If rclone still runs some other way (cron, a script, another machine), stop it first. Two tools on one Drive lose files.');
     if (d.ask('Type yes if rclone is stopped everywhere') !== 'yes') throw new Error('rclone not confirmed as stopped, nothing was done.');
+}
+
+/** A database without its config: it holds the memory of an unknown target, so setup must not reuse it. */
+export function orphanDatabaseProblem(data: string, config: string): string | undefined {
+    if (existsSync(config) || !existsSync(path.join(data, 'state.sqlite'))) return undefined;
+    return `${path.join(data, 'state.sqlite')} exists without a configuration. Used with a new target it would quarantine your local files, so nothing was done. To start over, run: nucleon-sync setup --reset`;
+}
+
+/** Moves the config and the database into a dated folder of the data folder. Moves nothing else, deletes nothing. Returns that folder, if anything was moved. */
+export function moveStateAside(data: string, config: string, now: Date): string | undefined {
+    // The config first: a stop half way leaves a database without config, which setup refuses.
+    const moves = [
+        [config, 'config.json'],
+        ...DATABASE_FILES.map((name) => [path.join(data, name), name]),
+    ].filter(([from]) => existsSync(from!)) as [string, string][];
+    if (!moves.length) return undefined;
+    const name = `reset-${now.toISOString().slice(0, 19).replaceAll(':', '-')}`;
+    let aside = path.join(data, name);
+    for (let n = 2; existsSync(aside); n++) aside = path.join(data, `${name}-${n}`);
+    mkdirSync(aside);
+    for (const [from, to] of moves) renameSync(from, path.join(aside, to));
+    return aside;
 }
 
 function namesIn(dir: string): string[] {

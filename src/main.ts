@@ -6,13 +6,13 @@ import path from 'node:path';
 import { createRootMarker, defaultIgnore, detectCaseInsensitive, RealLocalFs } from './adapters/local';
 import { ProtonRemote } from './adapters/proton';
 import { SqliteStore } from './adapters/sqlite-store';
-import { Engine, SafetyStop } from './core/engine';
+import { assertSameTarget, Engine, SafetyStop } from './core/engine';
 import type { Logger, Plan } from './core/types';
 import { recentActivity } from './desktop/activity';
 import { makeIgnore } from './desktop/exclude';
 import { isOutdatedClient, retryDelaySeconds, signIn } from './desktop/signin';
 import { sendNote } from './desktop/notify';
-import { buildConfig, checkOtherSyncTool, expandHome, isYes, sessionStoreProblem } from './desktop/setup';
+import { buildConfig, checkOtherSyncTool, expandHome, isYes, moveStateAside, orphanDatabaseProblem, sessionStoreProblem } from './desktop/setup';
 import { installService, serviceProblem } from './service';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
@@ -157,9 +157,15 @@ async function resolveRoot(ctx: Ctx, cfg: Config) {
     return { rootUid: root.uid, scopeId: root.treeEventScopeId };
 }
 
-async function buildEngine(cfg: Config, ctx: Ctx, log: Logger, touched?: (paths: string[]) => void, progress?: (done: number, total: number, line: string) => void) {
+/** The database of this configuration. Stops on another target, before anything looks at the Drive. */
+function openStore(cfg: Config) {
     mkdirSync(DATA, { recursive: true });
     const store = new SqliteStore(path.join(DATA, 'state.sqlite'));
+    assertSameTarget(store, cfg.remote);
+    return store;
+}
+
+async function buildEngine(cfg: Config, ctx: Ctx, store: SqliteStore, log: Logger, touched?: (paths: string[]) => void, progress?: (done: number, total: number, line: string) => void) {
     const quarantine = path.join(DATA, 'quarantine');
     const ignore = makeIgnore(cfg.exclude ?? []);
     const local = new RealLocalFs(cfg.localRoot, quarantine, { ignore });
@@ -176,7 +182,7 @@ async function buildEngine(cfg: Config, ctx: Ctx, log: Logger, touched?: (paths:
         touched,
         progress,
     });
-    return { engine, store };
+    return engine;
 }
 
 function summarize(plan: Plan) {
@@ -221,11 +227,12 @@ async function daemon(cfg: Config) {
             process.exit(0);
         });
     }
+    const store = openStore(cfg);
     const ctx = await sdkContext();
     if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run nucleon-sync login');
     const tracker = new ChangeTracker(makeIgnore(cfg.exclude ?? []));
     let desktop: DesktopTracker | undefined;
-    const { engine, store } = await buildEngine(cfg, ctx, log, (paths) => tracker.own(paths, Date.now()), (done, total, line) => desktop?.progress(done, total, line));
+    const engine = await buildEngine(cfg, ctx, store, log, (paths) => tracker.own(paths, Date.now()), (done, total, line) => desktop?.progress(done, total, line));
     desktop = new DesktopTracker(STATE_FILE, process.pid, store, sendNote, Date.now, () => existsSync(PAUSE_FILE));
     const view = desktop;
     view.flush();
@@ -412,6 +419,8 @@ async function main() {
         case 'init': {
             const [dir, remote] = args;
             if (!dir || !remote) throw new Error('usage: nucleon-sync init <folder> <device:name/folder|root>');
+            const orphan = orphanDatabaseProblem(DATA, configPath());
+            if (orphan) throw new Error(orphan);
             const localRoot = path.resolve(dir);
             mkdirSync(path.dirname(configPath()), { recursive: true });
             await createRootMarker(localRoot);
@@ -438,9 +447,10 @@ async function main() {
         case 'once': {
             const cfg = loadConfig();
             const log = logger(cfg.verbose ?? false);
+            const store = openStore(cfg);
             const ctx = await sdkContext();
             if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run nucleon-sync login');
-            const { engine, store } = await buildEngine(cfg, ctx, log);
+            const engine = await buildEngine(cfg, ctx, store, log);
             if (cmd === 'plan') printPlan(await engine.planOnly());
             else {
                 const approve = store.getKv('approve-deletes') === '1';
@@ -454,7 +464,13 @@ async function main() {
             return;
         }
         case 'run':
-            await daemon(loadConfig());
+            try {
+                await daemon(loadConfig());
+            } catch (e) {
+                // The service restarts in a loop: the log must say why.
+                logger()('ERROR', `the daemon could not start: ${e instanceof Error ? e.message : String(e)}`);
+                throw e;
+            }
             return;
         case 'approve': {
             const store = new SqliteStore(path.join(DATA, 'state.sqlite'));
@@ -483,6 +499,11 @@ async function main() {
             const command = path.join(homedir(), '.local/bin', APP_NAME);
             const osProblem = serviceProblem(platform());
             if (osProblem) throw new Error(osProblem);
+            if (args.includes('--reset')) {
+                if (isDaemonRunning(DATA)) throw new Error('nucleon-sync is running. Stop it first: systemctl --user stop nucleon-sync.service, or on macOS launchctl bootout gui/$(id -u)/org.nucleonsync.daemon');
+                const aside = moveStateAside(DATA, configPath(), new Date());
+                console.log(aside ? `Moved aside, nothing was deleted: ${aside}` : 'No configuration or database to move aside.');
+            }
             if (existsSync(configPath())) {
                 // Already configured: only the last step is left.
                 const cfg = loadConfig();
@@ -490,6 +511,8 @@ async function main() {
                 startSyncing(command);
                 return;
             }
+            const orphan = orphanDatabaseProblem(DATA, configPath());
+            if (orphan) throw new Error(orphan);
             const storeProblem = await sessionStoreProblem(probeSessionStore);
             if (storeProblem) throw new Error(storeProblem);
             const folder = path.resolve(expandHome(prompt('Folder to sync', path.join(homedir(), 'Proton')) ?? '', homedir()));
@@ -505,7 +528,8 @@ async function main() {
             const ctx = await sdkContext();
             if (!ctx.auth.isLoggedIn()) await signIn(ctx.auth, console.log);
             const log = logger(false);
-            const { engine } = await buildEngine(cfg, ctx, log);
+            // A throwaway database: a plan that fails must not leave one behind without a config.
+            const engine = await buildEngine(cfg, ctx, new SqliteStore(':memory:'), log);
             const plan = await engine.planOnly();
             console.log(`What the first sync would do: ${summarize(plan)}`);
             for (const w of plan.warnings) console.log(`Warning: ${w}`);
@@ -592,7 +616,7 @@ async function main() {
             console.log(APP_VERSION);
             return;
         default:
-            console.log('usage: nucleon-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|uninstall|migrate|version');
+            console.log('usage: nucleon-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup [--reset]|update|uninstall|migrate|version');
     }
 }
 

@@ -26,7 +26,7 @@ The installer needs `curl`, `unzip` and `tar`. It runs as your user, writes only
 
     nucleon-sync setup
 
-The assistant asks for the folder to sync (default `~/Proton`), signs you in, shows what the first sync would do, and only then starts the background service (systemd on Linux, launchd on macOS). Choose the test space if you want to try it first.
+The assistant asks for the folder to sync (default `~/Proton`), signs you in, shows what the first sync would do, and only then starts the background service (systemd on Linux, launchd on macOS). Choose the test space if you want to try it first. To change the folder or the target afterwards, stop the service and run `nucleon-sync setup --reset`: it moves the configuration and the database aside, deletes nothing, then runs the assistant again.
 
 On Linux you need a running keyring (libsecret, for example gnome-keyring) to keep your session.
 

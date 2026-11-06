@@ -8,9 +8,9 @@ Keep a copy of your folder somewhere else before you start. Native Proton docume
 
 2. Check that the folders of all machines are identical to each other and to the Drive. Counting files on each machine and comparing the numbers is a good first test.
 
-3. Try first in the test space. Run `nucleon-sync setup` and choose the test space (2). Create, rename and delete a few files, and look at the result on the web.
+3. Try first in the test space, with a small scratch folder such as `~/nucleon-test`, not your real folder. Run `nucleon-sync setup`, give that folder, and choose the test space (2). Create, rename and delete a few files, and look at the result on the web. Then stop it: `systemctl --user stop nucleon-sync.service`, or on macOS `launchctl bootout gui/$(id -u)/org.nucleonsync.daemon`.
 
-4. On the first machine, run `nucleon-sync setup` and choose My files. Setup shows the plan before it starts anything. If you prefer to look at it again, run `nucleon-sync plan`.
+4. On the first machine, run `nucleon-sync setup --reset` if you did the trial, or `nucleon-sync setup` if you did not. Give your real folder and choose My files. A database only fits one target, so `--reset` moves the configuration and the database aside to a dated `reset-...` folder in the data folder. It deletes nothing. Do not delete `config.json` by hand: setup refuses a database without its configuration, and a sync stops if the two disagree. Setup shows the plan before it starts anything. If you prefer to look at it again, run `nucleon-sync plan`.
 
 5. The first `plan` should show only `link` actions: each local file is matched with the identical file already on the Drive. Any download, upload or move to the trash means the two sides differ. Stop, do not sync, and find out why.
 
