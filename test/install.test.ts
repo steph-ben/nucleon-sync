@@ -32,7 +32,7 @@ function makeRelease(version: string) {
     run(['zip', '-qr', bunZip, 'bun-linux-x64'], dir);
 
     const stamp = (archiveSha: string) => {
-        const text = readFileSync(scriptSource, 'utf8').replaceAll('@VERSION@', version).replaceAll('@ARCHIVE_SHA256@', archiveSha);
+        const text = readFileSync(scriptSource, 'utf8').replaceAll('@VERSION@', version).replaceAll('@TAG@', `v${version}`).replaceAll('@ARCHIVE_SHA256@', archiveSha);
         const file = path.join(dir, `install-${archiveSha.slice(0, 6)}.sh`);
         writeFileSync(file, text);
         return file;

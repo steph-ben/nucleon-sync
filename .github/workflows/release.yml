@@ -1,0 +1,94 @@
+name: Release
+
+# Runs when a tag such as v0.2.0-beta is pushed.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  # The Intel Mac check proves the release works on Intel; macos-latest is Apple Silicon.
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-15-intel]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Dependencies
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          bash scripts/patch-crypto.sh
+      - name: Main tests
+        run: bun test test/local.test.ts test/scenarios.test.ts test/integration.test.ts test/proton-adapter.test.ts test/journal.test.ts test/watch-real.test.ts test/desktop.test.ts test/names.test.ts test/tray-linux.test.ts test/bundle.test.ts test/install.test.ts test/setup.test.ts
+      - name: Catalogue
+        run: CATALOG_OUT="$RUNNER_TEMP/catalog.jsonl" bun test test/catalog
+      - name: Fuzz tests
+        run: bun test test/fuzz.test.ts test/fuzz-real.test.ts
+
+  publish:
+    name: Publish the release
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Dependencies
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          bash scripts/patch-crypto.sh
+
+      # A tag pushed on any other branch must not publish.
+      - name: Check the tag is on main
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "Tag $GITHUB_REF_NAME is not on main: merge the commit into main first." >&2
+            exit 1
+          }
+
+      # The tag is v<version>-<channel>, for example v0.2.0-beta. The archive is named
+      # after the version alone (0.2.0), which build-release.sh checks against src/names.ts.
+      - name: Read the version from the tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${VERSION%-beta}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          case "$GITHUB_REF_NAME" in
+            *-beta) echo "PRERELEASE=--prerelease" >> "$GITHUB_ENV" ;;
+            *) echo "PRERELEASE=" >> "$GITHUB_ENV" ;;
+          esac
+
+      - name: Build
+        run: bash scripts/build-release.sh "$VERSION" "$GITHUB_REF_NAME"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # PRERELEASE is empty or --prerelease, so it must stay unquoted.
+          # shellcheck disable=SC2086
+          gh release create "$GITHUB_REF_NAME" $PRERELEASE --title "$GITHUB_REF_NAME" --generate-notes \
+            "dist/nucleon-sync-$VERSION.tar.gz" dist/SHA256SUMS dist/install.sh
