@@ -16,9 +16,10 @@ import { buildConfig, expandHome, isYes, otherSyncToolFor, sessionStoreProblem }
 import { installService, serviceProblem } from './service';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
-import { checkForUpdate } from './desktop/update';
+import { checkForUpdate, isInstalledLayout, runUpdate } from './desktop/update';
 import { activeLegacyService, applyMigration, findLegacy, isDaemonRunning, knownStopCommands, legacyDaemonFor, planMigration, stopCommands } from './migrate';
-import { APP_NAME, APP_VERSION, configFile, dataDir, THIRD_PARTY_NOTICE } from './names';
+import { APP_NAME, APP_VERSION, configFile, dataDir, RELEASE_VERSION, THIRD_PARTY_NOTICE } from './names';
+import { runUninstall } from './uninstall';
 import { ChangeTracker } from './watch';
 
 const DATA = dataDir(process.env, homedir());
@@ -28,6 +29,7 @@ const HEARTBEAT_MS = 60 * 60 * 1000;
 /** The icons read this file: older than DAEMON_GONE_MS means nobody is syncing. */
 const STATE_REFRESH_MS = 30 * 1000;
 const DAEMON_GONE_MS = 3 * 60 * 1000;
+const INSTALLED_APP_DIR = path.join(homedir(), '.local/share', APP_NAME, 'app');
 const UPDATE_EVERY_MS = 24 * 60 * 60 * 1000;
 const STATE_FILE = path.join(DATA, 'desktop.json');
 const PAUSE_FILE = path.join(DATA, 'paused');
@@ -228,10 +230,15 @@ async function daemon(cfg: Config) {
     const view = desktop;
     view.flush();
     setInterval(() => view.flush(), STATE_REFRESH_MS);
-    setInterval(() => {
-        // In its own process: installing restarts this daemon.
-        Bun.spawn([process.execPath, process.argv[1]!, 'update'], { stdout: 'ignore', stderr: 'ignore', stdin: 'ignore' }).unref();
-    }, UPDATE_EVERY_MS);
+    const tellAboutUpdate = () => {
+        // Only tells the user, once per new version. nucleon-sync update installs.
+        checkForUpdate({ current: RELEASE_VERSION, fetch, notify: sendNote, notifiedFile: path.join(DATA, 'update-notified') }).catch(() => {});
+    };
+    // A developer checkout updates with git: no notification there.
+    if (isInstalledLayout(import.meta.dir, INSTALLED_APP_DIR)) {
+        tellAboutUpdate();
+        setInterval(tellAboutUpdate, UPDATE_EVERY_MS);
+    }
 
     let wake: (() => void) | undefined;
     process.on('SIGUSR1', () => {
@@ -407,7 +414,7 @@ async function main() {
             if (!dir || !remote) throw new Error('usage: nucleon-sync init <folder> <device:name/folder|root>');
             const localRoot = path.resolve(dir);
             mkdirSync(path.dirname(configPath()), { recursive: true });
-            createRootMarker(localRoot);
+            await createRootMarker(localRoot);
             const cfg: Config = { localRoot, remote, deviceName: hostname().split('.')[0]!.replace(/[^\w-]/g, ''), maxDeletes: 20 };
             writeFileSync(configPath(), `${JSON.stringify(cfg, null, 4)}\n`);
             console.log(`configuration written: ${configPath()}`);
@@ -495,7 +502,7 @@ async function main() {
             if (target === 'myfiles' && !confirmed) throw new Error('My files was not confirmed, nothing was done. Choose the test space (2) to try safely.');
             const cfg = buildConfig({ folder, target, confirmed, deviceName: hostname().split('.')[0]!.replace(/[^\w-]/g, '') });
             mkdirSync(folder, { recursive: true });
-            createRootMarker(folder);
+            await createRootMarker(folder);
             const ctx = await sdkContext();
             if (!ctx.auth.isLoggedIn()) await signIn(ctx.auth, console.log);
             const log = logger(false);
@@ -510,9 +517,37 @@ async function main() {
             startSyncing(command);
             return;
         }
-        case 'update':
-            console.log(checkForUpdate(path.join(import.meta.dir, '..'), sendNote, () => signalDaemon('SIGTERM')));
+        case 'update': {
+            const home = homedir();
+            const darwin = platform() === 'darwin';
+            const run = (cmd: string[], env?: Record<string, string>) => Bun.spawnSync(cmd, { env: { ...process.env, ...env }, stdout: 'inherit', stderr: 'inherit' }).exitCode;
+            const quietly = (cmd: string[]) => Bun.spawnSync(cmd, { stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
+            const agent = `gui/${process.getuid?.() ?? 0}/org.nucleonsync.daemon`;
+            const output = (cmd: string[]) => {
+                const r = Bun.spawnSync(cmd, { stdout: 'pipe', stderr: 'ignore' });
+                return r.exitCode === 0 ? r.stdout.toString() : '';
+            };
+            const serviceInstalled = () =>
+                darwin ? existsSync(path.join(home, 'Library/LaunchAgents/org.nucleonsync.daemon.plist')) : existsSync(path.join(home, '.config/systemd/user/nucleon-sync.service'));
+            const restart = () => (darwin ? quietly(['launchctl', 'kickstart', '-k', agent]) : quietly(['systemctl', '--user', 'restart', 'nucleon-sync.service']));
+            const serviceIsActive = () => (darwin ? quietly(['launchctl', 'print', agent]) : quietly(['systemctl', '--user', 'is-active', '--quiet', 'nucleon-sync.service']));
+            const wait = () => new Promise<void>((resolve) => setTimeout(resolve, 5000));
+            console.log(await runUpdate({ appDir: INSTALLED_APP_DIR, codeDir: import.meta.dir, current: RELEASE_VERSION, fetch, run, output, serviceInstalled, restart, serviceIsActive, wait }));
             return;
+        }
+        case 'uninstall': {
+            const purgeData = args.includes('--purge-data');
+            const ask = async (question: string) => (prompt(`${question} Type yes to confirm`) ?? '') === 'yes';
+            const run = (cmd: string[]) => Bun.spawnSync(cmd, { stdout: 'ignore', stderr: 'ignore' }).exitCode;
+            let syncedFolder: string | undefined;
+            try {
+                syncedFolder = loadConfig().localRoot;
+            } catch {
+                /* no configuration: nothing to print */
+            }
+            await runUninstall({ home: homedir(), platform: platform() === 'darwin' ? 'darwin' : 'linux', purgeData, syncedFolder, ask, print: (line) => console.log(line), run });
+            return;
+        }
         case 'activity':
             for (const a of recentActivity(path.join(DATA, 'nucleon-sync.log'), Number(args[0]) || 30).reverse()) {
                 console.log(`${a.at}  ${a.label}  ${a.path}${a.error ? `  (${a.error})` : ''}`);
@@ -558,7 +593,7 @@ async function main() {
             console.log(APP_VERSION);
             return;
         default:
-            console.log('usage: nucleon-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|migrate|version');
+            console.log('usage: nucleon-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|uninstall|migrate|version');
     }
 }
 
