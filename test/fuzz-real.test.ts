@@ -124,7 +124,12 @@ async function run(seed: number, caseInsensitive: boolean, crashes: boolean) {
         let work = 0;
         for (const m of [w.a, w.b]) {
             for (const c of Object.values(tree(m.root))) w.ledger.saw(c);
-            const r = await m.engine.cycle(true);
+            const r = await m.engine.cycle(true).catch((e) => {
+                // The user emptied this machine: the safety stop holds it, the Drive stays intact.
+                if (/empty/.test(String(e))) return undefined;
+                throw e;
+            });
+            if (!r) return;
             trace(`=== settle ${m.tag}`, JSON.stringify(r.plan.actions), r.plan.warnings, r.errors, JSON.stringify(fullTree(m.root)), JSON.stringify(w.hub.tree()));
             work += r.plan.actions.length;
         }

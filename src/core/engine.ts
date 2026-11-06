@@ -23,7 +23,7 @@ export class SafetyStop extends Error {}
 export function assertSameTarget(kv: { getKv(key: string): string | undefined; setKv(key: string, value: string): void }, target: string) {
     const stored = kv.getKv('target');
     if (stored === undefined) return kv.setKv('target', target);
-    if (stored !== target) throw new SafetyStop(`this database belongs to ${stored}, but the configuration says ${target}. No file was touched. Put the old target back, or start over with: nucleon-sync setup --reset`);
+    if (stored !== target) throw new SafetyStop(`this database belongs to ${stored}, but the configuration says ${target}. No file was touched. Put the old target back, or stop the service and start over with: nucleon-sync setup --reset`);
 }
 
 

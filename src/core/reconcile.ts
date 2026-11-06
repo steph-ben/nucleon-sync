@@ -43,12 +43,15 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
         const claimed = new Set<string>();
         // An id binds one record only. Two records can hold it when a deleted folder's inode is
         // reused: the record at the item's place goes first, the other one lost its item.
-        for (const atPlaceOnly of [true, false]) {
+        // Neither at its place (the folder moved): the record whose children still sit in the item wins.
+        const holdsItsChildren = (r: BaseRec, e: Entry) => base.some((c) => c.parent === r.key && snap.get(idOf(c))?.parent === e.id);
+        for (const round of ['atPlace', 'holdsChildren', 'any']) {
             for (const r of sorted) {
                 const e = snap.get(idOf(r));
                 const parentId = r.parent === ROOT ? ROOT : bound.get(r.parent)?.id;
                 const atPlace = e?.parent === parentId && nameKey(e?.name ?? '') === nameKey(r.name);
-                if (e && e.kind === r.kind && !e.protected && !claimed.has(e.id) && (atPlace || !atPlaceOnly) && trust(r, e, parentId)) {
+                const eligible = round === 'any' || (round === 'atPlace' ? atPlace : !!e && holdsItsChildren(r, e));
+                if (e && e.kind === r.kind && !e.protected && !claimed.has(e.id) && eligible && trust(r, e, parentId)) {
                     bound.set(r.key, e);
                     claimed.add(e.id);
                 }
@@ -365,7 +368,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
             if (occ.has(slot(t.parent, name))) {
                 // Name already taken: it is only a name, the item goes back to its place on the Drive.
                 const home = canonR(s.r!.parent);
-                if (!s.ownSwap && !occ.has(slot(home, s.r!.name)) && !wouldCycle(s.rec.key, home)) {
+                if (!s.ownSwap && !occ.has(slot(home, s.r!.name)) && !wouldCycle(s.rec.key, home) && !doomedR.has(s.r!.parent)) {
                     occ.add(slot(home, s.r!.name));
                     t.parent = home;
                     t.name = s.r!.name;
