@@ -16,6 +16,7 @@ import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)  # Gtk.ImageMenuItem still works and is the simplest way to put an icon in a menu
 
+SCRIPT = os.path.abspath(__file__)
 DAEMON_GONE_SECONDS = 180
 TAIL_BYTES = 256 * 1024
 LINE = re.compile(r"^(\S+) (INFO |ERROR) (local→drive|drive→local|local)  (.+?)  (.+)$")
@@ -40,6 +41,21 @@ MENU_ICONS = {
     "stopped": "process-stop-symbolic",
 }
 STOPPED = {"level": "stopped", "title": "Sync stopped", "lines": ["The daemon is not running."], "paused": False, "held": 0, "unseen": 0}
+
+
+def read_version(script=SCRIPT):
+    """The release this tray belongs to: the VERSION file two folders up, next to bin/ and nucleon-sync.js.
+    The path goes through the "current" link, so after an update it answers with the new release. None if unreadable."""
+    try:
+        with open(os.path.join(os.path.dirname(script), "..", "..", "VERSION"), encoding="utf-8") as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def version_changed(started, now):
+    """True when another release is installed under the same path. An unreadable file (an update in progress) changes nothing."""
+    return bool(started) and bool(now) and now != started
 
 
 def read_state(home, now):
@@ -126,6 +142,7 @@ def main(binary, home):
     else:
         indicator = Indicator.Indicator.new("nucleon-sync", MENU_ICONS["stopped"], Indicator.IndicatorCategory.APPLICATION_STATUS)
     indicator.set_status(Indicator.IndicatorStatus.ACTIVE)
+    started = read_version()
     last = {"level": ""}
     window = {"open": None}
 
@@ -195,7 +212,7 @@ def main(binary, home):
                 item.connect("activate", callback)
             menu.append(item)
 
-        add("nucleon-sync: Proton Drive sync", picture=logo_picture())
+        add("nucleon-sync " + started if started else "nucleon-sync", picture=logo_picture())
         menu.append(Gtk.SeparatorMenuItem())
         add(state["title"], icon=MENU_ICONS[state["level"]])
         for line in state["lines"]:
@@ -219,6 +236,12 @@ def main(binary, home):
         return menu
 
     def refresh():
+        if version_changed(started, read_version()):
+            # An update installed a new release: this process still runs the old code, so it starts again from the new one.
+            try:
+                os.execv(sys.executable, [sys.executable, SCRIPT, binary, home])
+            except OSError:
+                pass
         state = read_state(home, time.time())
         if state != last.get("state"):
             indicator.set_icon_full(ICONS[state["level"]] if os.path.isdir(ICON_DIR) else MENU_ICONS[state["level"]], state["title"])

@@ -75,3 +75,35 @@ test('every state has its own icon, and the logo itself', () => {
     }
     expect(existsSync(path.join(dir, 'nucleon-sync.svg'))).toBe(true);
 });
+
+// Calls the version helpers with a fake install: <root>/VERSION and <root>/desktop/linux/nucleon-sync-tray.py.
+function versionDriver(root: string) {
+    return `
+import importlib.util, os, sys
+sys.path.insert(0, ${JSON.stringify(stubDir)})
+spec = importlib.util.spec_from_file_location("tray", ${JSON.stringify(script)})
+tray = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tray)
+fake = os.path.join(${JSON.stringify(root)}, "desktop", "linux", "nucleon-sync-tray.py")
+print(repr(tray.read_version(fake)))
+print(tray.version_changed("0.2.2-beta", "0.2.3-beta"), tray.version_changed("0.2.2-beta", "0.2.2-beta"), tray.version_changed("0.2.2-beta", None), tray.version_changed(None, "0.2.3-beta"))
+`;
+}
+
+describe('the tray follows updates', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'tray-version-'));
+    mkdirSync(path.join(root, 'desktop', 'linux'), { recursive: true });
+    afterAll(() => rmSync(root, { recursive: true, force: true }));
+    const ask = () => Bun.spawnSync(['python3', '-I', '-c', versionDriver(root)]).stdout.toString().trim().split('\n');
+
+    test.skipIf(!hasPython)('it reads the release from the VERSION file of its install', () => {
+        writeFileSync(path.join(root, 'VERSION'), '0.2.3-beta\n');
+        expect(ask()[0]).toBe("'0.2.3-beta'");
+    });
+    test.skipIf(!hasPython)('a missing file means no answer, and no answer never restarts the tray', () => {
+        rmSync(path.join(root, 'VERSION'));
+        const lines = ask();
+        expect(lines[0]).toBe('None');
+        expect(lines[1]).toBe('True False False False');
+    });
+});
