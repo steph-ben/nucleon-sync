@@ -81,3 +81,28 @@ export function serviceIsUp(os: string, uid: number, output: (cmd: string[]) => 
     if (os === 'darwin') return launchdJobRunning(output(['launchctl', 'print', `gui/${uid}/org.nucleonsync.daemon`]));
     return output(['systemctl', '--user', 'is-active', 'nucleon-sync.service']).trim() === 'active';
 }
+
+export const TRAY_NAMESPACES = ['AyatanaAppIndicator3', 'AppIndicator3'];
+
+export interface TrayChecks {
+    hasIndicatorLibrary: () => boolean;
+    /** GNOME without the AppIndicator extension hides every tray icon. */
+    gnomeNeedsExtension: () => boolean;
+    start: (cmd: string[]) => void;
+}
+
+/** Starts the tray icon now and at every login, or says what is missing. Returns a line for the summary. Never installs system packages. */
+export function installTray(o: Pick<ServiceOptions, 'home' | 'dataDir' | 'command'>, checks: TrayChecks): string {
+    if (!checks.hasIndicatorLibrary()) return 'not started: it needs libayatana-appindicator-gtk3 (or libappindicator-gtk3) and python3-gobject';
+    // Through "current", so an update keeps the icon working.
+    const root = path.join(o.home, '.local/share/nucleon-sync/app/current');
+    const script = path.join(root, 'desktop/linux/nucleon-sync-tray.py');
+    if (!existsSync(script)) return `not started: ${script} is missing`;
+    const entry = readFileSync(path.join(findDeployDir(import.meta.dir), 'nucleon-sync-tray.desktop'), 'utf8');
+    const file = path.join(o.home, '.config/autostart/nucleon-sync-tray.desktop');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, entry.replaceAll('__ROOT__', root).replaceAll('__HOME__', o.home).replaceAll('__DATA__', o.dataDir));
+    checks.start(['python3', script, o.command, o.dataDir]);
+    if (checks.gnomeNeedsExtension()) return 'started, but GNOME hides it until you enable the AppIndicator extension (gnome-shell-extension-appindicator)';
+    return 'started, and starts at every login';
+}

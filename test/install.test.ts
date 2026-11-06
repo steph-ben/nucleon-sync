@@ -53,6 +53,7 @@ function install(script: string, home: string, release: { dir: string; bunZip: s
             NUCLEON_BUN_SHA256: sha(release.bunZip),
             NUCLEON_UNAME_S: 'Linux',
             NUCLEON_UNAME_M: 'x86_64',
+            NUCLEON_NO_SETUP: '1',
             ...extra,
         },
     });
@@ -83,6 +84,33 @@ describe('install.sh', () => {
         expect(existsSync(link(home))).toBe(true);
         expect(r.out).toContain('nucleon-sync setup');
         expect(existsSync(path.join(home, '.local/share/nucleon-sync/.tmp')) ? Bun.spawnSync(['ls', path.join(home, '.local/share/nucleon-sync/.tmp')]).stdout.toString() : '').toBe('');
+    });
+
+    test('the setup assistant starts by itself, reading the terminal', () => {
+        const release = makeRelease('7.0.0');
+        const home = mkdtempSync(path.join(work, 'home-'));
+        const tty = path.join(work, 'fake-tty');
+        writeFileSync(tty, 'answer from the terminal\n');
+        // The stub command prints the version whatever its arguments.
+        const r = install(release.script, home, release, { NUCLEON_NO_SETUP: '', NUCLEON_TTY: tty });
+        expect(r.code).toBe(0);
+        expect(r.out).toContain(releaseAppVersion('7.0.0'));
+        expect(r.out).not.toContain('Next step');
+    });
+
+    test('with no terminal it only prints the next step', () => {
+        const release = makeRelease('7.0.1');
+        const home = mkdtempSync(path.join(work, 'home-'));
+        const r = install(release.script, home, release, { NUCLEON_NO_SETUP: '', NUCLEON_TTY: path.join(work, 'no-such-tty') });
+        expect(r.code).toBe(0);
+        expect(r.out).toContain('setup');
+    });
+
+    test('no colour codes when the output is not a terminal', () => {
+        const release = makeRelease('7.0.2');
+        const r = install(release.script, mkdtempSync(path.join(work, 'home-')), release);
+        expect(r.out).not.toContain('\u001b[');
+        expect(r.out).toContain('nucleon-sync');
     });
 
     test('running it twice changes nothing, and says the version was already there', () => {

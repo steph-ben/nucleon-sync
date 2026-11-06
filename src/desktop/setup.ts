@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readdirSync, realpathSync, renameSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, renameSync } from 'node:fs';
 import path from 'node:path';
-import { DATABASE_FILES, isDisabledInLaunchctl, type RunCommand } from '../migrate';
+import { DATABASE_FILES } from '../migrate';
 
 export interface SetupAnswers {
     folder: string;
@@ -16,60 +16,58 @@ export function buildConfig(a: SetupAnswers): { localRoot: string; remote: strin
     return a.target === 'myfiles' ? { ...common, remote: 'root', allowDriveRoot: true } : { ...common, remote: `device:nucleon-sync-test/sandbox-${a.deviceName}` };
 }
 
-/** A sentence saying which rclone unit of this user runs or starts by itself, or undefined. Unit names say nothing about the folder, so any of them blocks. */
-export function liveRcloneUnit(home: string, uid: number, run: RunCommand): string | undefined {
-    const units = namesIn(path.join(home, '.config/systemd/user')).filter((n) => n.startsWith('rclone-bisync'));
-    for (const unit of units) {
-        const active = run('systemctl', ['--user', 'is-active', unit]).stdout.trim();
-        const enabled = run('systemctl', ['--user', 'is-enabled', unit]).stdout.trim();
-        if (active === 'active' || active === 'activating' || enabled === 'enabled') {
-            return `The rclone unit ${unit} is ${enabled === 'enabled' ? 'enabled' : 'running'}. Stop it first: systemctl --user disable --now ${unit}. Two tools on one Drive lose files.`;
-        }
-    }
-    const plists = namesIn(path.join(home, 'Library/LaunchAgents')).filter((n) => n.startsWith('org.rclone') && n.endsWith('.plist'));
-    for (const label of plists.map((n) => n.slice(0, -'.plist'.length))) {
-        const service = `gui/${uid}/${label}`;
-        if (run('launchctl', ['print', service]).status === 0) return `The rclone job ${label} is loaded. Stop it first: launchctl bootout ${service}, then launchctl disable ${service}. Two tools on one Drive lose files.`;
-        // Not loaded, but launchd starts it again at the next login unless it is disabled.
-        if (!isDisabledInLaunchctl(run('launchctl', ['print-disabled', `gui/${uid}`]).stdout, label)) {
-            return `The rclone job ${label} starts at login. Run launchctl disable ${service}, or remove ~/Library/LaunchAgents/${label}.plist. Two tools on one Drive lose files.`;
-        }
-    }
-    return undefined;
+/** What the first sync would do, in plain words. Each action kind gets one line. */
+export function describePlan(counts: Map<string, number>): string[] {
+    const words: Record<string, string> = {
+        link: 'already the same on both sides',
+        upload: 'to upload',
+        download: 'to download',
+        remoteMkdir: 'folders to create on the Drive',
+        localMkdir: 'folders to create here',
+        remoteTrash: 'to move to the Proton trash',
+        localQuarantine: 'to move from this folder to the quarantine',
+    };
+    const lines = [...counts].map(([kind, n]) => `${String(n).padStart(6)}  ${words[kind] ?? kind}`);
+    return lines.length ? lines : ['     0  nothing to do'];
 }
 
-/** A file left by rclone bisync for this folder, or undefined. It proves rclone ran once, not that it still runs. */
-export function leftoverRcloneFile(folder: string, home: string, env: Record<string, string | undefined> = {}): string | undefined {
-    // rclone names its bisync state after the folder path with "/" replaced by "_", joined with the remote path.
-    const flat = path.resolve(folder).replace(/^\//, '').replace(/\//g, '_');
-    const cacheDirs = [path.join(home, '.cache/rclone/bisync'), path.join(home, 'Library/Caches/rclone/bisync')];
-    if (env.XDG_CACHE_HOME) cacheDirs.push(path.join(env.XDG_CACHE_HOME, 'rclone/bisync'));
-    for (const dir of cacheDirs) {
-        const name = namesIn(dir).find((n) => n.includes(flat));
-        if (name) return path.join(dir, name);
-    }
-    return undefined;
-}
-
-export interface SyncToolCheck {
+export interface Summary {
+    folder: string;
+    remote: string;
     home: string;
-    uid: number;
-    run: RunCommand;
-    env: Record<string, string | undefined>;
-    print: (line: string) => void;
-    ask: (question: string) => string | null;
+    dataDir: string;
+    os: string;
+    tray: string;
 }
 
-/** Throws when rclone is live. A leftover file alone only warns, and goes on after a typed yes. */
-export function checkOtherSyncTool(folder: string, d: SyncToolCheck): void {
-    const live = liveRcloneUnit(d.home, d.uid, d.run);
-    if (live) throw new Error(live);
-    const leftover = leftoverRcloneFile(folder, d.home, d.env);
-    if (!leftover) return;
-    d.print(`Warning: rclone bisync used ${folder} in the past. It left this file, and no rclone service is running or enabled now:`);
-    d.print(`  ${leftover}`);
-    d.print('If rclone still runs some other way (cron, a script, another machine), stop it first. Two tools on one Drive lose files.');
-    if (d.ask('Type yes if rclone is stopped everywhere') !== 'yes') throw new Error('rclone not confirmed as stopped, nothing was done.');
+/** What was installed, what runs, and where the files are. Printed at the end of setup. */
+export function finalSummary(s: Summary): string[] {
+    const here = (p: string) => (p.startsWith(`${s.home}/`) ? `~/${p.slice(s.home.length + 1)}` : p);
+    const target = s.remote === 'root' ? 'My files, on your Proton Drive' : s.remote;
+    const service = s.os === 'darwin' ? '~/Library/LaunchAgents/org.nucleonsync.daemon.plist' : '~/.config/systemd/user/nucleon-sync.service';
+    const stop = s.os === 'darwin' ? 'launchctl bootout gui/$(id -u)/org.nucleonsync.daemon' : 'systemctl --user stop nucleon-sync.service';
+    return [
+        'Your files',
+        `  Synced folder   ${here(s.folder)}`,
+        `  Synced with     ${target}`,
+        `  Quarantine      ${here(path.join(s.dataDir, 'quarantine'))}   (what the sync replaces or removes here is kept there)`,
+        '',
+        'What was installed',
+        `  Command         ~/.local/bin/nucleon-sync`,
+        `  Program         ${here(path.join(s.dataDir, 'app'))}   (nucleon-sync and its own bun runtime)`,
+        `  Data            ${here(s.dataDir)}   (configuration, database, log)`,
+        '  Sign-in         your system keyring',
+        '',
+        'What is running',
+        `  Service         nucleon-sync, running now, starts at every login (${service})`,
+        `  Tray icon       ${s.tray}`,
+        '',
+        'Useful commands',
+        '  nucleon-sync status      where things stand',
+        '  nucleon-sync activity    what happened to your files',
+        `  ${stop}`,
+        '  nucleon-sync uninstall   removes the program, never the synced folder',
+    ];
 }
 
 /** The real path, links resolved, also when the end of the path does not exist yet. */
@@ -111,14 +109,6 @@ export function moveStateAside(data: string, config: string, now: Date): string 
     mkdirSync(aside);
     for (const [from, to] of moves) renameSync(from, path.join(aside, to));
     return aside;
-}
-
-function namesIn(dir: string): string[] {
-    try {
-        return readdirSync(dir);
-    } catch {
-        return [];
-    }
 }
 
 /** Tries to write and delete a test secret. Returns how to fix it when that fails. */

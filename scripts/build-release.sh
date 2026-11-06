@@ -29,11 +29,13 @@ mkdir "$STAGE/bin"
 cp dist/nucleon-sync.js "$STAGE/"
 cp bin/nucleon-sync "$STAGE/bin/"
 cp -r deploy "$STAGE/deploy"
+mkdir -p "$STAGE/desktop/linux"
+cp desktop/linux/nucleon-sync-tray.py "$STAGE/desktop/linux/"
 cp LICENSE "$STAGE/"
 bun scripts/third-party-notices.ts "$STAGE/meta.json" > "$STAGE/THIRD-PARTY-NOTICES"
 echo "$RELEASE" > "$STAGE/VERSION"
 
-tar -czf "dist/$ARCHIVE" -C "$STAGE" nucleon-sync.js bin deploy LICENSE THIRD-PARTY-NOTICES VERSION
+tar -czf "dist/$ARCHIVE" -C "$STAGE" nucleon-sync.js bin deploy desktop LICENSE THIRD-PARTY-NOTICES VERSION
 (cd dist && sha256sum "$ARCHIVE" > SHA256SUMS)
 # The installer carries the release and the archive checksum, so it installs exactly this release.
 ARCHIVE_SHA256="$(cut -d ' ' -f 1 "dist/SHA256SUMS")"

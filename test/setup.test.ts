@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { buildConfig, checkOtherSyncTool, expandHome, folderProblem, isYes, leftoverRcloneFile, liveRcloneUnit, sessionStoreProblem } from '../src/desktop/setup';
-import type { RunCommand } from '../src/migrate';
+import { installTray, type TrayChecks } from '../src/service';
+import { buildConfig, describePlan, expandHome, finalSummary, folderProblem, isYes, sessionStoreProblem } from '../src/desktop/setup';
 import { findDeployDir, installService, launchdJobRunning, renderService, serviceIsUp, serviceProblem } from '../src/service';
 
 function tempHome(): string {
@@ -16,125 +16,6 @@ function touch(file: string) {
 }
 
 /** Answers like systemctl and launchctl: `live` maps "command args" to its output, anything else fails. */
-function fakeRun(live: Record<string, string> = {}): { run: RunCommand; calls: string[] } {
-    const calls: string[] = [];
-    const run: RunCommand = (command, args) => {
-        const line = [command, ...args].join(' ');
-        calls.push(line);
-        return line in live ? { status: 0, stdout: `${live[line]}\n` } : { status: 1, stdout: '' };
-    };
-    return { run, calls };
-}
-
-function checkTool(folder: string, home: string, o: { live?: Record<string, string>; answer?: string; env?: Record<string, string> } = {}) {
-    const printed: string[] = [];
-    const questions: string[] = [];
-    const result = () =>
-        checkOtherSyncTool(folder, {
-            home,
-            uid: 501,
-            run: fakeRun(o.live).run,
-            env: o.env ?? {},
-            print: (line) => printed.push(line),
-            ask: (question) => (questions.push(question), o.answer ?? null),
-        });
-    return { result, printed, questions };
-}
-
-const DISABLED_LIST = 'disabled services = {\n\t"org.rclone.bisync" => disabled\n}';
-
-describe('other sync tool', () => {
-    const cacheFile = (home: string, cache = '.cache/rclone/bisync') => path.join(home, cache, `${home.replace(/^\//, '').replace(/\//g, '_')}_Proton..proton_.path1.lst`);
-
-    test('a leftover rclone file with no live unit needs a typed yes, and names the file', () => {
-        const home = tempHome();
-        const file = cacheFile(home);
-        touch(file);
-        const check = checkTool(path.join(home, 'Proton'), home, { answer: 'no' });
-        expect(check.result).toThrow('nothing was done');
-        expect(check.printed.join('\n')).toContain(file);
-        expect(check.questions).toHaveLength(1);
-        expect(checkTool(path.join(home, 'Proton'), home, { answer: 'yes' }).result).not.toThrow();
-    });
-    test('a leftover file with the folder in the middle of its name counts', () => {
-        const home = tempHome();
-        const name = home.replace(/^\//, '').replace(/\//g, '_');
-        touch(path.join(home, '.cache/rclone/bisync', `proton_${name}_Proton.path2.lst`));
-        expect(leftoverRcloneFile(path.join(home, 'Proton'), home)).toContain('path2.lst');
-    });
-    test('a leftover file of another folder asks nothing', () => {
-        const home = tempHome();
-        touch(cacheFile(home));
-        const check = checkTool(path.join(home, 'Other'), home);
-        check.result();
-        expect(check.questions).toEqual([]);
-    });
-    test('nothing installed asks nothing', () => {
-        const home = tempHome();
-        const check = checkTool(path.join(home, 'Proton'), home);
-        check.result();
-        expect(check.questions).toEqual([]);
-        expect(check.printed).toEqual([]);
-    });
-    test('the macOS cache folder and XDG_CACHE_HOME are searched', () => {
-        const home = tempHome();
-        const xdg = tempHome();
-        touch(cacheFile(home, 'Library/Caches/rclone/bisync'));
-        expect(leftoverRcloneFile(path.join(home, 'Proton'), home)).toContain('Library/Caches');
-        const other = tempHome();
-        const name = other.replace(/^\//, '').replace(/\//g, '_');
-        touch(path.join(xdg, 'rclone/bisync', `${name}_Proton..proton_.path1.lst`));
-        expect(leftoverRcloneFile(path.join(other, 'Proton'), other)).toBeUndefined();
-        expect(leftoverRcloneFile(path.join(other, 'Proton'), other, { XDG_CACHE_HOME: xdg })).toContain(xdg);
-    });
-    test('a stopped and disabled systemd unit no longer blocks: this was the trap', () => {
-        const home = tempHome();
-        touch(path.join(home, '.config/systemd/user/rclone-bisync.timer'));
-        touch(cacheFile(home));
-        const check = checkTool(path.join(home, 'Proton'), home, { answer: 'yes', live: { 'systemctl --user is-enabled rclone-bisync.timer': 'disabled' } });
-        expect(check.result).not.toThrow();
-    });
-    test('an active systemd unit blocks, whatever the folder, and says how to stop it', () => {
-        const home = tempHome();
-        touch(path.join(home, '.config/systemd/user/rclone-bisync.timer'));
-        const check = checkTool(path.join(home, 'Proton'), home, { live: { 'systemctl --user is-active rclone-bisync.timer': 'active' } });
-        expect(check.result).toThrow('systemctl --user disable --now rclone-bisync.timer');
-    });
-    test('a service in the middle of a bisync (activating) blocks', () => {
-        const home = tempHome();
-        touch(path.join(home, '.config/systemd/user/rclone-bisync.service'));
-        const run: RunCommand = (_command, args) => (args[1] === 'is-active' ? { status: 3, stdout: 'activating\n' } : { status: 1, stdout: 'static\n' });
-        expect(liveRcloneUnit(home, 501, run)).toContain('rclone-bisync.service');
-    });
-    test('an enabled systemd unit blocks even when it is not running', () => {
-        const home = tempHome();
-        touch(path.join(home, '.config/systemd/user/rclone-bisync.timer'));
-        expect(liveRcloneUnit(home, 501, fakeRun({ 'systemctl --user is-enabled rclone-bisync.timer': 'enabled' }).run)).toContain('rclone-bisync.timer');
-    });
-    test('a static unit is neither active nor enabled', () => {
-        const home = tempHome();
-        touch(path.join(home, '.config/systemd/user/rclone-bisync.service'));
-        expect(liveRcloneUnit(home, 501, fakeRun({ 'systemctl --user is-enabled rclone-bisync.service': 'static' }).run)).toBeUndefined();
-    });
-    test('a loaded launchd job blocks', () => {
-        const home = tempHome();
-        touch(path.join(home, 'Library/LaunchAgents/org.rclone.bisync.plist'));
-        const message = liveRcloneUnit(home, 501, fakeRun({ 'launchctl print gui/501/org.rclone.bisync': 'state = running' }).run);
-        expect(message).toContain('launchctl bootout gui/501/org.rclone.bisync');
-    });
-    test('a launchd job not loaded but set to start at login blocks', () => {
-        const home = tempHome();
-        touch(path.join(home, 'Library/LaunchAgents/org.rclone.bisync.plist'));
-        const message = liveRcloneUnit(home, 501, fakeRun({ 'launchctl print-disabled gui/501': 'disabled services = {\n}' }).run);
-        expect(message).toContain('launchctl disable gui/501/org.rclone.bisync');
-    });
-    test('a launchd job stopped and disabled no longer blocks', () => {
-        const home = tempHome();
-        touch(path.join(home, 'Library/LaunchAgents/org.rclone.bisync.plist'));
-        expect(liveRcloneUnit(home, 501, fakeRun({ 'launchctl print-disabled gui/501': DISABLED_LIST }).run)).toBeUndefined();
-    });
-});
-
 describe('session store', () => {
     test('no keyring gives a clear message', async () => {
         const message = await sessionStoreProblem(async () => {
@@ -361,5 +242,51 @@ describe('review fixes', () => {
         expect(serviceProblem('win32')).toContain('Linux and macOS');
         expect(serviceProblem('linux', '/nope', () => false)).toContain('does not exist');
         expect(serviceProblem('linux', '/yes', () => true)).toBeUndefined();
+    });
+});
+
+describe('the words at the end of setup', () => {
+    test('the plan is in plain words, one line per kind of action', () => {
+        const lines = describePlan(new Map([['link', 468], ['upload', 1], ['remoteTrash', 2]]));
+        expect(lines[0]).toContain('468  already the same on both sides');
+        expect(lines[1]).toContain('1  to upload');
+        expect(lines[2]).toContain('2  to move to the Proton trash');
+        expect(describePlan(new Map())[0]).toContain('nothing to do');
+    });
+    test('the summary says what was installed, what runs, and where the files are', () => {
+        const text = finalSummary({ folder: '/home/a/Documents', remote: 'root', home: '/home/a', dataDir: '/home/a/.local/share/nucleon-sync', os: 'linux', tray: 'started' }).join('\n');
+        for (const part of ['~/Documents', 'My files', '~/.local/bin/nucleon-sync', '~/.local/share/nucleon-sync/app', '~/.local/share/nucleon-sync/quarantine', '~/.config/systemd/user/nucleon-sync.service', 'starts at every login', 'system keyring', 'Tray icon       started', 'nucleon-sync uninstall']) {
+            expect(text).toContain(part);
+        }
+    });
+});
+
+describe('tray', () => {
+    const checks = (over: Partial<TrayChecks> = {}) => {
+        const started: string[][] = [];
+        return { started, checks: { hasIndicatorLibrary: () => true, gnomeNeedsExtension: () => false, start: (cmd: string[]) => started.push(cmd), ...over } };
+    };
+    const installed = () => {
+        const home = tempHome();
+        touch(path.join(home, '.local/share/nucleon-sync/app/current/desktop/linux/nucleon-sync-tray.py'));
+        return { home, dataDir: path.join(home, '.local/share/nucleon-sync'), command: path.join(home, '.local/bin/nucleon-sync') };
+    };
+    test('it starts now and at every login, through the current link', () => {
+        const o = installed();
+        const c = checks();
+        expect(installTray(o, c.checks)).toContain('starts at every login');
+        expect(c.started[0]![1]).toContain('app/current/desktop/linux/nucleon-sync-tray.py');
+        const entry = readFileSync(path.join(o.home, '.config/autostart/nucleon-sync-tray.desktop'), 'utf8');
+        expect(entry).toContain(`${o.home}/.local/share/nucleon-sync/app/current/desktop/linux/nucleon-sync-tray.py`);
+        expect(entry).not.toContain('__');
+    });
+    test('a missing library is named, and nothing is started', () => {
+        const c = checks({ hasIndicatorLibrary: () => false });
+        const line = installTray(installed(), c.checks);
+        expect(line).toContain('libayatana-appindicator-gtk3');
+        expect(c.started).toEqual([]);
+    });
+    test('GNOME without the extension is said plainly', () => {
+        expect(installTray(installed(), checks({ gnomeNeedsExtension: () => true }).checks)).toContain('AppIndicator extension');
     });
 });

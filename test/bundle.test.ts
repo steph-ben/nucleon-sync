@@ -27,7 +27,8 @@ describe('release bundle', () => {
         const listing = Bun.spawnSync(['tar', '-tzf', archive]).stdout.toString().split('\n').filter(Boolean).map((e) => e.replace(/^\.\//, ''));
         for (const needed of ['nucleon-sync.js', 'bin/nucleon-sync', 'LICENSE', 'THIRD-PARTY-NOTICES', 'VERSION']) expect(listing).toContain(needed);
         expect(listing.some((e) => e.startsWith('deploy/'))).toBe(true);
-        const allowed = (e: string) => ['nucleon-sync.js', 'LICENSE', 'THIRD-PARTY-NOTICES', 'VERSION', 'bin/nucleon-sync'].includes(e) || e === 'bin/' || e === 'deploy/' || e.startsWith('deploy/');
+        expect(listing).toContain('desktop/linux/nucleon-sync-tray.py');
+        const allowed = (e: string) => ['nucleon-sync.js', 'LICENSE', 'THIRD-PARTY-NOTICES', 'VERSION', 'bin/nucleon-sync'].includes(e) || e === 'bin/' || e === 'deploy/' || e.startsWith('deploy/') || ['desktop/', 'desktop/linux/', 'desktop/linux/nucleon-sync-tray.py'].includes(e);
         expect(listing.filter((e) => !allowed(e))).toEqual([]);
         expect(statSync(archive).size).toBeLessThan(MAX_ARCHIVE_BYTES);
     });

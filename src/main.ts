@@ -12,8 +12,8 @@ import { recentActivity } from './desktop/activity';
 import { makeIgnore } from './desktop/exclude';
 import { anyOutdatedClient, isOutdatedClient, retryDelaySeconds, signIn } from './desktop/signin';
 import { sendNote } from './desktop/notify';
-import { buildConfig, checkOtherSyncTool, expandHome, folderProblem, isYes, moveStateAside, orphanDatabaseProblem, sessionStoreProblem } from './desktop/setup';
-import { installService, serviceIsUp, serviceProblem } from './service';
+import { buildConfig, describePlan, expandHome, finalSummary, folderProblem, isYes, moveStateAside, orphanDatabaseProblem, sessionStoreProblem } from './desktop/setup';
+import { installService, installTray, serviceIsUp, serviceProblem, TRAY_NAMESPACES, type TrayChecks } from './service';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
 import { checkForUpdate, isInstalledLayout, runUpdate, updateFailed } from './desktop/update';
@@ -134,7 +134,14 @@ async function startSyncing(command: string) {
     const log = path.join(DATA, 'nucleon-sync.log');
     await Bun.sleep(SERVICE_START_WAIT_MS);
     if (serviceIsUp(platform(), process.getuid?.() ?? 0, outputOf)) {
-        console.log(`Syncing started. Log: ${log}`);
+        const cfg = loadConfig();
+        const tray = platform() === 'linux' ? installTray({ home: homedir(), dataDir: DATA, command }, trayChecks()) : 'not installed by setup on macOS yet';
+        console.log('');
+        console.log('Syncing started.');
+        console.log('');
+        for (const line of finalSummary({ folder: cfg.localRoot, remote: cfg.remote, home: homedir(), dataDir: DATA, os: platform(), tray })) console.log(line);
+        console.log('');
+        console.log(`Log: ${log}`);
         return;
     }
     console.log(`The service did not stay up. Look in ${log}, and in ${platform() === 'darwin' ? '~/Library/Logs/nucleon-sync.log' : 'journalctl --user -u nucleon-sync'}.`);
@@ -200,10 +207,27 @@ async function buildEngine(cfg: Config, ctx: Ctx, store: SqliteStore, log: Logge
     return engine;
 }
 
-function summarize(plan: Plan) {
+function planCounts(plan: Plan) {
     const counts = new Map<string, number>();
     for (const a of plan.actions) counts.set(a.t, (counts.get(a.t) ?? 0) + 1);
-    return [...counts].map(([k, v]) => `${k}=${v}`).join(' ') || 'nothing to do';
+    return counts;
+}
+
+function summarize(plan: Plan) {
+    return [...planCounts(plan)].map(([k, v]) => `${k}=${v}`).join(' ') || 'nothing to do';
+}
+
+function trayChecks(): TrayChecks {
+    const quietly = (cmd: string[]) => Bun.spawnSync(cmd, { stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
+    return {
+        hasIndicatorLibrary: () => TRAY_NAMESPACES.some((n) => quietly(['python3', '-c', `import gi; gi.require_version("${n}", "0.1")`])),
+        gnomeNeedsExtension: () => {
+            const desktop = process.env.XDG_CURRENT_DESKTOP ?? '';
+            if (!/gnome/i.test(desktop)) return false;
+            return !/appindicator/i.test(outputOf(['gnome-extensions', 'list', '--enabled']));
+        },
+        start: (cmd) => Bun.spawn(cmd, { stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' }).unref(),
+    };
 }
 
 function acquireLock(localRoot: string) {
@@ -512,7 +536,8 @@ async function main() {
             return;
         }
         case 'setup': {
-            console.log(`nucleon-sync setup. ${THIRD_PARTY_NOTICE} Nothing is synced during this assistant.`);
+            console.log(THIRD_PARTY_NOTICE);
+            console.log('A few questions first. No file moves until you say yes at the end.');
             const command = path.join(homedir(), '.local/bin', APP_NAME);
             const osProblem = serviceProblem(platform());
             if (osProblem) throw new Error(osProblem);
@@ -533,14 +558,12 @@ async function main() {
             const storeProblem = await sessionStoreProblem(probeSessionStore);
             if (storeProblem) throw new Error(storeProblem);
             const folder = path.resolve(expandHome(prompt('Folder to sync', path.join(homedir(), 'Proton')) ?? '', homedir()));
-            if (!isYes(prompt(`Sync the folder ${folder}? [y/N]`))) throw new Error('Folder not confirmed, nothing was done.');
             const badFolder = folderProblem(folder, homedir(), DATA);
             if (badFolder) throw new Error(badFolder);
-            checkOtherSyncTool(folder, { home: homedir(), uid: process.getuid?.() ?? 0, run: realRun, env: process.env, print: console.log, ask: (question) => prompt(question) });
-            const choice = prompt('Target: 1 = My files (your real Drive), 2 = test space', '1');
-            const target = choice === '2' ? 'test' : 'myfiles';
-            const confirmed = target === 'myfiles' && prompt('My files holds your real data. Type yes to confirm') === 'yes';
-            if (target === 'myfiles' && !confirmed) throw new Error('My files was not confirmed, nothing was done. Choose the test space (2) to try safely.');
+            // A hidden way to try safely. Everyone else syncs their real Drive, so the question is about that.
+            const target = args.includes('--test-space') ? 'test' : 'myfiles';
+            const confirmed = target === 'myfiles' && prompt(`${folder} will stay in sync with My files on your Proton Drive. Type yes to continue`) === 'yes';
+            if (target === 'myfiles' && !confirmed) throw new Error('Not confirmed, nothing was done.');
             const cfg = buildConfig({ folder, target, confirmed, deviceName: hostname().split('.')[0]!.replace(/[^\w-]/g, '') });
             mkdirSync(folder, { recursive: true });
             await createRootMarker(folder);
@@ -550,7 +573,8 @@ async function main() {
             // A throwaway database: a plan that fails must not leave one behind without a config.
             const engine = await buildEngine(cfg, ctx, new SqliteStore(':memory:'), log);
             const plan = await engine.planOnly();
-            console.log(`What the first sync would do: ${summarize(plan)}`);
+            console.log('What the first sync would do:');
+            for (const line of describePlan(planCounts(plan))) console.log(line);
             for (const w of plan.warnings) console.log(`Warning: ${w}`);
             await ctx.dispose();
             // Saved only now: a failed sign-in or plan leaves setup ready to run again.
