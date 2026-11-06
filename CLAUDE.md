@@ -14,6 +14,8 @@ Conception : `docs/design.md`. Migration : `docs/migrating-from-proton-sync.md`.
 - Connexion mobile : ne pas retélécharger le SDK, garder les fichiers de test petits.
 - Utiliser les skills Superpowers, git pour tout tracer, Sonnet pour les tâches mécaniques.
 
+- Tray Linux (`desktop/linux/nucleon-sync-tray.py`) et macOS (`desktop/macos/NucleonSyncTray.swift`) : même menu, mêmes mots, mêmes icônes. Toute modif va dans les deux fichiers ; `test/tray-parity.test.ts` le vérifie. Après avoir changé un SVG : `scripts/render-mac-icons.sh` (macOS < 13 ne lit pas le SVG).
+
 ## Commandes
 
     export PATH=$HOME/.local/bin:$PATH

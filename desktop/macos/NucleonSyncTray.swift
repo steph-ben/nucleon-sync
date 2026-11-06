@@ -1,5 +1,6 @@
 // Menu bar icon. Reads the daemon's desktop.json and runs nucleon-sync commands: all logic stays in the daemon.
-// Usage: nucleon-sync-tray <path to nucleon-sync> <data folder>
+// Usage: nucleon-sync-tray <path to nucleon-sync> <data folder> [<installed program folder: .../app/current>]
+// It must stay the same as desktop/linux/nucleon-sync-tray.py (same menu, same words, same icons): test/tray-parity.test.ts checks it.
 import AppKit
 
 let daemonGoneSeconds = 180.0
@@ -20,6 +21,13 @@ struct Activity {
 }
 
 let tailBytes = 256 * 1024
+// The icon in the menu bar is our logo with a small badge for the state (icons/nucleon-sync-<state>.png, drawn from the same SVGs as on Linux).
+// SF Symbols are the fallback when the program folder is not known. Names that macOS does not have give no image, never an error.
+let fallbackSymbols = ["ok": "checkmark.icloud", "syncing": "arrow.triangle.2.circlepath", "paused": "pause.circle",
+                       "attention": "exclamationmark.icloud", "stopped": "xmark.icloud"]
+// Icons of the menu rows, the counterpart of MENU_ICONS in the Linux tray.
+let menuSymbols = ["ok": "checkmark.circle", "syncing": "arrow.triangle.2.circlepath", "paused": "pause.circle",
+                   "attention": "exclamationmark.triangle", "stopped": "stop.circle"]
 let labels = ["upload": "Uploaded", "upload new version": "Uploaded (new version)", "download": "Downloaded",
               "download new version": "Downloaded (new version)", "trash": "Moved to trash",
               "quarantine": "Moved to quarantine", "conflict copy": "Conflict: copy created"]
@@ -129,14 +137,54 @@ final class ActivityWindow: NSObject, NSTableViewDataSource, NSTableViewDelegate
 final class Tray: NSObject, NSApplicationDelegate {
     let bin: String
     let home: String
+    /// The installed program folder (.../app/current): the release number and the icons live there. nil when not given.
+    let root: String?
+    let started: String?
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     var state = State()
     var lastLevel = ""
     lazy var activity = ActivityWindow(home: home)
 
-    init(bin: String, home: String) {
+    init(bin: String, home: String, root: String?) {
         self.bin = bin
         self.home = home
+        self.root = root
+        self.started = Tray.readVersion(root)
+    }
+
+    /// The release this icon belongs to. The path goes through the "current" link, so after an update it answers with the new release.
+    static func readVersion(_ root: String?) -> String? {
+        guard let root = root, let text = try? String(contentsOfFile: root + "/VERSION", encoding: .utf8) else { return nil }
+        let version = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return version.isEmpty ? nil : version
+    }
+
+    func picture(_ name: String) -> NSImage? {
+        guard let root = root, let image = NSImage(contentsOfFile: "\(root)/desktop/macos/icons/\(name).png") else { return nil }
+        image.size = NSSize(width: 18, height: 18)
+        return image
+    }
+
+    func symbol(_ name: String?) -> NSImage? {
+        guard let name = name else { return nil }
+        return NSImage(systemSymbolName: name, accessibilityDescription: nil)
+    }
+
+    /// An update installed a new release under the same path: this process still runs the old code, so it builds the new source and starts again from it.
+    /// An unreadable VERSION (an update in progress) or a failed build changes nothing.
+    func restartIfUpdated() {
+        guard let started = started, let now = Tray.readVersion(root), now != started, let root = root else { return }
+        let me = CommandLine.arguments[0]
+        let build = Process()
+        build.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        build.arguments = ["swiftc", "-O", root + "/desktop/macos/NucleonSyncTray.swift", "-o", me + ".new"]
+        build.standardOutput = FileHandle.nullDevice
+        build.standardError = FileHandle.nullDevice
+        guard (try? build.run()) != nil else { return }
+        build.waitUntilExit()
+        guard build.terminationStatus == 0, rename(me + ".new", me) == 0 else { return }
+        let argv: [UnsafeMutablePointer<CChar>?] = CommandLine.arguments.map { strdup($0) } + [nil]
+        execv(me, argv)
     }
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -161,42 +209,47 @@ final class Tray: NSObject, NSApplicationDelegate {
     }
 
     func refresh() {
+        restartIfUpdated()
         state = read()
         if state.level == "stopped" && lastLevel != "stopped" && !lastLevel.isEmpty {
             notify("nucleon-sync: sync stopped", "The daemon stopped responding.")
         }
         lastLevel = state.level
-        let symbols = ["ok": "checkmark.icloud", "syncing": "arrow.triangle.2.circlepath.icloud", "paused": "pause.circle",
-                       "attention": "exclamationmark.icloud", "stopped": "xmark.icloud"]
-        item.button?.image = NSImage(systemSymbolName: symbols[state.level] ?? "icloud", accessibilityDescription: state.title)
+        item.button?.image = picture("nucleon-sync-" + state.level) ?? symbol(fallbackSymbols[state.level]) ?? symbol("icloud")
+        item.button?.toolTip = state.title
         item.menu = menu()
     }
 
-    func entry(_ title: String, _ action: Selector?) -> NSMenuItem {
+    func entry(_ title: String, _ action: Selector?, icon: String? = nil, image: NSImage? = nil) -> NSMenuItem {
         let m = NSMenuItem(title: title, action: action, keyEquivalent: "")
         m.target = self
         m.isEnabled = action != nil
+        m.image = image ?? symbol(icon)
         return m
     }
 
     func menu() -> NSMenu {
         let m = NSMenu()
         m.autoenablesItems = false
-        m.addItem(entry("nucleon-sync: Proton Drive sync", nil))
+        m.addItem(entry(started.map { "nucleon-sync " + $0 } ?? "nucleon-sync", nil, image: picture("nucleon-sync") ?? symbol("folder.badge.gearshape")))
         m.addItem(.separator())
-        m.addItem(entry(state.title, nil))
+        m.addItem(entry(state.title, nil, icon: menuSymbols[state.level]))
         for l in state.lines { m.addItem(entry(l, nil)) }
         m.addItem(.separator())
         if state.level != "stopped" {
-            m.addItem(entry(state.paused ? "Resume" : "Pause", #selector(togglePause)))
+            if state.paused {
+                m.addItem(entry("Resume", #selector(togglePause), icon: "play.fill"))
+            } else {
+                m.addItem(entry("Pause", #selector(togglePause), icon: "pause.fill"))
+            }
         }
-        if state.held > 0 { m.addItem(entry("Approve \(state.held) deletions", #selector(approve))) }
-        if state.unseen > 0 { m.addItem(entry("Mark deletions as seen", #selector(seen))) }
-        m.addItem(entry("Recent activity…", #selector(showActivity)))
-        m.addItem(entry("Open folder", #selector(openFolder)))
-        m.addItem(entry("Open technical log", #selector(openLog)))
+        if state.held > 0 { m.addItem(entry("Approve \(state.held) deletions", #selector(approve), icon: "checkmark.circle")) }
+        if state.unseen > 0 { m.addItem(entry("Mark deletions as seen", #selector(seen), icon: "checkmark")) }
+        m.addItem(entry("Recent activity…", #selector(showActivity), icon: "clock.arrow.circlepath"))
+        m.addItem(entry("Open folder", #selector(openFolder), icon: "folder"))
+        m.addItem(entry("Open technical log", #selector(openLog), icon: "doc.text"))
         m.addItem(.separator())
-        m.addItem(entry("Quit icon", #selector(quit)))
+        m.addItem(entry("Quit icon", #selector(quit), icon: "power"))
         return m
     }
 
@@ -233,12 +286,12 @@ if args.count == 3 && args[1] == "--print-activity" {
     for a in readActivity(home: args[2]) { print("\(a.when) | \(a.what) | \(a.file)") }
     exit(0)
 }
-guard args.count == 3 else {
-    print("usage: nucleon-sync-tray <path to nucleon-sync> <data folder>")
+guard args.count == 3 || args.count == 4 else {
+    print("usage: nucleon-sync-tray <path to nucleon-sync> <data folder> [<program folder>]")
     exit(1)
 }
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-let tray = Tray(bin: args[1], home: args[2])
+let tray = Tray(bin: args[1], home: args[2], root: args.count == 4 ? args[3] : nil)
 app.delegate = tray
 app.run()
