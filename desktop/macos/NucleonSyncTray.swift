@@ -1,5 +1,5 @@
-// Menu bar icon. Reads the daemon's desktop.json and runs proton-sync commands: all logic stays in the daemon.
-// Usage: proton-sync-tray <path to proton-sync> <data folder>
+// Menu bar icon. Reads the daemon's desktop.json and runs nucleon-sync commands: all logic stays in the daemon.
+// Usage: nucleon-sync-tray <path to nucleon-sync> <data folder>
 import AppKit
 
 let daemonGoneSeconds = 180.0
@@ -32,7 +32,7 @@ func describe(_ op: String, toDrive: Bool) -> String {
 
 /// Newest first, from the end of the daemon's journal.
 func readActivity(home: String, limit: Int = 200) -> [Activity] {
-    let url = URL(fileURLWithPath: home).appendingPathComponent("proton-sync.log")
+    let url = URL(fileURLWithPath: home).appendingPathComponent("nucleon-sync.log")
     guard let file = try? FileHandle(forReadingFrom: url) else { return [] }
     defer { try? file.close() }
     guard let size = try? file.seekToEnd() else { return [] }
@@ -73,7 +73,7 @@ final class ActivityWindow: NSObject, NSTableViewDataSource, NSTableViewDelegate
     init(home: String) {
         self.home = home
         super.init()
-        window.title = "proton-sync: recent activity"
+        window.title = "nucleon-sync: recent activity"
         window.isReleasedWhenClosed = false
         window.delegate = self
         for (id, title, width) in [("when", "When", 120.0), ("what", "Action", 200.0), ("file", "File", 420.0)] {
@@ -163,7 +163,7 @@ final class Tray: NSObject, NSApplicationDelegate {
     func refresh() {
         state = read()
         if state.level == "stopped" && lastLevel != "stopped" && !lastLevel.isEmpty {
-            notify("proton-sync: sync stopped", "The daemon stopped responding.")
+            notify("nucleon-sync: sync stopped", "The daemon stopped responding.")
         }
         lastLevel = state.level
         let symbols = ["ok": "checkmark.icloud", "syncing": "arrow.triangle.2.circlepath.icloud", "paused": "pause.circle",
@@ -182,7 +182,7 @@ final class Tray: NSObject, NSApplicationDelegate {
     func menu() -> NSMenu {
         let m = NSMenu()
         m.autoenablesItems = false
-        m.addItem(entry("proton-sync: Proton Drive sync", nil))
+        m.addItem(entry("nucleon-sync: Proton Drive sync", nil))
         m.addItem(.separator())
         m.addItem(entry(state.title, nil))
         for l in state.lines { m.addItem(entry(l, nil)) }
@@ -204,7 +204,7 @@ final class Tray: NSObject, NSApplicationDelegate {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: path)
         p.arguments = args
-        p.environment = ProcessInfo.processInfo.environment.merging(["PROTON_SYNC_HOME": home]) { _, new in new }
+        p.environment = ProcessInfo.processInfo.environment.merging(["NUCLEON_SYNC_HOME": home]) { _, new in new }
         try? p.run()
     }
 
@@ -216,7 +216,7 @@ final class Tray: NSObject, NSApplicationDelegate {
     @objc func togglePause() { run(bin, [state.paused ? "resume" : "pause"]) }
     @objc func approve() { run(bin, ["approve"]) }
     @objc func seen() { run(bin, ["seen"]) }
-    @objc func openLog() { NSWorkspace.shared.open(URL(fileURLWithPath: home).appendingPathComponent("proton-sync.log")) }
+    @objc func openLog() { NSWorkspace.shared.open(URL(fileURLWithPath: home).appendingPathComponent("nucleon-sync.log")) }
     @objc func quit() { NSApp.terminate(nil) }
     @objc func openFolder() {
         let url = URL(fileURLWithPath: home).appendingPathComponent("config.json")
@@ -234,7 +234,7 @@ if args.count == 3 && args[1] == "--print-activity" {
     exit(0)
 }
 guard args.count == 3 else {
-    print("usage: proton-sync-tray <path to proton-sync> <data folder>")
+    print("usage: nucleon-sync-tray <path to nucleon-sync> <data folder>")
     exit(1)
 }
 let app = NSApplication.shared

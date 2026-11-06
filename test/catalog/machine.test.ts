@@ -10,7 +10,7 @@ import { Hub } from '../sim';
 
 const area = 'Machine life';
 const child = path.join(import.meta.dir, '../lib/sync-child.ts');
-const main = path.join(import.meta.dir, '../../src/main.ts');
+const main = process.env.NUCLEON_ENTRY ?? path.join(import.meta.dir, '../../src/main.ts');
 const ROOT_HINT = 'Proton';
 
 async function seeded() {
@@ -107,14 +107,14 @@ describe('machine life', () => {
 
     row({ id: 'machine.root-emptied', area, gesture: 'The synced folder is suddenly empty, marker kept', expected: 'Safety stop, nothing deleted on the Drive' }, async () => {
         const w = await seeded();
-        for (const n of readdirSync(w.a.root)) if (!n.startsWith('.proton-sync')) rmSync(w.a.abs(n), { recursive: true });
+        for (const n of readdirSync(w.a.root)) if (!n.startsWith('.nucleon-sync')) rmSync(w.a.abs(n), { recursive: true });
         await expect(w.a.engine.cycle()).rejects.toThrow('empty');
         expect(trashed(w)).toBe(0);
     });
 
     row({ id: 'machine.marker-gone', area, gesture: 'The folder is there but is not the synced one (marker missing)', expected: 'Safety stop, nothing touched' }, async () => {
         const w = await seeded();
-        rmSync(w.a.abs('.proton-sync-root'));
+        rmSync(w.a.abs('.nucleon-sync-root'));
         await expect(w.a.engine.cycle()).rejects.toThrow('marker');
         expect(trashed(w)).toBe(0);
     });
@@ -243,7 +243,7 @@ describe('machine life', () => {
 
     for (const at of [3, 12, 25]) {
         row({ id: `machine.kill9-upload-${at}`, area, gesture: `Daemon killed with kill -9 after ${at} of 40 uploads`, expected: 'The next start finishes the job: no duplicate, nothing lost' }, async () => {
-            const home = mkdtempSync(path.join(tmpdir(), 'proton-sync-kill-'));
+            const home = mkdtempSync(path.join(tmpdir(), 'nucleon-sync-kill-'));
             try {
                 const root = path.join(home, ROOT_HINT);
                 mkdirSync(root);
@@ -274,7 +274,7 @@ describe('machine life', () => {
     }
 
     row({ id: 'machine.kill9-download', area, gesture: 'Daemon killed with kill -9 in the middle of downloads', expected: 'The next start finishes the job, no half-written file visible' }, async () => {
-        const home = mkdtempSync(path.join(tmpdir(), 'proton-sync-kill-'));
+        const home = mkdtempSync(path.join(tmpdir(), 'nucleon-sync-kill-'));
         try {
             const hub = new Hub();
             for (let i = 0; i < 40; i++) hub.add('__root__', `f${i}.txt`, 'file', `contenu ${i}`);
@@ -301,11 +301,11 @@ describe('machine life', () => {
     });
 
     row({ id: 'machine.second-daemon', area, gesture: 'A second daemon is started on the same configuration', expected: 'It refuses to start' }, async () => {
-        const home = mkdtempSync(path.join(tmpdir(), 'proton-sync-lock-'));
+        const home = mkdtempSync(path.join(tmpdir(), 'nucleon-sync-lock-'));
         try {
             writeFileSync(path.join(home, 'config.json'), JSON.stringify({ localRoot: home, remote: 'device:x/y', deviceName: 't', maxDeletes: 20 }));
             writeFileSync(path.join(home, 'daemon.lock'), String(process.pid));
-            const p = Bun.spawn([process.execPath, main, 'run'], { env: { ...process.env, PROTON_SYNC_HOME: home }, stdout: 'pipe', stderr: 'pipe' });
+            const p = Bun.spawn([process.execPath, main, 'run'], { env: { ...process.env, NUCLEON_SYNC_HOME: home }, stdout: 'pipe', stderr: 'pipe' });
             const err = await new Response(p.stderr).text();
             expect(await p.exited).not.toBe(0);
             expect(err).toContain('already running');

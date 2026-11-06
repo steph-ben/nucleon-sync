@@ -1,3 +1,5 @@
+import { SWAP_PREFIX } from '../names';
+
 export type Kind = 'file' | 'dir';
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
@@ -6,7 +8,7 @@ export type Logger = (level: LogLevel, message: string) => void;
 export const ROOT = '__root__';
 
 /** Transient name during a name swap, ignored by scanners. */
-export const SWAP_PREFIX = '.proton-sync-swap-';
+export { SWAP_PREFIX };
 
 /** An item seen on one side. `parent` is an id on the same side, or ROOT. */
 export interface Entry {

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { type DesktopState, notificationsFor, render, writeState } from '../src/desktop/state';
 import { makeIgnore } from '../src/desktop/exclude';
 import { DesktopTracker } from '../src/desktop/tracker';
+import { anyOutdatedClient, isOutdatedClient, retryDelaySeconds, signIn } from '../src/desktop/signin';
 import { recentActivity } from '../src/desktop/activity';
 import { noteCommand } from '../src/desktop/notify';
 import { buildConfig } from '../src/desktop/setup';
@@ -64,7 +65,7 @@ describe('notifications come from transitions only', () => {
 });
 
 test('the state file is complete JSON with the rendered view', () => {
-    const file = path.join(mkdtempSync(path.join(tmpdir(), 'proton-sync-state-')), 'desktop.json');
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'nucleon-sync-state-')), 'desktop.json');
     writeState(file, idle, 2000);
     const saved = JSON.parse(readFileSync(file, 'utf8'));
     expect(saved.heartbeatAt).toBe(1000);
@@ -116,7 +117,7 @@ test('excluding an already synced folder deletes nothing, on either side', async
 function tracker() {
     const kv = new Map<string, string>();
     const notes: { title: string; body: string }[] = [];
-    const file = path.join(mkdtempSync(path.join(tmpdir(), 'proton-sync-track-')), 'desktop.json');
+    const file = path.join(mkdtempSync(path.join(tmpdir(), 'nucleon-sync-track-')), 'desktop.json');
     let now = 1000;
     const t = new DesktopTracker(file, 1, { getKv: (k) => kv.get(k), setKv: (k, v) => void kv.set(k, v) }, (n) => notes.push(n), () => now, () => false);
     return { t, kv, notes, file, tick: (ms: number) => (now += ms) };
@@ -140,7 +141,26 @@ describe('DesktopTracker', () => {
         const { t, notes } = tracker();
         t.passDone(done);
         t.passFailed(new Error('session expired: 401'), false);
-        expect(notes[0]!.body).toContain('proton-sync login');
+        expect(notes[0]!.body).toContain('nucleon-sync login');
+    });
+    test('an outdated-client answer becomes one clear problem, not endless retries', () => {
+        const { t, notes } = tracker();
+        t.passDone(done);
+        t.passFailed(new Error('You need to update this app in order to perform this operation'), false);
+        expect(t.state.problems).toHaveLength(1);
+        expect(t.state.problems[0]!.kind).toBe('outdated');
+        expect(notes[0]!.body).toBe('This version is no longer accepted by Proton: run nucleon-sync update');
+    });
+    test('an outdated client on single actions gives the same problem, not repeated errors', () => {
+        const { t, notes } = tracker();
+        t.passDone(done);
+        t.passDone({ ...done, errors: ['disk full', 'You need to update this app in order to perform this operation'] });
+        expect(t.state.problems.map((p) => p.kind)).toEqual(['outdated']);
+        expect(notes[0]!.body).toBe('This version is no longer accepted by Proton: run nucleon-sync update');
+        expect(anyOutdatedClient(['disk full'])).toBe(false);
+        expect(anyOutdatedClient(['disk full', 'Please upgrade the app'])).toBe(true);
+        t.passDone(done);
+        expect(t.state.problems).toEqual([]);
     });
     test('a safety stop is a problem at once', () => {
         const { t, notes } = tracker();
@@ -181,19 +201,19 @@ describe('notification command', () => {
         expect(c.at(-1)).toBe(evil);
     });
     test('Linux: a name is not an option', () => {
-        expect(noteCommand('linux', { title: '-x', body: 'b' })).toEqual(['notify-send', '--app-name=proton-sync', '--', '-x', 'b']);
+        expect(noteCommand('linux', { title: '-x', body: 'b' })).toEqual(['notify-send', '--app-name=nucleon-sync', '--', '-x', 'b']);
     });
 });
 
 describe('commands', () => {
-    const main = path.join(import.meta.dir, '../src/main.ts');
+    const main = process.env.NUCLEON_ENTRY ?? path.join(import.meta.dir, '../src/main.ts');
     async function cli(home: string, ...args: string[]) {
-        const p = Bun.spawn([process.execPath, main, ...args], { env: { ...process.env, PROTON_SYNC_HOME: home }, stdout: 'pipe', stderr: 'pipe' });
+        const p = Bun.spawn([process.execPath, main, ...args], { env: { ...process.env, NUCLEON_SYNC_HOME: home }, stdout: 'pipe', stderr: 'pipe' });
         const out = await new Response(p.stdout).text();
         await p.exited;
         return out;
     }
-    const home = () => mkdtempSync(path.join(tmpdir(), 'proton-sync-cli-'));
+    const home = () => mkdtempSync(path.join(tmpdir(), 'nucleon-sync-cli-'));
 
     test('pause and resume', async () => {
         const h = home();
@@ -230,7 +250,7 @@ describe('commands', () => {
 describe('setup assistant', () => {
     test('a test space needs no confirmation', () => {
         const c = buildConfig({ folder: '/home/s/Proton', target: 'test', confirmed: false, deviceName: 'fedora' });
-        expect(c.remote).toBe('device:proton-sync-test/sandbox-fedora');
+        expect(c.remote).toBe('device:nucleon-sync-test/sandbox-fedora');
         expect(c.allowDriveRoot).toBeUndefined();
     });
     test('My files only with an explicit confirmation', () => {
@@ -242,24 +262,20 @@ describe('setup assistant', () => {
 });
 
 describe('update decision', () => {
-    const base = { branch: 'main', behind: 2, clean: true, ci: 'success' as const };
-    test('installed only when CI is green on a clean main', () => {
-        expect(decideUpdate(base)).toBe('install');
+    test('installed only when latest is newer than the running version', () => {
+        expect(decideUpdate({ current: '0.2.0', latest: '0.3.0' })).toBe('install');
+        expect(decideUpdate({ current: '0.2.0-beta', latest: '0.2.0' })).toBe('install');
     });
-    test('otherwise only signalled', () => {
-        expect(decideUpdate({ ...base, ci: 'failure' })).toBe('signal');
-        expect(decideUpdate({ ...base, ci: 'unknown' })).toBe('signal');
-        expect(decideUpdate({ ...base, clean: false })).toBe('signal');
-    });
-    test('nothing to do when up to date or on another branch', () => {
-        expect(decideUpdate({ ...base, behind: 0 })).toBe('none');
-        expect(decideUpdate({ ...base, branch: 'reliability' })).toBe('none');
+    test('nothing to do when up to date, older, or unknown', () => {
+        expect(decideUpdate({ current: '0.2.0', latest: '0.2.0' })).toBe('none');
+        expect(decideUpdate({ current: '0.2.0', latest: '0.1.0' })).toBe('none');
+        expect(decideUpdate({ current: '0.2.0', latest: undefined })).toBe('none');
     });
 });
 
 test.skipIf(!hasPython)('Linux icon: a stale, broken or missing state means stopped', async () => {
-    const h = mkdtempSync(path.join(tmpdir(), 'proton-sync-py-'));
-    const script = path.join(import.meta.dir, '../desktop/linux/proton-sync-tray.py');
+    const h = mkdtempSync(path.join(tmpdir(), 'nucleon-sync-py-'));
+    const script = path.join(import.meta.dir, '../desktop/linux/nucleon-sync-tray.py');
     const code = `import importlib.util,sys
 s=importlib.util.spec_from_file_location("t",sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
 print(m.read_state(sys.argv[2],1000)["level"]);print(m.read_state(sys.argv[2],99999)["level"]);print(m.read_state("/nonexistent",1000)["level"])`;
@@ -282,7 +298,7 @@ describe('activity comes from the journal', () => {
         '2026-11-05T10:00:08.000Z INFO  drive→local  quarantine  vieux.txt',
     ].join('\n');
     const logFile = () => {
-        const f = path.join(mkdtempSync(path.join(tmpdir(), 'proton-sync-log-')), 'proton-sync.log');
+        const f = path.join(mkdtempSync(path.join(tmpdir(), 'nucleon-sync-log-')), 'nucleon-sync.log');
         writeFileSync(f, `${LOG}\n`);
         return f;
     };
@@ -309,12 +325,12 @@ describe('activity comes from the journal', () => {
     });
 
     test('no journal yet', () => {
-        expect(recentActivity('/nonexistent/proton-sync.log', 10)).toEqual([]);
+        expect(recentActivity('/nonexistent/nucleon-sync.log', 10)).toEqual([]);
     });
 
     test.skipIf(!hasPython)('the Linux window reads the same thing as the command', async () => {
         const f = logFile();
-        const script = path.join(import.meta.dir, '../desktop/linux/proton-sync-tray.py');
+        const script = path.join(import.meta.dir, '../desktop/linux/nucleon-sync-tray.py');
         const code = `import importlib.util,sys,json
 s=importlib.util.spec_from_file_location("t",sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
 print(json.dumps(m.read_activity(sys.argv[2]),ensure_ascii=False));print(m.read_activity("/nonexistent"))`;
@@ -324,4 +340,24 @@ print(json.dumps(m.read_activity(sys.argv[2]),ensure_ascii=False));print(m.read_
         expect(JSON.parse(first!)).toEqual(expected);
         expect(second).toBe('[]');
     });
+});
+
+test('the notice is printed before the sign-in address', async () => {
+    const lines: string[] = [];
+    await signIn({ authViaWeb: async (show) => show('https://x.test/y') }, (l) => lines.push(l));
+    expect(lines[0]).toBe('This is a third-party application not officially supported by Proton.');
+    expect(lines.some((l) => l.includes('https://x.test/y'))).toBe(true);
+});
+
+test('only the server text for an outdated client is recognised', () => {
+    expect(isOutdatedClient('You need to update this app in order to perform this operation')).toBe(true);
+    expect(isOutdatedClient('Upgrade the app to call the endpoint this way')).toBe(true);
+    expect(isOutdatedClient('network unreachable')).toBe(false);
+    expect(isOutdatedClient('cannot read photo 5003.jpg')).toBe(false);
+});
+test('an outdated client waits one hour, other failures back off up to 15 minutes', () => {
+    expect(retryDelaySeconds(1, true, 60)).toBe(3600);
+    expect(retryDelaySeconds(9, true, 60)).toBe(3600);
+    expect(retryDelaySeconds(1, false, 60)).toBe(120);
+    expect(retryDelaySeconds(9, false, 60)).toBe(900);
 });

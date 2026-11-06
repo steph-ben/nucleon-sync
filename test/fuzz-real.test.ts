@@ -124,7 +124,12 @@ async function run(seed: number, caseInsensitive: boolean, crashes: boolean) {
         let work = 0;
         for (const m of [w.a, w.b]) {
             for (const c of Object.values(tree(m.root))) w.ledger.saw(c);
-            const r = await m.engine.cycle(true);
+            const r = await m.engine.cycle(true).catch((e) => {
+                // The user emptied this machine: the safety stop holds it, the Drive stays intact.
+                if (/empty/.test(String(e))) return undefined;
+                throw e;
+            });
+            if (!r) return;
             trace(`=== settle ${m.tag}`, JSON.stringify(r.plan.actions), r.plan.warnings, r.errors, JSON.stringify(fullTree(m.root)), JSON.stringify(w.hub.tree()));
             work += r.plan.actions.length;
         }
@@ -136,7 +141,7 @@ async function run(seed: number, caseInsensitive: boolean, crashes: boolean) {
 
 for (const [label, crashes] of [['no crashes', false], ['with crashes', true]] as const) {
     test(`real files, ${label}, ${N} seeds`, async () => {
-        const probe = mkdtempSync(path.join(tmpdir(), 'proton-sync-case-'));
+        const probe = mkdtempSync(path.join(tmpdir(), 'nucleon-sync-case-'));
         const ci = await detectCaseInsensitive(probe);
         rmSync(probe, { recursive: true, force: true });
         for (let seed = Number(process.env.FUZZ_SEED ?? 1); seed <= (process.env.FUZZ_SEED ? Number(process.env.FUZZ_SEED) : N); seed++) {

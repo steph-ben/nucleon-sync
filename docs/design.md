@@ -1,7 +1,7 @@
-# proton-sync: design
+# nucleon-sync: design
 
 Two-way sync daemon between `~/Proton` <-> Proton Drive, for macOS 12 Intel and Linux.
-Replaces `rclone bisync`. Third-party client for personal use, identified as `external-drive-protonsync`.
+Replaces `rclone bisync`. Third-party client for personal use, identified as `external-drive-nucleon_sync`.
 
 ## Priorities
 

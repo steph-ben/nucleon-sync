@@ -3,14 +3,14 @@ import * as fs from 'node:fs';
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import { PathBusy, type LocalFs, type Source } from '../core/interfaces';
+import { APP_NAME, LEGACY_ROOT_MARKER, LEGACY_TMP_DIR, ROOT_MARKER, TMP_DIR } from '../names';
 import { type BaseRec, type Entry, ROOT, type Snapshot } from '../core/types';
 
-export const ROOT_MARKER = '.proton-sync-root';
-export const TMP_DIR = '.proton-sync-tmp';
+export { ROOT_MARKER, TMP_DIR };
 
 /** Creates the marker proving this folder really is the synced root. */
 export async function createRootMarker(root: string): Promise<void> {
-    await fsp.writeFile(path.join(root, ROOT_MARKER), 'proton-sync\n', { flag: 'a' });
+    await fsp.writeFile(path.join(root, ROOT_MARKER), `${APP_NAME}\n`, { flag: 'a' });
 }
 
 /** Files and folders that are never synced (caches, locks, system files). */
@@ -115,9 +115,8 @@ export class RealLocalFs implements LocalFs {
             throw new Error(`local root missing: ${this.root}`);
         }
         if (!st.isDirectory()) throw new Error(`local root is not a folder: ${this.root}`);
-        try {
-            await fsp.lstat(path.join(this.root, ROOT_MARKER));
-        } catch {
+        const hasMarker = async (name: string) => !!(await fsp.lstat(path.join(this.root, name)).catch(() => null));
+        if (!(await hasMarker(ROOT_MARKER)) && !(await hasMarker(LEGACY_ROOT_MARKER))) {
             throw new Error(`marker ${ROOT_MARKER} missing from ${this.root}: root not trusted`);
         }
     }
@@ -140,7 +139,7 @@ export class RealLocalFs implements LocalFs {
         }
         for (const name of names) {
             const childRel = rel === '' ? name : `${rel}/${name}`;
-            if (rel === '' && (name === ROOT_MARKER || name === TMP_DIR)) continue;
+            if (rel === '' && (name === ROOT_MARKER || name === LEGACY_ROOT_MARKER || name === TMP_DIR || name === LEGACY_TMP_DIR)) continue;
             let st: fs.Stats;
             try {
                 st = await fsp.lstat(path.join(abs, name));

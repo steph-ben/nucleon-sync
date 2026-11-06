@@ -15,6 +15,17 @@ export interface CycleResult {
 
 export class SafetyStop extends Error {}
 
+/**
+ * A database only means something for one target: with another one, every file looks deleted on
+ * the Drive and goes to quarantine. The first use stores the target (an older database adopts the
+ * one of its config), every later use must match it.
+ */
+export function assertSameTarget(kv: { getKv(key: string): string | undefined; setKv(key: string, value: string): void }, target: string) {
+    const stored = kv.getKv('target');
+    if (stored === undefined) return kv.setKv('target', target);
+    if (stored !== target) throw new SafetyStop(`this database belongs to ${stored}, but the configuration says ${target}. No file was touched. Put the old target back, or stop the service and start over with: nucleon-sync setup --reset`);
+}
+
 
 export class Engine {
     private recs = new Map<string, BaseRec>();

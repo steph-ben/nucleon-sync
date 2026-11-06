@@ -103,7 +103,7 @@ describe('ChangeTracker', () => {
 
     test('ignored files never count as changes', () => {
         const c = t();
-        for (const n of ['.DS_Store', 'a/.DS_Store', '.venv/lib/x', '.proton-sync-tmp/x', '.proton-sync-root', 'a/.proton-sync-swap-M-1']) expect(c.classify(n, 0)).toBe('ignored');
+        for (const n of ['.DS_Store', 'a/.DS_Store', '.venv/lib/x', '.nucleon-sync-tmp/x', '.nucleon-sync-root', '.proton-sync-tmp/x', '.proton-sync-root', 'a/.nucleon-sync-swap-M-1']) expect(c.classify(n, 0)).toBe('ignored');
         expect(c.hasPending()).toBe(false);
     });
 

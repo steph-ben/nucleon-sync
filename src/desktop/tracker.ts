@@ -1,4 +1,5 @@
 import type { CycleResult } from '../core/engine';
+import { anyOutdatedClient, isOutdatedClient } from './signin';
 import { type DesktopState, type Note, notificationsFor, type Problem, writeState } from './state';
 
 const FAILURES_BEFORE_ALERT = 3;
@@ -10,6 +11,7 @@ interface Kv {
     setKv(key: string, value: string): void;
 }
 
+const OUTDATED: Problem = { kind: 'outdated', message: 'This version is no longer accepted by Proton: run nucleon-sync update' };
 const isSession = (m: string) => /\b401\b|session|not logged in|unauthorized|invalid.*token/i.test(m);
 
 /** Turns what the daemon does into what the user sees. */
@@ -56,7 +58,8 @@ export class DesktopTracker {
         if (r.deleted.length) this.kv.setKv(UNSEEN_KEY, JSON.stringify([...this.unseen(), ...r.deleted].slice(-MAX_UNSEEN)));
         const unreadable = r.plan.warnings.filter((w) => w.startsWith('cannot read')).map((message): Problem => ({ kind: 'unreadable', message }));
         this.failures = r.errors.length ? this.failures + 1 : 0;
-        const failing: Problem[] = this.failures >= FAILURES_BEFORE_ALERT ? [{ kind: 'failing', message: `Repeated errors: ${r.errors[0]}` }] : [];
+        const outdated = anyOutdatedClient(r.errors);
+        const failing: Problem[] = outdated ? [OUTDATED] : this.failures >= FAILURES_BEFORE_ALERT ? [{ kind: 'failing', message: `Repeated errors: ${r.errors[0]}` }] : [];
         this.state = { ...this.state, syncing: false, transfer: undefined, lastSyncAt: r.errors.length ? this.state.lastSyncAt : this.now(), held: r.plan.held.length, conflicts: this.state.conflicts + r.conflicts, problems: [...unreadable, ...failing] };
         this.flush();
     }
@@ -66,7 +69,8 @@ export class DesktopTracker {
         this.failures++;
         let problems: Problem[] = [];
         if (safety) problems = [{ kind: 'safety', message: `Safety stop: ${message}` }];
-        else if (isSession(message)) problems = [{ kind: 'session', message: 'Proton session expired: run proton-sync login' }];
+        else if (isOutdatedClient(message)) problems = [OUTDATED];
+        else if (isSession(message)) problems = [{ kind: 'session', message: 'Proton session expired: run nucleon-sync login' }];
         else if (this.failures >= FAILURES_BEFORE_ALERT) problems = [{ kind: 'failing', message: `Sync failed: ${message}` }];
         this.state = { ...this.state, syncing: false, transfer: undefined, problems };
         this.flush();

@@ -120,7 +120,7 @@ export interface MachineOptions {
 export type Machine = ReturnType<typeof machine>;
 
 export function machine(tag: string, hub: Hub, o: MachineOptions = {}) {
-    const home = o.home ?? mkdtempSync(path.join(tmpdir(), `proton-sync-it-${tag}-`));
+    const home = o.home ?? mkdtempSync(path.join(tmpdir(), `nucleon-sync-it-${tag}-`));
     if (!o.home) dirs.push(home);
     const root = path.join(home, 'Proton');
     mkdirSync(root, { recursive: true });
@@ -153,7 +153,7 @@ export async function settle(...ms: Machine[]) {
 export function tree(root: string, rel = ''): Record<string, string> {
     const out: Record<string, string> = {};
     for (const e of readdirSync(path.join(root, rel), { withFileTypes: true })) {
-        if (e.name.startsWith('.proton-sync') || e.isSymbolicLink()) continue;
+        if (e.name.startsWith('.nucleon-sync') || e.isSymbolicLink()) continue;
         const p = rel ? `${rel}/${e.name}` : e.name;
         if (e.isDirectory()) Object.assign(out, tree(root, p));
         else out[p] = readFileSync(path.join(root, p), 'utf8');
@@ -166,7 +166,7 @@ export function fullTree(root: string, rel = '', raw = false): Record<string, st
     const key = (p: string) => (raw ? p : p.normalize('NFC'));
     const out: Record<string, string> = {};
     for (const e of readdirSync(path.join(root, rel), { withFileTypes: true })) {
-        if (e.name.startsWith('.proton-sync') || e.isSymbolicLink()) continue;
+        if (e.name.startsWith('.nucleon-sync') || e.isSymbolicLink()) continue;
         const p = rel ? `${rel}/${e.name}` : e.name;
         if (e.isDirectory()) {
             out[key(p)] = '<dir>';

@@ -1,16 +1,16 @@
 #!/bin/bash
 # Replays everyday gestures against the real Drive, between the two sandbox folders of this Mac.
-# Refuses anything but device:proton-sync-test/sandbox. Small files by default.
+# Refuses anything but device:nucleon-sync-test/sandbox. Small files by default.
 # Usage: scripts/real-check.sh [--large]   (--large also transfers 1 GB: real bandwidth)
 set -euo pipefail
 
 ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SANDBOX="$HOME/dev/proton-sync-sandbox"
+SANDBOX="$HOME/dev/nucleon-sync-sandbox"
 A="$SANDBOX/a"
 B="$SANDBOX/b"
-HOME_A="$HOME/.local/share/proton-sync"
+HOME_A="$HOME/.local/share/nucleon-sync"
 HOME_B="$SANDBOX/home-b"
-TARGET='device:proton-sync-test/sandbox'
+TARGET='device:nucleon-sync-test/sandbox'
 RUN="check-$(date +%H%M%S)"
 LARGE="${1:-}"
 
@@ -22,9 +22,9 @@ for h in "$HOME_A" "$HOME_B"; do
     fi
 done
 
-a() { PROTON_SYNC_HOME="$HOME_A" "$ROOT/bin/proton-sync" once >/dev/null; }
-b() { PROTON_SYNC_HOME="$HOME_B" "$ROOT/bin/proton-sync" once >/dev/null; }
-same() { diff -r -x '.proton-sync*' -x '.DS_Store' "$A" "$B" >/dev/null; }
+a() { NUCLEON_SYNC_HOME="$HOME_A" "$ROOT/bin/nucleon-sync" once >/dev/null; }
+b() { NUCLEON_SYNC_HOME="$HOME_B" "$ROOT/bin/nucleon-sync" once >/dev/null; }
+same() { diff -r -x '.nucleon-sync*' -x '.DS_Store' "$A" "$B" >/dev/null; }
 
 # Drive events can lag behind: wait for both sides to agree.
 settle() {
@@ -33,7 +33,7 @@ settle() {
         if same; then a; b; same && return 0; fi
         sleep 3
     done
-    diff -r -x '.proton-sync*' -x '.DS_Store' "$A" "$B" || true
+    diff -r -x '.nucleon-sync*' -x '.DS_Store' "$A" "$B" || true
     return 1
 }
 

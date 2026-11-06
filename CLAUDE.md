@@ -1,15 +1,15 @@
-# proton-sync
+# nucleon-sync
 
-Démon de synchro bidirectionnelle `~/Proton` ↔ Proton Drive (Mac macOS 12 Intel + laptop Linux), pour remplacer `rclone bisync`. Priorités : renommer un dossier sans galère et ne jamais rien perdre.
+Démon de synchro bidirectionnelle d'un dossier local (par défaut `~/Proton`) ↔ Proton Drive (Linux x64 et macOS Intel), pour remplacer `rclone bisync`. Anciennement `proton-sync`. Priorités : renommer un dossier sans galère et ne jamais rien perdre.
 
-Conception : `docs/design.md`. Bascule : `docs/migration.md`.
+Conception : `docs/design.md`. Migrations : `docs/migrating-from-rclone.md`, `docs/migrating-from-proton-sync.md`.
 
 ## Règles absolues
 
-- Aucun fichier du Drive ou de `~/Proton` ne doit être perdu. Les tests vont uniquement dans `device:proton-sync-test/sandbox`.
-- Ne pas viser « Mes fichiers » (`root`, `allowDriveRoot`) ni couper rclone sans accord explicite de l'utilisateur.
+- Aucun fichier du Drive ou de `~/Proton` ne doit être perdu. Les tests vont uniquement dans `device:nucleon-sync-test/sandbox`.
+- Ne pas viser « Mes fichiers » (`root`, `allowDriveRoot`, ou le choix 1 de `setup`) ni couper rclone sans accord explicite de l'utilisateur.
 - Aucune suppression définitive : `DriveApi` (`src/adapters/proton.ts`) n'expose ni `deleteNodes` ni `emptyTrash`.
-- Identification honnête `external-drive-protonsync@…` : ne jamais se faire passer pour une appli Proton.
+- Identification honnête `external-drive-nucleon_sync@…` : ne jamais se faire passer pour une appli Proton.
 - Ne jamais demander de mot de passe dans le chat.
 - Connexion mobile : ne pas retélécharger le SDK, garder les fichiers de test petits.
 - Utiliser les skills Superpowers, git pour tout tracer, Sonnet pour les tâches mécaniques.
@@ -21,13 +21,13 @@ Conception : `docs/design.md`. Bascule : `docs/migration.md`.
     bun scripts/mutants.ts               # safety mutants, long
     scripts/real-check.sh                # real Drive, sandbox only, macOS
     npx tsc --noEmit 2>&1 | grep -E '^(src|test)/'    # les erreurs de node_modules/@protontech/crypto sont connues
-    bin/proton-sync plan|once|run|approve|status
+    bin/nucleon-sync plan|once|run|approve|status
 
 ## Environnement de test réel
 
-- Machine A : `~/.local/share/proton-sync` (config par défaut), dossier `~/dev/proton-sync-sandbox/a`.
-- Machine B : `PROTON_SYNC_HOME=~/dev/proton-sync-sandbox/home-b`, dossier `~/dev/proton-sync-sandbox/b`.
-- Session Proton déjà ouverte, dans le trousseau (`proton-sync/session`).
+- Machine A : `~/.local/share/nucleon-sync` (config par défaut), dossier `~/dev/nucleon-sync-sandbox/a`.
+- Machine B : `NUCLEON_SYNC_HOME=~/dev/nucleon-sync-sandbox/home-b`, dossier `~/dev/nucleon-sync-sandbox/b`.
+- Session Proton déjà ouverte, dans le trousseau (`nucleon-sync/session`).
 - Copie de sécurité : `~/proton-safety-2026-11-05` (lecture seule).
 
 ## Reste à faire

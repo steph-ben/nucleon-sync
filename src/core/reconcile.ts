@@ -41,12 +41,20 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
     const bindSide = (snap: Snapshot, idOf: (r: BaseRec) => string, trust: (r: BaseRec, e: Entry, parentId: string | undefined) => boolean) => {
         const bound = new Map<string, Entry>();
         const claimed = new Set<string>();
-        for (const r of sorted) {
-            const e = snap.get(idOf(r));
-            const parentId = r.parent === ROOT ? ROOT : bound.get(r.parent)?.id;
-            if (e && e.kind === r.kind && !e.protected && trust(r, e, parentId)) {
-                bound.set(r.key, e);
-                claimed.add(e.id);
+        // An id binds one record only. Two records can hold it when a deleted folder's inode is
+        // reused: the record at the item's place goes first, the other one lost its item.
+        // Neither at its place (the folder moved): the record whose children still sit in the item wins.
+        const holdsItsChildren = (r: BaseRec, e: Entry) => base.some((c) => c.parent === r.key && snap.get(idOf(c))?.parent === e.id);
+        for (const round of ['atPlace', 'holdsChildren', 'any']) {
+            for (const r of sorted) {
+                const e = snap.get(idOf(r));
+                const parentId = r.parent === ROOT ? ROOT : bound.get(r.parent)?.id;
+                const atPlace = e?.parent === parentId && nameKey(e?.name ?? '') === nameKey(r.name);
+                const eligible = round === 'any' || (round === 'atPlace' ? atPlace : !!e && holdsItsChildren(r, e));
+                if (e && e.kind === r.kind && !e.protected && !claimed.has(e.id) && eligible && trust(r, e, parentId)) {
+                    bound.set(r.key, e);
+                    claimed.add(e.id);
+                }
             }
         }
         // Atomic editor save: new id at the same place = same item.
@@ -360,7 +368,7 @@ export function reconcile(base: BaseRec[], L: Snapshot, R: Snapshot, o: Reconcil
             if (occ.has(slot(t.parent, name))) {
                 // Name already taken: it is only a name, the item goes back to its place on the Drive.
                 const home = canonR(s.r!.parent);
-                if (!s.ownSwap && !occ.has(slot(home, s.r!.name)) && !wouldCycle(s.rec.key, home)) {
+                if (!s.ownSwap && !occ.has(slot(home, s.r!.name)) && !wouldCycle(s.rec.key, home) && !doomedR.has(s.r!.parent)) {
                     occ.add(slot(home, s.r!.name));
                     t.parent = home;
                     t.name = s.r!.name;

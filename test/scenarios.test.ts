@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { Engine } from '../src/core/engine';
+import { reconcile } from '../src/core/reconcile';
 import { ROOT } from '../src/core/types';
 import { PathBusy } from '../src/core/interfaces';
 import { Crash, Hub, MemStore, SimLocal, SimRemote } from './sim';
@@ -352,5 +353,17 @@ describe('inversion with name swap', () => {
         await settle(m);
         expect(m.local.tree()).toEqual(hub.tree());
         expect(hub.tree()['a/f']).toBe('F');
+    });
+});
+
+describe('two records hold one local id', () => {
+    const dir = (id: string, name: string) => ({ id, parent: ROOT, name, kind: 'dir' as const, size: 0, mtime: 0 });
+    const rec = (key: string, name: string, localId: string, remoteId: string) => ({ key, parent: ROOT, name, kind: 'dir' as const, localId, remoteId, size: 0, localMtime: 0 });
+
+    test('a folder inode reused by a new folder: the record at its place wins, the other folder is gone', () => {
+        const base = [rec('deleted', 'Old', 'inode', 'r1'), rec('alive', 'New', 'inode', 'r2')];
+        const plan = reconcile(base, new Map([['inode', dir('inode', 'New')]]), new Map([['r1', dir('r1', 'Old')], ['r2', dir('r2', 'New')]]), { deviceName: 'A', caseInsensitive: false, maxDeletes: 20, today: '2026-11-06' });
+        expect(plan.actions.filter((a) => a.t === 'localMove' || a.t === 'remoteMove')).toEqual([]);
+        expect(plan.actions).toContainEqual(expect.objectContaining({ t: 'remoteTrash', key: 'deleted' }));
     });
 });

@@ -12,7 +12,7 @@ const NFD = 'Été.txt';
 const NFC = 'Été.txt';
 
 async function fsIsCaseInsensitive() {
-    const d = mkdtempSync(path.join(tmpdir(), 'proton-sync-case-'));
+    const d = mkdtempSync(path.join(tmpdir(), 'nucleon-sync-case-'));
     try {
         return await detectCaseInsensitive(d);
     } finally {

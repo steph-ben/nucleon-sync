@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, macos-15-intel]
     steps:
       - uses: actions/checkout@v4
 
@@ -32,14 +32,14 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Same as scripts/install.sh for dependencies, without links or services.
+      # Install the dependencies and patch the crypto package, nothing else.
       - name: Dependencies
         run: |
           npm install --ignore-scripts --no-audit --no-fund
           bash scripts/patch-crypto.sh
 
       - name: Main tests
-        run: bun test test/local.test.ts test/scenarios.test.ts test/integration.test.ts test/proton-adapter.test.ts test/journal.test.ts test/watch-real.test.ts test/desktop.test.ts
+        run: bun test test/local.test.ts test/scenarios.test.ts test/integration.test.ts test/proton-adapter.test.ts test/journal.test.ts test/watch-real.test.ts test/desktop.test.ts test/names.test.ts test/tray-linux.test.ts test/bundle.test.ts test/install.test.ts test/setup.test.ts test/migrate.test.ts test/target.test.ts test/update.test.ts test/release-workflow.test.ts test/docs.test.ts
 
       - name: Catalogue
         run: |

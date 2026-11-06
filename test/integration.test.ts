@@ -115,7 +115,7 @@ describe('two machines, real files', () => {
         const a = machine('A', hub);
         writeFileSync(path.join(a.root, 'f'), 'x');
         await settle(a);
-        rmSync(path.join(a.root, '.proton-sync-root'));
+        rmSync(path.join(a.root, '.nucleon-sync-root'));
         await expect(a.engine.cycle()).rejects.toThrow();
         expect(hub.tree()).toEqual({ f: 'x' });
         void copyFileSync;

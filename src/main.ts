@@ -6,27 +6,34 @@ import path from 'node:path';
 import { createRootMarker, defaultIgnore, detectCaseInsensitive, RealLocalFs } from './adapters/local';
 import { ProtonRemote } from './adapters/proton';
 import { SqliteStore } from './adapters/sqlite-store';
-import { Engine, SafetyStop } from './core/engine';
+import { assertSameTarget, Engine, SafetyStop } from './core/engine';
 import type { Logger, Plan } from './core/types';
 import { recentActivity } from './desktop/activity';
 import { makeIgnore } from './desktop/exclude';
+import { anyOutdatedClient, isOutdatedClient, retryDelaySeconds, signIn } from './desktop/signin';
 import { sendNote } from './desktop/notify';
-import { buildConfig } from './desktop/setup';
+import { buildConfig, checkOtherSyncTool, expandHome, folderProblem, isYes, moveStateAside, orphanDatabaseProblem, sessionStoreProblem } from './desktop/setup';
+import { installService, serviceIsUp, serviceProblem } from './service';
 import type { View } from './desktop/state';
 import { DesktopTracker, UNSEEN_KEY } from './desktop/tracker';
-import { checkForUpdate } from './desktop/update';
+import { checkForUpdate, isInstalledLayout, runUpdate, updateFailed } from './desktop/update';
+import { activeLegacyService, afterMigration, applyMigration, findLegacy, isDaemonRunning, knownStopCommands, legacyDaemonFor, planMigration, realRun, stopCommands } from './migrate';
+import { APP_NAME, APP_VERSION, configFile, dataDir, RELEASE_VERSION, THIRD_PARTY_NOTICE } from './names';
+import { runUninstall } from './uninstall';
 import { ChangeTracker } from './watch';
+import { CREDENTIALS_NAME, CREDENTIALS_SERVICE, PASS_CREDENTIALS_PATH } from '../vendor/proton-sdk/cli/src/credentials/constants';
 
-const VERSION = '0.1.0';
-const APP_VERSION = `external-drive-protonsync@${VERSION}-stable`;
-const DATA = process.env.PROTON_SYNC_HOME ?? path.join(homedir(), '.local/share/proton-sync');
+const DATA = dataDir(process.env, homedir());
 const POLL_SECONDS = 60;
 const DEBOUNCE_MS = 3000;
 const HEARTBEAT_MS = 60 * 60 * 1000;
 /** The icons read this file: older than DAEMON_GONE_MS means nobody is syncing. */
 const STATE_REFRESH_MS = 30 * 1000;
 const DAEMON_GONE_MS = 3 * 60 * 1000;
+const INSTALLED_APP_DIR = path.join(homedir(), '.local/share', APP_NAME, 'app');
 const UPDATE_EVERY_MS = 24 * 60 * 60 * 1000;
+const SERVICE_START_WAIT_MS = 3000;
+const OUTDATED_LOG = 'Proton no longer accepts this version: run nucleon-sync update. Checking again every hour.';
 const STATE_FILE = path.join(DATA, 'desktop.json');
 const PAUSE_FILE = path.join(DATA, 'paused');
 
@@ -49,12 +56,12 @@ interface Config {
 }
 
 function configPath() {
-    return process.env.PROTON_SYNC_CONFIG ?? path.join(DATA, 'config.json');
+    return configFile(process.env, DATA);
 }
 
 function loadConfig(): Config {
     const file = configPath();
-    if (!existsSync(file)) throw new Error(`configuration missing: ${file}. Run: proton-sync init <folder> <device:name/folder|root>`);
+    if (!existsSync(file)) throw new Error(`configuration missing: ${file}. Run: nucleon-sync setup`);
     return JSON.parse(readFileSync(file, 'utf8')) as Config;
 }
 
@@ -86,7 +93,7 @@ function signalDaemon(signal: 'SIGUSR1' | 'SIGTERM') {
 
 function logger(verbose = false): Logger {
     mkdirSync(DATA, { recursive: true });
-    const file = path.join(DATA, 'proton-sync.log');
+    const file = path.join(DATA, 'nucleon-sync.log');
     return (level, message) => {
         if (level === 'DEBUG' && !verbose) return;
         const line = `${new Date().toISOString()} ${level.padEnd(5)} ${message}`;
@@ -95,11 +102,49 @@ function logger(verbose = false): Logger {
     };
 }
 
+/** Writes and deletes a test secret, unless the user chose another store (pass or file). */
+async function probeSessionStore(): Promise<void> {
+    if (process.env.PROTON_DRIVE_CREDENTIALS_STORE && process.env.PROTON_DRIVE_CREDENTIALS_STORE !== 'keychain') return;
+    const secret = { service: 'nucleon-sync-setup-test', name: 'probe' };
+    await Bun.secrets.set({ ...secret, value: 'test' });
+    await Bun.secrets.delete(secret);
+}
+
+/** Standard output of a command, empty if it failed. */
+function outputOf(cmd: string[]): string {
+    const r = Bun.spawnSync(cmd, { stdout: 'pipe', stderr: 'ignore' });
+    return r.exitCode === 0 ? r.stdout.toString() : '';
+}
+
+/** Last step of setup: ask, then install the service. A failure here leaves the configuration and sign-in intact. */
+async function startSyncing(command: string) {
+    if (!isYes(prompt('Start syncing now? [y/N]'))) {
+        console.log('Nothing was changed. Review it, then run nucleon-sync once, or run nucleon-sync setup again.');
+        return;
+    }
+    const problem = serviceProblem(platform(), command);
+    try {
+        if (problem) throw new Error(problem);
+        installService(platform(), { home: homedir(), dataDir: DATA, command, credentialsStore: process.env.PROTON_DRIVE_CREDENTIALS_STORE }, (cmd) => Bun.spawnSync(cmd).exitCode);
+    } catch (e) {
+        console.log(`The service could not be installed: ${(e as Error).message}`);
+        console.log('Your configuration and sign-in are fine. To start syncing by hand: nucleon-sync run');
+        return;
+    }
+    const log = path.join(DATA, 'nucleon-sync.log');
+    await Bun.sleep(SERVICE_START_WAIT_MS);
+    if (serviceIsUp(platform(), process.getuid?.() ?? 0, outputOf)) {
+        console.log(`Syncing started. Log: ${log}`);
+        return;
+    }
+    console.log(`The service did not stay up. Look in ${log}, and in ${platform() === 'darwin' ? '~/Library/Logs/nucleon-sync.log' : 'journalctl --user -u nucleon-sync'}.`);
+}
+
 async function sdkContext() {
     process.env.PROTON_DRIVE_CACHE_DIR ??= path.join(DATA, 'sdk');
     process.env.PROTON_DRIVE_LOG_LEVEL ??= 'WARNING';
     const { init } = await import('../vendor/proton-sdk/cli/src/init');
-    return init({ appVersion: APP_VERSION, clientUidPrefix: 'external-drive-protonsync', enablePersistedEvents: false, enableMetrics: false, flags: {} });
+    return init({ appVersion: APP_VERSION, clientUidPrefix: 'external-drive-nucleon_sync', enablePersistedEvents: false, enableMetrics: false, flags: {} });
 }
 
 type Ctx = Awaited<ReturnType<typeof sdkContext>>;
@@ -127,9 +172,15 @@ async function resolveRoot(ctx: Ctx, cfg: Config) {
     return { rootUid: root.uid, scopeId: root.treeEventScopeId };
 }
 
-async function buildEngine(cfg: Config, ctx: Ctx, log: Logger, touched?: (paths: string[]) => void, progress?: (done: number, total: number, line: string) => void) {
+/** The database of this configuration. Stops on another target, before anything looks at the Drive. */
+function openStore(cfg: Config) {
     mkdirSync(DATA, { recursive: true });
     const store = new SqliteStore(path.join(DATA, 'state.sqlite'));
+    assertSameTarget(store, cfg.remote);
+    return store;
+}
+
+async function buildEngine(cfg: Config, ctx: Ctx, store: SqliteStore, log: Logger, touched?: (paths: string[]) => void, progress?: (done: number, total: number, line: string) => void) {
     const quarantine = path.join(DATA, 'quarantine');
     const ignore = makeIgnore(cfg.exclude ?? []);
     const local = new RealLocalFs(cfg.localRoot, quarantine, { ignore });
@@ -146,7 +197,7 @@ async function buildEngine(cfg: Config, ctx: Ctx, log: Logger, touched?: (paths:
         touched,
         progress,
     });
-    return { engine, store };
+    return engine;
 }
 
 function summarize(plan: Plan) {
@@ -155,7 +206,9 @@ function summarize(plan: Plan) {
     return [...counts].map(([k, v]) => `${k}=${v}`).join(' ') || 'nothing to do';
 }
 
-function acquireLock() {
+function acquireLock(localRoot: string) {
+    const legacy = legacyDaemonFor(homedir(), localRoot);
+    if (legacy) throw new Error(`the old daemon is still running (${legacy}). Stop it first, two daemons on one folder can lose files`);
     const file = path.join(DATA, 'daemon.lock');
     mkdirSync(DATA, { recursive: true });
     if (existsSync(file)) {
@@ -182,26 +235,32 @@ function acquireLock() {
 async function daemon(cfg: Config) {
     const verbose = cfg.verbose ?? false;
     const log = logger(verbose);
-    acquireLock();
+    acquireLock(cfg.localRoot);
     for (const signal of ['SIGTERM', 'SIGINT'] as const) {
         process.on(signal, () => {
             log('INFO', `daemon stopping (${signal})`);
             process.exit(0);
         });
     }
+    const store = openStore(cfg);
     const ctx = await sdkContext();
-    if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run proton-sync login');
+    if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run nucleon-sync login');
     const tracker = new ChangeTracker(makeIgnore(cfg.exclude ?? []));
     let desktop: DesktopTracker | undefined;
-    const { engine, store } = await buildEngine(cfg, ctx, log, (paths) => tracker.own(paths, Date.now()), (done, total, line) => desktop?.progress(done, total, line));
+    const engine = await buildEngine(cfg, ctx, store, log, (paths) => tracker.own(paths, Date.now()), (done, total, line) => desktop?.progress(done, total, line));
     desktop = new DesktopTracker(STATE_FILE, process.pid, store, sendNote, Date.now, () => existsSync(PAUSE_FILE));
     const view = desktop;
     view.flush();
     setInterval(() => view.flush(), STATE_REFRESH_MS);
-    setInterval(() => {
-        // In its own process: installing restarts this daemon.
-        Bun.spawn([process.execPath, process.argv[1]!, 'update'], { stdout: 'ignore', stderr: 'ignore', stdin: 'ignore' }).unref();
-    }, UPDATE_EVERY_MS);
+    const tellAboutUpdate = () => {
+        // Only tells the user, once per new version. nucleon-sync update installs.
+        checkForUpdate({ current: RELEASE_VERSION, fetch, notify: sendNote, notifiedFile: path.join(DATA, 'update-notified') }).catch(() => {});
+    };
+    // A developer checkout updates with git: no notification there.
+    if (isInstalledLayout(import.meta.dir, INSTALLED_APP_DIR)) {
+        tellAboutUpdate();
+        setInterval(tellAboutUpdate, UPDATE_EVERY_MS);
+    }
 
     let wake: (() => void) | undefined;
     process.on('SIGUSR1', () => {
@@ -234,6 +293,7 @@ async function daemon(cfg: Config) {
     log('INFO', `daemon started: version=${APP_VERSION} pid=${process.pid} root=${cfg.localRoot} target=${cfg.remote} device=${cfg.deviceName} maxDeletes=${cfg.maxDeletes} poll=${POLL_SECONDS} s verbose=${verbose}`);
 
     let failures = 0;
+    let outdated = false;
     let pass = 0;
     let lastHeld = -1;
     let lastWarnings = new Set<string>();
@@ -271,11 +331,14 @@ async function daemon(cfg: Config) {
             lastWarnings = new Set(r.plan.warnings);
             if (r.plan.held.length !== lastHeld) {
                 if (r.plan.heldReason === 'incomplete-scan') log('WARN', `${r.plan.held.length} deletions postponed until every file can be read again`);
-                else if (r.plan.held.length) log('WARN', `${r.plan.held.length} deletions held (limit ${cfg.maxDeletes}): review with 'proton-sync plan', then run 'proton-sync approve'`);
+                else if (r.plan.held.length) log('WARN', `${r.plan.held.length} deletions held (limit ${cfg.maxDeletes}): review with 'nucleon-sync plan', then run 'nucleon-sync approve'`);
                 lastHeld = r.plan.held.length;
             }
             if (r.errors.length) beat.withErrors++;
             failures = r.errors.length ? failures + 1 : 0;
+            const nowOutdated = anyOutdatedClient(r.errors);
+            if (nowOutdated && !outdated) log('ERROR', `${OUTDATED_LOG} (${r.errors.find(isOutdatedClient)})`);
+            outdated = nowOutdated;
             // Work was done: run again soon to confirm the state is stable.
             if (r.plan.actions.length) delay = 2000;
         } catch (e) {
@@ -284,14 +347,20 @@ async function daemon(cfg: Config) {
             const safety = e instanceof SafetyStop;
             view.passFailed(e, safety);
             const message = e instanceof Error ? e.message : String(e);
-            log('ERROR', `${safety ? 'safety stop (no file was touched)' : `pass ${pass} failed`}: ${message}`);
+            if (isOutdatedClient(message)) {
+                if (!outdated) log('ERROR', `${OUTDATED_LOG} (${message})`);
+                outdated = true;
+            } else {
+                outdated = false;
+                log('ERROR', `${safety ? 'safety stop (no file was touched)' : `pass ${pass} failed`}: ${message}`);
+            }
             store.setKv('status', JSON.stringify({ at: new Date().toISOString(), error: String(e) }));
         } finally {
             running = false;
         }
         if (failures) {
-            delay = Math.min(POLL_SECONDS * 1000 * 2 ** Math.min(failures, 4), 15 * 60 * 1000);
-            log('WARN', `retrying in ${Math.round(delay / 1000)} s (consecutive failed passes: ${failures})`);
+            delay = retryDelaySeconds(failures, outdated, POLL_SECONDS) * 1000;
+            if (!outdated) log('WARN', `retrying in ${Math.round(delay / 1000)} s (consecutive failed passes: ${failures})`);
         } else if (tracker.hasPending()) {
             // The user changed something while the pass was running: do not wait for the next poll.
             delay = DEBOUNCE_MS;
@@ -323,15 +392,55 @@ function printPlan(plan: Plan) {
     for (const w of plan.warnings) console.log(`warning: ${w}`);
 }
 
+/** Copies the config, database and login of the old project into this one. Copy only. */
+async function migrate(args: string[]) {
+    const fromIndex = args.indexOf('--from');
+    if (fromIndex >= 0 && !args[fromIndex + 1]) throw new Error('usage: nucleon-sync migrate [--from <old data folder>]');
+    const found = findLegacy(homedir());
+    let legacyDir = fromIndex >= 0 ? path.resolve(args[fromIndex + 1]!) : undefined;
+    if (!legacyDir) {
+        if (!found.dataDirs.length) throw new Error('no old data folder found. Use: nucleon-sync migrate --from <folder>');
+        console.log('Old data folders found:');
+        found.dataDirs.forEach((d, i) => console.log(`  ${i + 1}. ${d}`));
+        const answer = found.dataDirs.length === 1 ? '1' : prompt('Which one? (number)') ?? '';
+        legacyDir = found.dataDirs[Number(answer) - 1];
+        if (!legacyDir) throw new Error('no folder chosen');
+    }
+    const options = {
+        otherDirs: found.dataDirs,
+        activeService: () => activeLegacyService(homedir(), process.getuid?.() ?? 0),
+        commands: found.services.flatMap(stopCommands),
+    };
+    const plan = planMigration(legacyDir, DATA, isDaemonRunning, options);
+    if (plan.blocked) throw new Error(plan.blocked);
+    if (!plan.steps.length) return console.log('already migrated, nothing to do. Next: nucleon-sync setup');
+    console.log('Nothing is removed, moved or overwritten. Planned:');
+    for (const step of plan.steps) console.log(`  - ${step}`);
+    console.log('The files "paused" and "quarantine/" stay in the old folder: they are not copied.');
+    if (prompt('No old sync command must be running. Type yes to apply') !== 'yes') return console.log('cancelled');
+    const warnings = await applyMigration(plan, {
+        readSecret: async (service, name) => (await Bun.secrets.get({ service, name })) ?? null,
+        writeSecret: (service, name, value) => Bun.secrets.set({ service, name, value }),
+        recheck: () => planMigration(legacyDir!, DATA, isDaemonRunning, options).blocked,
+    });
+    console.log('Done.');
+    for (const warning of warnings) console.log(`warning: ${warning}`);
+    for (const line of afterMigration([...new Set([...found.services.flatMap(stopCommands), ...knownStopCommands()])])) console.log(line);
+}
+
 async function main() {
     const [cmd, ...args] = process.argv.slice(2);
     switch (cmd) {
         case 'init': {
             const [dir, remote] = args;
-            if (!dir || !remote) throw new Error('usage: proton-sync init <folder> <device:name/folder|root>');
+            if (!dir || !remote) throw new Error('usage: nucleon-sync init <folder> <device:name/folder|root>');
+            const orphan = orphanDatabaseProblem(DATA, configPath());
+            if (orphan) throw new Error(orphan);
             const localRoot = path.resolve(dir);
+            const badFolder = folderProblem(localRoot, homedir(), DATA);
+            if (badFolder) throw new Error(badFolder);
             mkdirSync(path.dirname(configPath()), { recursive: true });
-            createRootMarker(localRoot);
+            await createRootMarker(localRoot);
             const cfg: Config = { localRoot, remote, deviceName: hostname().split('.')[0]!.replace(/[^\w-]/g, ''), maxDeletes: 20 };
             writeFileSync(configPath(), `${JSON.stringify(cfg, null, 4)}\n`);
             console.log(`configuration written: ${configPath()}`);
@@ -339,7 +448,7 @@ async function main() {
         }
         case 'login': {
             const ctx = await sdkContext();
-            await ctx.auth.authViaWeb((url: string) => console.log(`Open this address to log in:\n${url}`));
+            await signIn(ctx.auth, console.log);
             console.log('logged in');
             await ctx.dispose();
             return;
@@ -355,9 +464,10 @@ async function main() {
         case 'once': {
             const cfg = loadConfig();
             const log = logger(cfg.verbose ?? false);
+            const store = openStore(cfg);
             const ctx = await sdkContext();
-            if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run proton-sync login');
-            const { engine, store } = await buildEngine(cfg, ctx, log);
+            if (!ctx.auth.isLoggedIn()) throw new Error('not logged in: run nucleon-sync login');
+            const engine = await buildEngine(cfg, ctx, store, log);
             if (cmd === 'plan') printPlan(await engine.planOnly());
             else {
                 const approve = store.getKv('approve-deletes') === '1';
@@ -371,7 +481,13 @@ async function main() {
             return;
         }
         case 'run':
-            await daemon(loadConfig());
+            try {
+                await daemon(loadConfig());
+            } catch (e) {
+                // The service restarts in a loop: the log must say why.
+                logger()('ERROR', `the daemon could not start: ${e instanceof Error ? e.message : String(e)}`);
+                throw e;
+            }
             return;
         case 'approve': {
             const store = new SqliteStore(path.join(DATA, 'state.sqlite'));
@@ -396,33 +512,89 @@ async function main() {
             return;
         }
         case 'setup': {
-            if (existsSync(configPath())) throw new Error(`already configured: ${configPath()}`);
-            console.log('proton-sync setup. Nothing is synced during this assistant.');
-            const folder = path.resolve((prompt('Folder to sync', path.join(homedir(), 'Proton')) ?? '').replace(/^~(?=\/)/, homedir()));
-            const choice = prompt('Target: 1 = test space, 2 = My files', '1');
-            const target = choice === '2' ? 'myfiles' : 'test';
+            console.log(`nucleon-sync setup. ${THIRD_PARTY_NOTICE} Nothing is synced during this assistant.`);
+            const command = path.join(homedir(), '.local/bin', APP_NAME);
+            const osProblem = serviceProblem(platform());
+            if (osProblem) throw new Error(osProblem);
+            if (args.includes('--reset')) {
+                if (isDaemonRunning(DATA)) throw new Error('nucleon-sync is running. Stop it first: systemctl --user stop nucleon-sync.service, or on macOS launchctl bootout gui/$(id -u)/org.nucleonsync.daemon');
+                const aside = moveStateAside(DATA, configPath(), new Date());
+                console.log(aside ? `Moved aside, nothing was deleted: ${aside}` : 'No configuration or database to move aside.');
+            }
+            if (existsSync(configPath())) {
+                // Already configured: only the last step is left.
+                const cfg = loadConfig();
+                console.log(`Already configured: ${cfg.localRoot} <-> ${cfg.remote}. Nothing else to set up.`);
+                await startSyncing(command);
+                return;
+            }
+            const orphan = orphanDatabaseProblem(DATA, configPath());
+            if (orphan) throw new Error(orphan);
+            const storeProblem = await sessionStoreProblem(probeSessionStore);
+            if (storeProblem) throw new Error(storeProblem);
+            const folder = path.resolve(expandHome(prompt('Folder to sync', path.join(homedir(), 'Proton')) ?? '', homedir()));
+            if (!isYes(prompt(`Sync the folder ${folder}? [y/N]`))) throw new Error('Folder not confirmed, nothing was done.');
+            const badFolder = folderProblem(folder, homedir(), DATA);
+            if (badFolder) throw new Error(badFolder);
+            checkOtherSyncTool(folder, { home: homedir(), uid: process.getuid?.() ?? 0, run: realRun, env: process.env, print: console.log, ask: (question) => prompt(question) });
+            const choice = prompt('Target: 1 = My files (your real Drive), 2 = test space', '1');
+            const target = choice === '2' ? 'test' : 'myfiles';
             const confirmed = target === 'myfiles' && prompt('My files holds your real data. Type yes to confirm') === 'yes';
+            if (target === 'myfiles' && !confirmed) throw new Error('My files was not confirmed, nothing was done. Choose the test space (2) to try safely.');
             const cfg = buildConfig({ folder, target, confirmed, deviceName: hostname().split('.')[0]!.replace(/[^\w-]/g, '') });
             mkdirSync(folder, { recursive: true });
-            mkdirSync(path.dirname(configPath()), { recursive: true });
-            createRootMarker(folder);
-            saveConfig(cfg);
+            await createRootMarker(folder);
             const ctx = await sdkContext();
-            if (!ctx.auth.isLoggedIn()) await ctx.auth.authViaWeb((url: string) => console.log(`Open this address to log in:\n${url}`));
+            if (!ctx.auth.isLoggedIn()) await signIn(ctx.auth, console.log);
             const log = logger(false);
-            const { engine } = await buildEngine(cfg, ctx, log);
+            // A throwaway database: a plan that fails must not leave one behind without a config.
+            const engine = await buildEngine(cfg, ctx, new SqliteStore(':memory:'), log);
             const plan = await engine.planOnly();
             console.log(`What the first sync would do: ${summarize(plan)}`);
             for (const w of plan.warnings) console.log(`Warning: ${w}`);
-            console.log('Nothing was changed. Review it, then run proton-sync once.');
             await ctx.dispose();
+            // Saved only now: a failed sign-in or plan leaves setup ready to run again.
+            mkdirSync(path.dirname(configPath()), { recursive: true });
+            saveConfig(cfg);
+            await startSyncing(command);
             return;
         }
-        case 'update':
-            console.log(checkForUpdate(path.join(import.meta.dir, '..'), sendNote, () => signalDaemon('SIGTERM')));
+        case 'update': {
+            const home = homedir();
+            const darwin = platform() === 'darwin';
+            const run = (cmd: string[], env?: Record<string, string>) => Bun.spawnSync(cmd, { env: { ...process.env, ...env }, stdout: 'inherit', stderr: 'inherit' }).exitCode;
+            const quietly = (cmd: string[]) => Bun.spawnSync(cmd, { stdout: 'ignore', stderr: 'ignore' }).exitCode === 0;
+            const agent = `gui/${process.getuid?.() ?? 0}/org.nucleonsync.daemon`;
+            const serviceInstalled = () =>
+                darwin ? existsSync(path.join(home, 'Library/LaunchAgents/org.nucleonsync.daemon.plist')) : existsSync(path.join(home, '.config/systemd/user/nucleon-sync.service'));
+            const restart = () => (darwin ? quietly(['launchctl', 'kickstart', '-k', agent]) : quietly(['systemctl', '--user', 'restart', 'nucleon-sync.service']));
+            const serviceIsActive = () => serviceIsUp(platform(), process.getuid?.() ?? 0, outputOf);
+            const wait = () => new Promise<void>((resolve) => setTimeout(resolve, 5000));
+            const result = await runUpdate({ appDir: INSTALLED_APP_DIR, codeDir: import.meta.dir, current: RELEASE_VERSION, fetch, run, output: outputOf, serviceInstalled, restart, serviceIsActive, wait });
+            if (updateFailed(result)) throw new Error(result);
+            console.log(result);
             return;
+        }
+        case 'uninstall': {
+            const purgeData = args.includes('--purge-data');
+            const ask = async (question: string) => (prompt(`${question} Type yes to confirm`) ?? '') === 'yes';
+            const run = (cmd: string[]) => Bun.spawnSync(cmd, { stdout: 'ignore', stderr: 'ignore' }).exitCode;
+            let syncedFolder: string | undefined;
+            try {
+                syncedFolder = loadConfig().localRoot;
+            } catch {
+                /* no configuration: nothing to print */
+            }
+            const deleteSession = async () => {
+                // In the third store, unsafe_file, the session is a file of the data folder.
+                if (process.env.PROTON_DRIVE_CREDENTIALS_STORE === 'pass') Bun.spawnSync(['pass', 'rm', '-f', PASS_CREDENTIALS_PATH]);
+                else await Bun.secrets.delete({ service: CREDENTIALS_SERVICE, name: CREDENTIALS_NAME });
+            };
+            await runUninstall({ home: homedir(), dataDir: DATA, platform: platform() === 'darwin' ? 'darwin' : 'linux', purgeData, syncedFolder, ask, print: (line) => console.log(line), run, deleteSession });
+            return;
+        }
         case 'activity':
-            for (const a of recentActivity(path.join(DATA, 'proton-sync.log'), Number(args[0]) || 30).reverse()) {
+            for (const a of recentActivity(path.join(DATA, 'nucleon-sync.log'), Number(args[0]) || 30).reverse()) {
                 console.log(`${a.at}  ${a.label}  ${a.path}${a.error ? `  (${a.error})` : ''}`);
             }
             return;
@@ -451,7 +623,7 @@ async function main() {
                 for (const p of list) console.log(p);
                 return;
             }
-            if ((action !== 'add' && action !== 'remove') || !pattern) throw new Error('usage: proton-sync exclude list|add <pattern>|remove <pattern>');
+            if ((action !== 'add' && action !== 'remove') || !pattern) throw new Error('usage: nucleon-sync exclude list|add <pattern>|remove <pattern>');
             cfg.exclude = action === 'add' ? [...new Set([...list, pattern])] : list.filter((p) => p !== pattern);
             saveConfig(cfg);
             // The patterns are read at start: the service restarts the daemon.
@@ -459,11 +631,14 @@ async function main() {
             console.log(`exclusions: ${cfg.exclude.join(', ') || 'none'}`);
             return;
         }
+        case 'migrate':
+            await migrate(args);
+            return;
         case 'version':
             console.log(APP_VERSION);
             return;
         default:
-            console.log('usage: proton-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup|update|version');
+            console.log('usage: nucleon-sync init|login|logout|plan|once|run|approve|status|pause|resume|seen|activity|exclude|setup [--reset]|update|uninstall|migrate|version');
     }
 }
 
