@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { buildConfig, expandHome, isYes, otherSyncToolFor, sessionStoreProblem } from '../src/desktop/setup';
+import { buildConfig, checkOtherSyncTool, expandHome, isYes, leftoverRcloneFile, liveRcloneUnit, sessionStoreProblem } from '../src/desktop/setup';
+import type { RunCommand } from '../src/migrate';
 import { findDeployDir, installService, renderService, serviceProblem } from '../src/service';
 
 function tempHome(): string {
@@ -14,38 +15,123 @@ function touch(file: string) {
     writeFileSync(file, '');
 }
 
+/** Answers like systemctl and launchctl: `live` maps "command args" to its output, anything else fails. */
+function fakeRun(live: Record<string, string> = {}): { run: RunCommand; calls: string[] } {
+    const calls: string[] = [];
+    const run: RunCommand = (command, args) => {
+        const line = [command, ...args].join(' ');
+        calls.push(line);
+        return line in live ? { status: 0, stdout: `${live[line]}\n` } : { status: 1, stdout: '' };
+    };
+    return { run, calls };
+}
+
+function checkTool(folder: string, home: string, o: { live?: Record<string, string>; answer?: string; env?: Record<string, string> } = {}) {
+    const printed: string[] = [];
+    const questions: string[] = [];
+    const result = () =>
+        checkOtherSyncTool(folder, {
+            home,
+            uid: 501,
+            run: fakeRun(o.live).run,
+            env: o.env ?? {},
+            print: (line) => printed.push(line),
+            ask: (question) => (questions.push(question), o.answer ?? null),
+        });
+    return { result, printed, questions };
+}
+
+const DISABLED_LIST = 'disabled services = {\n\t"org.rclone.bisync" => disabled\n}';
+
 describe('other sync tool', () => {
-    test('rclone state for the folder is detected', () => {
+    const cacheFile = (home: string, cache = '.cache/rclone/bisync') => path.join(home, cache, `${home.replace(/^\//, '').replace(/\//g, '_')}_Proton..proton_.path1.lst`);
+
+    test('a leftover rclone file with no live unit needs a typed yes, and names the file', () => {
         const home = tempHome();
-        const name = home.replace(/^\//, '').replace(/\//g, '_');
-        touch(path.join(home, '.cache/rclone/bisync', `${name}_Proton..proton_.path1.lst`));
-        expect(otherSyncToolFor(path.join(home, 'Proton'), home)).toContain('rclone');
+        const file = cacheFile(home);
+        touch(file);
+        const check = checkTool(path.join(home, 'Proton'), home, { answer: 'no' });
+        expect(check.result).toThrow('nothing was done');
+        expect(check.printed.join('\n')).toContain(file);
+        expect(check.questions).toHaveLength(1);
+        expect(checkTool(path.join(home, 'Proton'), home, { answer: 'yes' }).result).not.toThrow();
     });
-    test('rclone state with the folder in the middle of the name is detected', () => {
+    test('a leftover file with the folder in the middle of its name counts', () => {
         const home = tempHome();
         const name = home.replace(/^\//, '').replace(/\//g, '_');
         touch(path.join(home, '.cache/rclone/bisync', `proton_${name}_Proton.path2.lst`));
-        expect(otherSyncToolFor(path.join(home, 'Proton'), home)).toContain('rclone');
+        expect(leftoverRcloneFile(path.join(home, 'Proton'), home)).toContain('path2.lst');
     });
-    test('an unrelated folder is not flagged', () => {
+    test('a leftover file of another folder asks nothing', () => {
         const home = tempHome();
-        const name = home.replace(/^\//, '').replace(/\//g, '_');
-        touch(path.join(home, '.cache/rclone/bisync', `${name}_Proton..proton_.path1.lst`));
-        expect(otherSyncToolFor(path.join(home, 'Other'), home)).toBeUndefined();
+        touch(cacheFile(home));
+        const check = checkTool(path.join(home, 'Other'), home);
+        check.result();
+        expect(check.questions).toEqual([]);
     });
-    test('nothing installed gives undefined', () => {
+    test('nothing installed asks nothing', () => {
         const home = tempHome();
-        expect(otherSyncToolFor(path.join(home, 'Proton'), home)).toBeUndefined();
+        const check = checkTool(path.join(home, 'Proton'), home);
+        check.result();
+        expect(check.questions).toEqual([]);
+        expect(check.printed).toEqual([]);
     });
-    test('an rclone-bisync user unit is detected', () => {
+    test('the macOS cache folder and XDG_CACHE_HOME are searched', () => {
         const home = tempHome();
-        touch(path.join(home, '.config/systemd/user/rclone-bisync-proton.service'));
-        expect(otherSyncToolFor(path.join(home, 'Proton'), home)).toContain('rclone');
+        const xdg = tempHome();
+        touch(cacheFile(home, 'Library/Caches/rclone/bisync'));
+        expect(leftoverRcloneFile(path.join(home, 'Proton'), home)).toContain('Library/Caches');
+        const other = tempHome();
+        const name = other.replace(/^\//, '').replace(/\//g, '_');
+        touch(path.join(xdg, 'rclone/bisync', `${name}_Proton..proton_.path1.lst`));
+        expect(leftoverRcloneFile(path.join(other, 'Proton'), other)).toBeUndefined();
+        expect(leftoverRcloneFile(path.join(other, 'Proton'), other, { XDG_CACHE_HOME: xdg })).toContain(xdg);
     });
-    test('an org.rclone launchd plist is detected', () => {
+    test('a stopped and disabled systemd unit no longer blocks: this was the trap', () => {
+        const home = tempHome();
+        touch(path.join(home, '.config/systemd/user/rclone-bisync.timer'));
+        touch(cacheFile(home));
+        const check = checkTool(path.join(home, 'Proton'), home, { answer: 'yes', live: { 'systemctl --user is-enabled rclone-bisync.timer': 'disabled' } });
+        expect(check.result).not.toThrow();
+    });
+    test('an active systemd unit blocks, whatever the folder, and says how to stop it', () => {
+        const home = tempHome();
+        touch(path.join(home, '.config/systemd/user/rclone-bisync.timer'));
+        const check = checkTool(path.join(home, 'Proton'), home, { live: { 'systemctl --user is-active rclone-bisync.timer': 'active' } });
+        expect(check.result).toThrow('systemctl --user disable --now rclone-bisync.timer');
+    });
+    test('a service in the middle of a bisync (activating) blocks', () => {
+        const home = tempHome();
+        touch(path.join(home, '.config/systemd/user/rclone-bisync.service'));
+        const run: RunCommand = (_command, args) => (args[1] === 'is-active' ? { status: 3, stdout: 'activating\n' } : { status: 1, stdout: 'static\n' });
+        expect(liveRcloneUnit(home, 501, run)).toContain('rclone-bisync.service');
+    });
+    test('an enabled systemd unit blocks even when it is not running', () => {
+        const home = tempHome();
+        touch(path.join(home, '.config/systemd/user/rclone-bisync.timer'));
+        expect(liveRcloneUnit(home, 501, fakeRun({ 'systemctl --user is-enabled rclone-bisync.timer': 'enabled' }).run)).toContain('rclone-bisync.timer');
+    });
+    test('a static unit is neither active nor enabled', () => {
+        const home = tempHome();
+        touch(path.join(home, '.config/systemd/user/rclone-bisync.service'));
+        expect(liveRcloneUnit(home, 501, fakeRun({ 'systemctl --user is-enabled rclone-bisync.service': 'static' }).run)).toBeUndefined();
+    });
+    test('a loaded launchd job blocks', () => {
         const home = tempHome();
         touch(path.join(home, 'Library/LaunchAgents/org.rclone.bisync.plist'));
-        expect(otherSyncToolFor(path.join(home, 'Proton'), home)).toContain('rclone');
+        const message = liveRcloneUnit(home, 501, fakeRun({ 'launchctl print gui/501/org.rclone.bisync': 'state = running' }).run);
+        expect(message).toContain('launchctl bootout gui/501/org.rclone.bisync');
+    });
+    test('a launchd job not loaded but set to start at login blocks', () => {
+        const home = tempHome();
+        touch(path.join(home, 'Library/LaunchAgents/org.rclone.bisync.plist'));
+        const message = liveRcloneUnit(home, 501, fakeRun({ 'launchctl print-disabled gui/501': 'disabled services = {\n}' }).run);
+        expect(message).toContain('launchctl disable gui/501/org.rclone.bisync');
+    });
+    test('a launchd job stopped and disabled no longer blocks', () => {
+        const home = tempHome();
+        touch(path.join(home, 'Library/LaunchAgents/org.rclone.bisync.plist'));
+        expect(liveRcloneUnit(home, 501, fakeRun({ 'launchctl print-disabled gui/501': DISABLED_LIST }).run)).toBeUndefined();
     });
 });
 
@@ -128,20 +214,6 @@ describe('My files', () => {
 });
 
 describe('review fixes', () => {
-    test('rclone state in the macOS cache folder is detected', () => {
-        const home = tempHome();
-        const name = home.replace(/^\//, '').replace(/\//g, '_');
-        touch(path.join(home, 'Library/Caches/rclone/bisync', `${name}_Proton..proton_.path1.lst`));
-        expect(otherSyncToolFor(path.join(home, 'Proton'), home)).toContain('rclone');
-    });
-    test('rclone state in XDG_CACHE_HOME is detected', () => {
-        const home = tempHome();
-        const xdg = tempHome();
-        const name = home.replace(/^\//, '').replace(/\//g, '_');
-        touch(path.join(xdg, 'rclone/bisync', `${name}_Proton..proton_.path1.lst`));
-        expect(otherSyncToolFor(path.join(home, 'Proton'), home)).toBeUndefined();
-        expect(otherSyncToolFor(path.join(home, 'Proton'), home, { XDG_CACHE_HOME: xdg })).toContain('rclone');
-    });
     test('answers: y and yes only; bare ~ expands', () => {
         expect(isYes('Y')).toBe(true);
         expect(isYes('yes')).toBe(true);

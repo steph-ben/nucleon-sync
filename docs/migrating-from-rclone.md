@@ -4,7 +4,7 @@ Two sync tools on the same Drive cause deletions and re-downloads, because each 
 
 Keep a copy of your folder somewhere else before you start. Native Proton documents are never synced, so they will not be in that copy.
 
-1. Stop rclone on all your machines before anything else. For a systemd timer: `systemctl --user disable --now rclone-bisync.timer`. For launchd on macOS: `launchctl bootout gui/$(id -u)/org.rclone.protondrive-bisync`.
+1. Stop rclone on all your machines before anything else. For a systemd timer: `systemctl --user disable --now rclone-bisync.timer`. For launchd on macOS: `launchctl bootout gui/$(id -u)/org.rclone.protondrive-bisync`, then `launchctl disable gui/$(id -u)/org.rclone.protondrive-bisync`. Setup refuses to go on while an rclone unit is running or enabled. If rclone only left its files in `.cache/rclone/bisync`, setup names the file, warns you, and goes on after you type `yes`. It cannot see rclone started from cron or a script, so typing `yes` means you checked.
 
 2. Check that the folders of all machines are identical to each other and to the Drive. Counting files on each machine and comparing the numbers is a good first test.
 

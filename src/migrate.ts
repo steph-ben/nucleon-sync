@@ -37,7 +37,7 @@ export interface PlanOptions {
     commands?: string[];
 }
 
-const realRun: RunCommand = (command, args) => {
+export const realRun: RunCommand = (command, args) => {
     const r = spawnSync(command, args, { encoding: 'utf8' });
     return { status: r.status, stdout: r.stdout ?? '' };
 };
@@ -46,7 +46,7 @@ const LINUX_UNIT = 'proton-sync.service';
 const MAC_LABEL = 'org.protonsync.daemon';
 
 /** launchctl print-disabled prints '"label" => disabled' (or '=> true' on older macOS). */
-function isDisabledInLaunchctl(output: string, label: string): boolean {
+export function isDisabledInLaunchctl(output: string, label: string): boolean {
     return new RegExp(`"${label}"\\s*=>\\s*(disabled|true)\\b`).test(output);
 }
 
