@@ -14,14 +14,14 @@
 - **Works like a normal sync folder.** Edit, add, move or delete files in `~/Proton`, on any machine. The other side follows by itself.
 - **Rename a whole folder in one go.** A rename or a move is sent as a rename, not as a delete plus a new upload.
 - **Never loses a file.** Deletions go to the Proton trash or to a local quarantine, conflicts keep both versions, and a large batch of deletions waits for your OK.
-- **Shows what it does.** An icon in the top bar tells you if all is in sync, and desktop notifications tell you when something needs you.
+- **Shows what it does.** An icon in the top bar (Linux) or the menu bar (macOS) tells you if all is in sync, and desktop notifications tell you when something needs you.
 - **End-to-end encrypted, the Proton way.** Proton's own SDK encrypts your files before they leave your computer. Your password never reaches nucleon-sync.
 
 <p align="center">
   <img src="assets/tray.svg" alt="The nucleon-sync icon in the Linux top bar, its menu, and the recent activity window" width="760">
 </p>
 
-The tray icon on Linux. Its badge shows the state: up to date, syncing, paused, or action needed. The menu lets you pause, approve held deletions, open the folder, and see recent activity: what was uploaded, downloaded, moved or put aside, and when.
+The tray icon, here on Linux. macOS has the same menu, with the logo in one colour like the other menu bar icons. The icon shows the state: up to date, syncing, paused, or action needed. The menu lets you pause, approve held deletions, open the folder, and see recent activity: what was uploaded, downloaded, moved or put aside, and when.
 
 ## Install
 
@@ -92,7 +92,7 @@ Each of these has automated tests: about 220 everyday and failure scenarios ([th
 
 ## Daily use
 
-The sync runs by itself and starts at login. On Linux, the tray icon covers the everyday needs. The same things, and a few more, are in the terminal:
+The sync runs by itself and starts at login. The tray icon covers the everyday needs. The same things, and a few more, are in the terminal:
 
     nucleon-sync status                  where things stand
     nucleon-sync activity                what really happened to your files
@@ -112,7 +112,7 @@ This is beta software. The author uses it daily on a real Drive. The whole insta
 
 The Proton Drive SDK is meant for personal, non-commercial use for now, and Proton says it is not ready yet for third-party apps in production. Proton plans new cryptography around the end of 2026 or early 2027, and nucleon-sync will need an update by then. It tells you when that happens.
 
-On Linux you need a running keyring (libsecret, for example gnome-keyring). The tray icon needs `libayatana-appindicator-gtk3` or `libappindicator-gtk3`, and on GNOME the AppIndicator extension. 
+On Linux you need a running keyring (libsecret, for example gnome-keyring). The tray icon needs `libayatana-appindicator-gtk3` or `libappindicator-gtk3`, and on GNOME the AppIndicator extension. On macOS the menu bar icon is built on your Mac by `setup`, with the Apple command line tools (`xcode-select --install` if they are missing).
 
 Do not run another sync tool on the same folder. Native Proton Docs and Sheets are never synced.
 
@@ -133,5 +133,3 @@ The tests need no Proton account. Design notes are in `docs/design.md`.
 MIT, see `LICENSE`. Bundled libraries are listed in `THIRD-PARTY-NOTICES` in each release.
 
 Made by [steph-ben](https://github.com/steph-ben).
-
-On macOS the menu bar icon is built on your Mac by `setup`, with the Apple command line tools (`xcode-select --install` if they are missing).
