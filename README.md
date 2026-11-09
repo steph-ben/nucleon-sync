@@ -92,7 +92,7 @@ Each of these has automated tests: about 220 everyday and failure scenarios ([th
 
 ## Daily use
 
-The sync runs by itself and starts at login. The tray icon covers the everyday needs. The same things, and a few more, are in the terminal:
+The sync runs by itself. These are there when you want them:
 
     nucleon-sync status                  where things stand
     nucleon-sync activity                what really happened to your files
@@ -112,7 +112,7 @@ This is beta software. The author uses it daily on a real Drive. The whole insta
 
 The Proton Drive SDK is meant for personal, non-commercial use for now, and Proton says it is not ready yet for third-party apps in production. Proton plans new cryptography around the end of 2026 or early 2027, and nucleon-sync will need an update by then. It tells you when that happens.
 
-On Linux you need a running keyring (libsecret, for example gnome-keyring). The tray icon needs `libayatana-appindicator-gtk3` or `libappindicator-gtk3`, and on GNOME the AppIndicator extension. On macOS the menu bar icon is built on your Mac by `setup`, with the Apple command line tools (`xcode-select --install` if they are missing).
+On Linux you need a running keyring (libsecret, for example gnome-keyring). The tray icon needs `libayatana-appindicator-gtk3` or `libappindicator-gtk3`, and on GNOME the AppIndicator extension. 
 
 Do not run another sync tool on the same folder. Native Proton Docs and Sheets are never synced.
 
@@ -133,3 +133,5 @@ The tests need no Proton account. Design notes are in `docs/design.md`.
 MIT, see `LICENSE`. Bundled libraries are listed in `THIRD-PARTY-NOTICES` in each release.
 
 Made by [steph-ben](https://github.com/steph-ben).
+
+On macOS the menu bar icon is built on your Mac by `setup`, with the Apple command line tools (`xcode-select --install` if they are missing).
