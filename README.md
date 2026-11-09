@@ -11,6 +11,20 @@
 
 **Open-source, two-way sync for Proton Drive on Linux and macOS.** It keeps a folder on your computer and your Drive identical, in the background, and keeps your files safe when something goes wrong.
 
+- **Works like a normal sync folder.** Edit, add, move or delete files in `~/Proton`, on any machine. The other side follows by itself.
+- **Rename a whole folder in one go.** A rename or a move is sent as a rename, not as a delete plus a new upload.
+- **Never loses a file.** Deletions go to the Proton trash or to a local quarantine, conflicts keep both versions, and a large batch of deletions waits for your OK.
+- **Shows what it does.** An icon in the top bar tells you if all is in sync, and desktop notifications tell you when something needs you.
+- **End-to-end encrypted, the Proton way.** Proton's own SDK encrypts your files before they leave your computer. Your password never reaches nucleon-sync.
+
+<p align="center">
+  <img src="assets/tray.svg" alt="The nucleon-sync icon in the Linux top bar, its menu, and the recent activity window" width="760">
+</p>
+
+The tray icon on Linux. Its badge shows the state: up to date, syncing, paused, or action needed. The menu lets you pause, approve held deletions, open the folder, and see recent activity: what was uploaded, downloaded, moved or put aside, and when.
+
+## Install
+
 ```sh
 curl -fsSL https://steph-ben.github.io/nucleon-sync/install.sh | sh
 ```
@@ -78,7 +92,7 @@ Each of these has automated tests: about 220 everyday and failure scenarios ([th
 
 ## Daily use
 
-The sync runs by itself. These are there when you want them:
+The sync runs by itself and starts at login. On Linux, the tray icon covers the everyday needs. The same things, and a few more, are in the terminal:
 
     nucleon-sync status                  where things stand
     nucleon-sync activity                what really happened to your files
