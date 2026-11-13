@@ -18,6 +18,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)  # Gtk.ImageMenuI
 
 SCRIPT = os.path.abspath(__file__)
 DAEMON_GONE_SECONDS = 180
+STOPPED_NOTIFY_AFTER_SECONDS = 60  # after a sleep the heartbeat looks old for a moment: only a daemon still silent a minute later is worth a popup
 TAIL_BYTES = 256 * 1024
 LINE = re.compile(r"^(\S+) (INFO |ERROR) (local→drive|drive→local|local)  (.+?)  (.+)$")
 LABELS = {
@@ -246,8 +247,14 @@ def main(binary, home):
         if state != last.get("state"):
             indicator.set_icon_full(ICONS[state["level"]] if os.path.isdir(ICON_DIR) else MENU_ICONS[state["level"]], state["title"])
             indicator.set_menu(build(state))
-            if state["level"] == "stopped" and last["level"] not in ("", "stopped"):
-                run("notify-send", "--app-name=nucleon-sync", "--", "nucleon-sync: sync stopped", "The daemon stopped responding.")
+        if state["level"] != "stopped":
+            last["stopped_since"] = None
+        elif last["level"] not in ("", "stopped"):
+            last["stopped_since"] = time.time()
+        since = last.get("stopped_since")
+        if since is not None and time.time() - since >= STOPPED_NOTIFY_AFTER_SECONDS:
+            last["stopped_since"] = None
+            run("notify-send", "--app-name=nucleon-sync", "--", "nucleon-sync: sync stopped", "The daemon stopped responding.")
         last.update(level=state["level"], state=state)
         return True
 

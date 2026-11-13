@@ -51,6 +51,8 @@ describe('the two tray programs show the same menu', () => {
             expect(py).toContain(`"${level}": "`);
             expect(swift).toContain(`"${level}": "`);
         }
+        expect(py).toContain('STOPPED_NOTIFY_AFTER_SECONDS = 60');
+        expect(swift).toContain('let stoppedNotifyAfterSeconds = 60.0');
         expect(py).toContain('DAEMON_GONE_SECONDS = 180');
         expect(swift).toContain('let daemonGoneSeconds = 180.0');
         expect(py).toContain('TAIL_BYTES = 256 * 1024');

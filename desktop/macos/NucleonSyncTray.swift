@@ -4,6 +4,7 @@
 import AppKit
 
 let daemonGoneSeconds = 180.0
+let stoppedNotifyAfterSeconds = 60.0  // after a sleep the heartbeat looks old for a moment: only a daemon still silent a minute later is worth a popup
 
 struct State {
     var level = "stopped"
@@ -208,6 +209,7 @@ final class Tray: NSObject, NSApplicationDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     var state = State()
     var lastLevel = ""
+    var stoppedSince: Date?
     lazy var activity = ActivityWindow(home: home)
 
     init(bin: String, home: String, root: String?) {
@@ -276,7 +278,13 @@ final class Tray: NSObject, NSApplicationDelegate {
     func refresh() {
         restartIfUpdated()
         state = read()
-        if state.level == "stopped" && lastLevel != "stopped" && !lastLevel.isEmpty {
+        if state.level != "stopped" {
+            stoppedSince = nil
+        } else if lastLevel != "stopped" && !lastLevel.isEmpty {
+            stoppedSince = Date()
+        }
+        if let since = stoppedSince, Date().timeIntervalSince(since) >= stoppedNotifyAfterSeconds {
+            stoppedSince = nil
             notify("nucleon-sync: sync stopped", "The daemon stopped responding.")
         }
         lastLevel = state.level
