@@ -58,9 +58,14 @@ describe('notifications come from transitions only', () => {
     test('the first state after a start does not replay old problems', () => {
         expect(notificationsFor(undefined, { ...idle, held: 25 })).toEqual([]);
     });
-    test('the end of a problem is said too', () => {
-        const bad = { ...idle, problems: [{ kind: 'failing' as const, message: 'x' }] };
-        expect(notificationsFor(bad, idle)[0]!.title).toContain('restored');
+    test('network errors and unreadable files stay silent, in the icon only', () => {
+        for (const kind of ['failing', 'unreadable'] as const) {
+            expect(notificationsFor(idle, { ...idle, problems: [{ kind, message: 'x' }] })).toEqual([]);
+        }
+    });
+    test('the end of a problem is not announced: the icon turns green', () => {
+        const bad = { ...idle, problems: [{ kind: 'session' as const, message: 'x' }] };
+        expect(notificationsFor(bad, idle)).toEqual([]);
     });
 });
 
@@ -126,16 +131,17 @@ const plan = { rebinds: [], actions: [], held: [], warnings: [] };
 const done = { plan, done: 0, skipped: 0, errors: [], deleted: [], conflicts: 0 };
 
 describe('DesktopTracker', () => {
-    test('a run of failures becomes a problem, one success clears it', () => {
+    test('a run of failures shows in the icon without a popup, one success clears it', () => {
         const { t, notes } = tracker();
         t.passDone(done);
         t.passFailed(new Error('network unreachable'), false);
         expect(notes).toHaveLength(0);
         t.passFailed(new Error('network unreachable'), false);
         t.passFailed(new Error('network unreachable'), false);
-        expect(notes).toHaveLength(1);
+        expect(t.state.problems).toHaveLength(1);
         t.passDone(done);
-        expect(notes[1]!.title).toContain('restored');
+        expect(t.state.problems).toHaveLength(0);
+        expect(notes).toHaveLength(0);
     });
     test('an expired session is a problem at once, and says what to do', () => {
         const { t, notes } = tracker();

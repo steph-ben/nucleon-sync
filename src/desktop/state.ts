@@ -33,6 +33,8 @@ export interface Note {
     body: string;
 }
 
+const NOTIFIED_KINDS: Problem['kind'][] = ['session', 'outdated', 'safety'];
+
 const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
 
 function ago(ms: number): string {
@@ -62,8 +64,8 @@ export function notificationsFor(prev: DesktopState | undefined, next: DesktopSt
     if (!prev) return [];
     const notes: Note[] = [];
     const known = new Set(prev.problems.map((p) => p.message));
-    for (const p of next.problems) if (!known.has(p.message)) notes.push({ title: 'nucleon-sync: action needed', body: p.message });
-    if (prev.problems.length && !next.problems.length) notes.push({ title: 'nucleon-sync: sync restored', body: 'Everything works again.' });
+    // Only problems that need the user: a network error after waking from sleep, or an unreadable file, stay in the icon and the menu.
+    for (const p of next.problems) if (!known.has(p.message) && NOTIFIED_KINDS.includes(p.kind)) notes.push({ title: 'nucleon-sync: action needed', body: p.message });
     if (next.held > prev.held) notes.push({ title: `${plural(next.held, 'deletion')} to approve`, body: 'Review, then approve from the menu.' });
     if (next.conflicts > prev.conflicts) notes.push({ title: `Conflict: ${next.conflicts - prev.conflicts} ${next.conflicts - prev.conflicts > 1 ? 'copies' : 'copy'} created`, body: 'Both versions are kept.' });
     // Files moved to the trash or the quarantine are not announced one by one: an editor saving a file does this all day. They show in the menu and in `nucleon-sync activity`.
